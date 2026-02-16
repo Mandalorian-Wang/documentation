@@ -1,0 +1,79 @@
+---
+title: "Design principles"
+description: "The ideas behind BoxLite's architecture and API decisions."
+icon: "compass"
+---
+
+# Design principles
+
+BoxLite is built on a simple belief: AI agents deserve sandboxes that are secure, stateful, and trivially easy to adopt. Every design decision we make traces back to four principles.
+
+## Embeddable
+
+**Local first, cloud when you're ready.**
+
+Most sandboxing solutions require a cloud account, a daemon, or root privileges before you can run your first sandbox. BoxLite flips this: it is a library you import into your application — no sidecar, no background process, no infrastructure to manage. Everything runs on your machine first. When you need to scale, BoxLite meets you there, but it never forces you to start there.
+
+```python
+import boxlite
+
+async with boxlite.SimpleBox("python:slim") as box:
+    result = await box.exec("python", "-c", "print('Hello!')")
+```
+
+We sometimes describe BoxLite as "the SQLite of sandboxing." SQLite succeeded because it removed the gap between wanting a database and having one — no server to install, no configuration to manage, no port to expose. BoxLite applies the same idea to sandboxing. If you can `pip install` a package, you can run hardware-isolated VMs.
+
+This principle shapes everything from our packaging (a single binary with no external dependencies) to our API surface (async-first, three lines to get started) to our deployment model (runs wherever your application runs).
+
+## Stateful
+
+**Sandboxes that remember.**
+
+Today's AI agent sandboxes are ephemeral — spin up a container, run some code, tear it down, repeat. Every session starts from scratch. Packages get reinstalled. Files get recreated. Context gets lost.
+
+This is the sandbox equivalent of a developer who formats their laptop between every task.
+
+BoxLite Boxes are persistent workspaces. Install packages, create files, configure the environment, stop the Box, and come back hours or days later — everything is exactly where you left it. The agent picks up where it stopped, not where it started.
+
+Statefulness is not a feature we bolted on. It is a foundational design choice that affects how we manage filesystems, how we handle VM lifecycle, and how we think about the relationship between an agent and its environment. A Box is not a disposable execution context. It is the agent's workspace.
+
+## Snapshots
+
+**Fork, explore, restore.**
+
+Stateful sandboxes become dramatically more powerful when you can capture and restore their state. BoxLite supports snapshotting a Box's full state — filesystem, installed packages, running configuration — and restoring it later.
+
+This unlocks workflows that ephemeral sandboxes cannot support:
+
+- **Checkpointing** — Save a known-good state before a risky operation. If things go wrong, roll back instantly instead of rebuilding from scratch.
+- **Branching** — Fork a snapshot into multiple Boxes to explore different approaches in parallel, like `git branch` but for entire execution environments.
+- **Reproducibility** — Capture the exact environment that produced a result. Share it, replay it, debug it.
+- **Scaling** — Stamp out hundreds of identical environments from a single snapshot for RL training or batch evaluation.
+
+Snapshots are the mechanism that makes long-running, failure-prone computation practical.
+
+## Hardware isolation
+
+**Real boundaries, not polite suggestions.**
+
+Containers share the host kernel. A container escape gives an attacker full access to the host — and every other container on it. For sandboxes running untrusted AI-generated code, this is not an acceptable risk.
+
+Every BoxLite sandbox runs inside its own micro-VM with its own Linux kernel. The isolation boundary is hardware virtualization (KVM on Linux, Hypervisor.framework on macOS), not kernel namespaces. A VM escape is orders of magnitude harder than a container escape.
+
+We made this choice knowing it comes with engineering cost. Micro-VMs are harder to build than containers. But security is not a feature you can patch in later — it is an architectural decision that must be made at the foundation. When an AI agent executes arbitrary code inside your sandbox, you need to trust that the boundary will hold.
+
+BoxLite's approach is to provide VM-level security with container-level ergonomics: sub-second boot times, minimal resource overhead, and full OCI compatibility so you can use any Docker image you already have.
+
+---
+
+## How the principles connect
+
+These four principles are not independent — they reinforce each other.
+
+Embeddability makes adoption frictionless. Statefulness makes agents productive. Snapshots make state manageable. Hardware isolation makes all of it safe to run on real infrastructure.
+
+Together they define what we think a sandbox for AI agents should be: something you can embed in three lines of code, that remembers what your agent did, that lets you checkpoint and branch execution, and that you can trust with untrusted code.
+
+```
+$ pip install boxlite
+```
