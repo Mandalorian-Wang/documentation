@@ -22,7 +22,8 @@
               "getting-started/quickstart-nodejs",
               "getting-started/quickstart-rust",
               "getting-started/quickstart-c",
-              "getting-started/core-concepts"
+              "getting-started/core-concepts",
+              "getting-started/design-principles"
             ]
           },
           {

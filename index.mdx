@@ -1,6 +1,6 @@
 ---
 title: "Introduction"
-description: "Local-first micro-VM sandbox for AI agents — stateful, lightweight, hardware-level isolation, no daemon required."
+description: "Sandboxes for every agent. Embeddable, stateful, snapshots, and hardware isolation."
 icon: "house"
 ---
 
@@ -11,17 +11,17 @@ Runs on macOS (Apple Silicon), Linux (KVM), and Windows (WSL2).
 ## Why BoxLite?
 
 <CardGroup cols={2}>
+  <Card title="Embeddable" icon="cube">
+    A library you import — no daemon, no cloud account, no root. Local first, cloud when you're ready.
+  </Card>
   <Card title="Stateful" icon="database">
     Boxes retain packages, files, and environment across stop/restart. No rebuilding on every interaction.
   </Card>
-  <Card title="Local-first" icon="cube">
-    Runs entirely on your machine — no cloud account needed. A library, not a service. Scale out when ready.
+  <Card title="Snapshots" icon="camera">
+    Fork, checkpoint, and restore full sandbox state. Branch execution like `git branch` for environments.
   </Card>
   <Card title="Hardware isolation" icon="shield-halved">
-    Each sandbox is a real microVM with its own Linux kernel. Full hardware isolation via KVM or Apple Hypervisor.framework.
-  </Card>
-  <Card title="Lightweight" icon="feather">
-    VMs boot in under a second with minimal overhead. Run hundreds of sandboxes on a single host.
+    Each sandbox is a real micro-VM with its own Linux kernel. VM-level security with container-level ergonomics.
   </Card>
 </CardGroup>
 
