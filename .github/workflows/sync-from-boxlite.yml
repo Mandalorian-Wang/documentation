@@ -1,0 +1,94 @@
+name: Sync docs from BoxLite SDK
+
+on:
+  repository_dispatch:
+    types: [boxlite-sdk-update]
+
+jobs:
+  sync-docs:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout documentation repo
+        uses: actions/checkout@v4
+
+      - name: Fetch BoxLite PR details
+        id: pr-info
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PR_NUMBER="${{ github.event.client_payload.pr_number }}"
+          echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+          echo "pr_title=${{ github.event.client_payload.pr_title }}" >> "$GITHUB_OUTPUT"
+          echo "pr_url=${{ github.event.client_payload.pr_url }}" >> "$GITHUB_OUTPUT"
+          echo "pr_author=${{ github.event.client_payload.pr_author }}" >> "$GITHUB_OUTPUT"
+
+          # Fetch the PR diff
+          gh api "repos/boxlite-ai/boxlite/pulls/${PR_NUMBER}" \
+            -H "Accept: application/vnd.github.diff" \
+            > /tmp/pr_diff.txt
+
+          # Fetch changed files list
+          gh api "repos/boxlite-ai/boxlite/pulls/${PR_NUMBER}/files" \
+            --jq '.[].filename' \
+            > /tmp/changed_files.txt
+
+          # Fetch CHANGELOG if it exists
+          gh api "repos/boxlite-ai/boxlite/contents/CHANGELOG.md" \
+            -H "Accept: application/vnd.github.raw+json" \
+            > /tmp/changelog.md 2>/dev/null || echo "No CHANGELOG found" > /tmp/changelog.md
+
+          # Fetch PR body
+          gh api "repos/boxlite-ai/boxlite/pulls/${PR_NUMBER}" \
+            --jq '.body // "No description provided"' \
+            > /tmp/pr_body.txt
+
+      - name: Run Claude Code Action
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          direct_prompt: |
+            You are updating the BoxLite documentation site based on changes merged in the BoxLite SDK repository.
+
+            ## Source PR
+            - **PR #${{ steps.pr-info.outputs.pr_number }}**: ${{ steps.pr-info.outputs.pr_title }}
+            - **Author**: ${{ steps.pr-info.outputs.pr_author }}
+            - **URL**: ${{ steps.pr-info.outputs.pr_url }}
+
+            ## PR Description
+            $(cat /tmp/pr_body.txt)
+
+            ## Changed Files
+            $(cat /tmp/changed_files.txt)
+
+            ## PR Diff
+            $(head -c 50000 /tmp/pr_diff.txt)
+
+            ## CHANGELOG (latest entries)
+            $(head -200 /tmp/changelog.md)
+
+            ## Your Task
+
+            1. Read the CLAUDE.md and AGENTS.md files in this repo for conventions and mapping rules.
+            2. Analyze the PR diff and changed files to determine what documentation needs updating.
+            3. Follow the source-to-docs mapping in AGENTS.md to identify which doc pages to update.
+            4. Apply the decision framework from AGENTS.md — skip internal refactoring, update for API changes/new features/behavior changes.
+            5. Make the documentation changes following all writing conventions in CLAUDE.md.
+            6. Do NOT add version numbers anywhere in the docs.
+            7. If no documentation changes are needed, create a PR explaining why and what was evaluated.
+
+            Create a branch named `docs-sync/boxlite-pr-${{ steps.pr-info.outputs.pr_number }}` and commit your changes.
+
+          branch: "docs-sync/boxlite-pr-${{ steps.pr-info.outputs.pr_number }}"
+          create_pr: true
+          pr_title: "docs: sync from boxlite PR #${{ steps.pr-info.outputs.pr_number }}"
+          pr_body: |
+            Automated documentation update triggered by [boxlite PR #${{ steps.pr-info.outputs.pr_number }}](${{ steps.pr-info.outputs.pr_url }}).
+
+            **Source PR**: ${{ steps.pr-info.outputs.pr_title }} by @${{ steps.pr-info.outputs.pr_author }}
+
+            ---
+            *This PR was created automatically by the docs sync workflow. Please review the changes before merging.*

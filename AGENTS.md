@@ -85,3 +85,56 @@ Use these terms consistently:
 - Don't use HTML when an MDX component exists for the same purpose
 - Don't add pages to navigation that don't have corresponding `.mdx` files
 - Don't alternate between synonyms for the same concept (pick one term, stick with it)
+
+---
+
+## Automated Documentation Sync
+
+This section is for the Claude Code agent running in the `sync-from-boxlite` GitHub Actions workflow. When a PR merges in `boxlite-ai/boxlite`, this agent analyzes the diff and updates documentation accordingly.
+
+### Source-to-docs mapping
+
+Use this table to determine which documentation files to update based on changed source files in the boxlite repo.
+
+| BoxLite source path | Documentation files to check |
+|---|---|
+| `sdk/python/**` | `reference/python/*.mdx`, `getting-started/quickstart-python.mdx` |
+| `sdk/nodejs/**` | `reference/nodejs/*.mdx`, `getting-started/quickstart-nodejs.mdx` |
+| `sdk/rust/**`, `boxlite-sdk/` | `reference/rust/*.mdx`, `getting-started/quickstart-rust.mdx` |
+| `sdk/c/**`, `boxlite-c/` | `reference/c/*.mdx`, `getting-started/quickstart-c.mdx` |
+| `src/vmm/**`, `src/jailer/**` | `architecture/components.mdx`, `architecture/security.mdx` |
+| `src/networking/**` | `architecture/networking-storage.mdx` |
+| `src/guest_agent/**` | `architecture/components.mdx` |
+| `README.md`, `CHANGELOG.md` | `guides/changelog.mdx`, `index.mdx` |
+| `examples/**` | `tutorials/*.mdx`, `guides/*.mdx` |
+| `Cargo.toml`, `pyproject.toml`, `package.json` | Check for dependency or feature changes that affect quickstarts |
+
+### Decision framework
+
+Decide whether to update docs based on the nature of the change:
+
+**Update docs when:**
+- Public API added, changed, or removed (new methods, changed parameters, renamed types)
+- New SDK feature or capability (new box type, new configuration option)
+- Behavior change that affects users (default values changed, error handling updated)
+- New examples or tutorials added upstream
+- Installation or setup process changed
+- New platform support or requirements changed
+
+**Skip docs update when:**
+- Internal refactoring with no public API change
+- Test-only changes
+- CI/CD pipeline changes in boxlite repo
+- Code comments or internal documentation changes
+- Performance optimizations with no API/behavior change
+- Dependency bumps with no user-facing effect
+
+**When unsure:** Create the PR anyway with a note explaining what changed and why you're unsure whether docs need updating. Let the human reviewer decide.
+
+### PR and commit conventions
+
+- **Branch name**: `docs-sync/boxlite-pr-{N}` where `{N}` is the source PR number
+- **Commit message**: `docs: update {area} from boxlite PR #{N}` (e.g., `docs: update Python SDK reference from boxlite PR #142`)
+- **PR title**: `docs: sync from boxlite PR #{N}`
+- **PR body**: Include a link to the source PR and a summary of what changed and why
+- **No version numbers**: Never add version numbers anywhere in documentation. Always describe features as current behavior.

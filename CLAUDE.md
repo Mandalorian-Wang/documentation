@@ -30,6 +30,7 @@ development/           # Internal docs (CLI, Rust style guide)
 snippets/              # Reusable MDX snippets (e.g., prerequisites.mdx)
 images/                # Static images (hero, screenshots)
 logo/                  # Light/dark SVG logos
+.github/workflows/     # GitHub Actions (docs sync automation)
 ```
 
 ## Common Tasks
@@ -83,6 +84,7 @@ mint update
 | `index.mdx` | Home page — hero section, feature cards, entry points |
 | `snippets/prerequisites.mdx` | Shared system requirements snippet |
 | `.mintignore` | Files excluded from Mintlify build |
+| `.github/workflows/sync-from-boxlite.yml` | Auto-syncs docs when BoxLite SDK PRs merge |
 
 ## Terminology
 
