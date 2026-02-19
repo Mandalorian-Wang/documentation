@@ -22,7 +22,7 @@ jobs:
       - name: Find unprocessed merged PRs
         id: find-pr
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.GH_PAT }}
         run: |
           # Fetch recently merged PRs from boxlite (last 20)
           MERGED_PRS=$(gh api "repos/boxlite-ai/boxlite/pulls?state=closed&sort=updated&direction=desc&per_page=20" \
@@ -61,7 +61,7 @@ jobs:
         if: steps.find-pr.outputs.found == 'true'
         id: pr-info
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.GH_PAT }}
         run: |
           PR_NUMBER="${{ steps.find-pr.outputs.pr_number }}"
 
@@ -90,6 +90,7 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ secrets.GH_PAT }}
           direct_prompt: |
             You are updating the BoxLite documentation site based on changes merged in the BoxLite SDK repository.
 
