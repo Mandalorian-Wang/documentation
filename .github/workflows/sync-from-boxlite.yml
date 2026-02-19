@@ -1,11 +1,13 @@
 name: Sync docs from BoxLite SDK
 
 on:
-  repository_dispatch:
-    types: [boxlite-sdk-update]
+  schedule:
+    # Every 30 minutes
+    - cron: "*/30 * * * *"
+  workflow_dispatch: # Allow manual trigger
 
 jobs:
-  sync-docs:
+  check-and-sync:
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -14,17 +16,54 @@ jobs:
     steps:
       - name: Checkout documentation repo
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Fetch BoxLite PR details
+      - name: Find unprocessed merged PRs
+        id: find-pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Fetch recently merged PRs from boxlite (last 20)
+          MERGED_PRS=$(gh api "repos/boxlite-ai/boxlite/pulls?state=closed&sort=updated&direction=desc&per_page=20" \
+            --jq '[.[] | select(.merged_at != null) | {number, title, html_url, user: .user.login}]')
+
+          # Check each PR to see if we already have a branch for it
+          FOUND="false"
+          for PR_NUMBER in $(echo "$MERGED_PRS" | jq -r '.[].number'); do
+            BRANCH="docs-sync/boxlite-pr-${PR_NUMBER}"
+            if ! git ls-remote --heads origin "$BRANCH" | grep -q "$BRANCH"; then
+              # Also check if a PR already exists for this branch
+              EXISTING_PR=$(gh pr list --head "$BRANCH" --state all --json number --jq 'length')
+              if [ "$EXISTING_PR" = "0" ]; then
+                PR_TITLE=$(echo "$MERGED_PRS" | jq -r ".[] | select(.number == ${PR_NUMBER}) | .title")
+                PR_URL=$(echo "$MERGED_PRS" | jq -r ".[] | select(.number == ${PR_NUMBER}) | .html_url")
+                PR_AUTHOR=$(echo "$MERGED_PRS" | jq -r ".[] | select(.number == ${PR_NUMBER}) | .user")
+
+                echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+                echo "pr_title=$PR_TITLE" >> "$GITHUB_OUTPUT"
+                echo "pr_url=$PR_URL" >> "$GITHUB_OUTPUT"
+                echo "pr_author=$PR_AUTHOR" >> "$GITHUB_OUTPUT"
+                echo "found=true" >> "$GITHUB_OUTPUT"
+                FOUND="true"
+                echo "Found unprocessed PR: #${PR_NUMBER} - ${PR_TITLE}"
+                break
+              fi
+            fi
+          done
+
+          if [ "$FOUND" = "false" ]; then
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            echo "No unprocessed PRs found"
+          fi
+
+      - name: Fetch PR details
+        if: steps.find-pr.outputs.found == 'true'
         id: pr-info
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          PR_NUMBER="${{ github.event.client_payload.pr_number }}"
-          echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
-          echo "pr_title=${{ github.event.client_payload.pr_title }}" >> "$GITHUB_OUTPUT"
-          echo "pr_url=${{ github.event.client_payload.pr_url }}" >> "$GITHUB_OUTPUT"
-          echo "pr_author=${{ github.event.client_payload.pr_author }}" >> "$GITHUB_OUTPUT"
+          PR_NUMBER="${{ steps.find-pr.outputs.pr_number }}"
 
           # Fetch the PR diff
           gh api "repos/boxlite-ai/boxlite/pulls/${PR_NUMBER}" \
@@ -47,6 +86,7 @@ jobs:
             > /tmp/pr_body.txt
 
       - name: Run Claude Code Action
+        if: steps.find-pr.outputs.found == 'true'
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -54,9 +94,9 @@ jobs:
             You are updating the BoxLite documentation site based on changes merged in the BoxLite SDK repository.
 
             ## Source PR
-            - **PR #${{ steps.pr-info.outputs.pr_number }}**: ${{ steps.pr-info.outputs.pr_title }}
-            - **Author**: ${{ steps.pr-info.outputs.pr_author }}
-            - **URL**: ${{ steps.pr-info.outputs.pr_url }}
+            - **PR #${{ steps.find-pr.outputs.pr_number }}**: ${{ steps.find-pr.outputs.pr_title }}
+            - **Author**: ${{ steps.find-pr.outputs.pr_author }}
+            - **URL**: ${{ steps.find-pr.outputs.pr_url }}
 
             ## PR Description
             $(cat /tmp/pr_body.txt)
@@ -80,15 +120,15 @@ jobs:
             6. Do NOT add version numbers anywhere in the docs.
             7. If no documentation changes are needed, create a PR explaining why and what was evaluated.
 
-            Create a branch named `docs-sync/boxlite-pr-${{ steps.pr-info.outputs.pr_number }}` and commit your changes.
+            Create a branch named `docs-sync/boxlite-pr-${{ steps.find-pr.outputs.pr_number }}` and commit your changes.
 
-          branch: "docs-sync/boxlite-pr-${{ steps.pr-info.outputs.pr_number }}"
+          branch: "docs-sync/boxlite-pr-${{ steps.find-pr.outputs.pr_number }}"
           create_pr: true
-          pr_title: "docs: sync from boxlite PR #${{ steps.pr-info.outputs.pr_number }}"
+          pr_title: "docs: sync from boxlite PR #${{ steps.find-pr.outputs.pr_number }}"
           pr_body: |
-            Automated documentation update triggered by [boxlite PR #${{ steps.pr-info.outputs.pr_number }}](${{ steps.pr-info.outputs.pr_url }}).
+            Automated documentation update triggered by [boxlite PR #${{ steps.find-pr.outputs.pr_number }}](${{ steps.find-pr.outputs.pr_url }}).
 
-            **Source PR**: ${{ steps.pr-info.outputs.pr_title }} by @${{ steps.pr-info.outputs.pr_author }}
+            **Source PR**: ${{ steps.find-pr.outputs.pr_title }} by @${{ steps.find-pr.outputs.pr_author }}
 
             ---
             *This PR was created automatically by the docs sync workflow. Please review the changes before merging.*
