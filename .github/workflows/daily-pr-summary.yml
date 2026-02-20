@@ -82,7 +82,7 @@ jobs:
           # Send via Resend API
           PAYLOAD=$(jq -n \
             --arg from "BoxLite Bot <onboarding@resend.dev>" \
-            --arg to "yingjunwu@risingwave-labs.com" \
+            --arg to "wu.yj0616@gmail.com" \
             --arg subject "$SUBJECT" \
             --arg html "$BODY_HTML" \
             '{from: $from, to: [$to], subject: $subject, html: $html}')
