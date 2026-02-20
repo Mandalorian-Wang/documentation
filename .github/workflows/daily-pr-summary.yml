@@ -1,0 +1,105 @@
+name: Daily PR Summary Email
+
+on:
+  schedule:
+    # Every day at 9:00 AM UTC
+    - cron: "0 9 * * *"
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  pr-summary:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Fetch PR activity and send summary
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+        run: |
+          set -euo pipefail
+
+          REPO="boxlite-ai/boxlite"
+          SINCE=$(date -u -d "24 hours ago" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -v-24H +%Y-%m-%dT%H:%M:%SZ)
+          TODAY=$(date -u +%Y-%m-%d)
+
+          # Fetch recently opened PRs (created in last 24h)
+          OPENED=$(gh api "repos/${REPO}/pulls?state=open&sort=created&direction=desc&per_page=50" \
+            --jq "[.[] | select(.created_at >= \"${SINCE}\") | {number, title, html_url, user: .user.login, labels: [.labels[].name], created_at}]")
+
+          # Fetch recently closed PRs (updated in last 24h)
+          CLOSED_RAW=$(gh api "repos/${REPO}/pulls?state=closed&sort=updated&direction=desc&per_page=50" \
+            --jq "[.[] | select(.updated_at >= \"${SINCE}\") | {number, title, html_url, user: .user.login, labels: [.labels[].name], merged_at, closed_at}]")
+
+          # Split into merged and closed-not-merged
+          MERGED=$(echo "$CLOSED_RAW" | jq "[.[] | select(.merged_at != null and .merged_at >= \"${SINCE}\")]")
+          CLOSED=$(echo "$CLOSED_RAW" | jq "[.[] | select(.merged_at == null and .closed_at != null and .closed_at >= \"${SINCE}\")]")
+
+          OPENED_COUNT=$(echo "$OPENED" | jq 'length')
+          MERGED_COUNT=$(echo "$MERGED" | jq 'length')
+          CLOSED_COUNT=$(echo "$CLOSED" | jq 'length')
+          TOTAL=$((OPENED_COUNT + MERGED_COUNT + CLOSED_COUNT))
+
+          echo "Opened: $OPENED_COUNT, Merged: $MERGED_COUNT, Closed: $CLOSED_COUNT"
+
+          # Build HTML email body
+          build_pr_list() {
+            local JSON="$1"
+            local COUNT
+            COUNT=$(echo "$JSON" | jq 'length')
+            if [ "$COUNT" -eq 0 ]; then
+              echo "<p style=\"color:#6b7280;font-style:italic;\">None</p>"
+              return
+            fi
+            echo "<ul style=\"list-style:none;padding:0;margin:0;\">"
+            echo "$JSON" | jq -r '.[] | "<li style=\"padding:8px 0;border-bottom:1px solid #e5e7eb;\"><a href=\"\(.html_url)\" style=\"color:#2563eb;text-decoration:none;font-weight:600;\">#\(.number) \(.title)</a><br><span style=\"color:#6b7280;font-size:13px;\">by \(.user)\( if (.labels | length) > 0 then " · " + (.labels | join(", ")) else "" end)</span></li>"'
+            echo "</ul>"
+          }
+
+          OPENED_HTML=$(build_pr_list "$OPENED")
+          MERGED_HTML=$(build_pr_list "$MERGED")
+          CLOSED_HTML=$(build_pr_list "$CLOSED")
+
+          if [ "$TOTAL" -eq 0 ]; then
+            BODY_HTML="<div style=\"font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:600px;margin:0 auto;padding:20px;\">
+              <h1 style=\"font-size:20px;color:#111827;\">BoxLite PR Summary — ${TODAY}</h1>
+              <p style=\"color:#6b7280;\">No PR activity in the last 24 hours.</p>
+            </div>"
+          else
+            BODY_HTML="<div style=\"font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:600px;margin:0 auto;padding:20px;\">
+              <h1 style=\"font-size:20px;color:#111827;\">BoxLite PR Summary — ${TODAY}</h1>
+              <p style=\"color:#6b7280;margin-bottom:24px;\">${TOTAL} PR(s) active in the last 24 hours</p>
+              <h2 style=\"font-size:16px;color:#059669;border-bottom:2px solid #059669;padding-bottom:4px;\">Opened (${OPENED_COUNT})</h2>
+              ${OPENED_HTML}
+              <h2 style=\"font-size:16px;color:#7c3aed;border-bottom:2px solid #7c3aed;padding-bottom:4px;margin-top:24px;\">Merged (${MERGED_COUNT})</h2>
+              ${MERGED_HTML}
+              <h2 style=\"font-size:16px;color:#dc2626;border-bottom:2px solid #dc2626;padding-bottom:4px;margin-top:24px;\">Closed (${CLOSED_COUNT})</h2>
+              ${CLOSED_HTML}
+            </div>"
+          fi
+
+          SUBJECT="BoxLite PR Summary — ${TODAY}"
+
+          # Send via Resend API
+          PAYLOAD=$(jq -n \
+            --arg from "BoxLite Bot <bot@boxlite.dev>" \
+            --arg to "yingjunwu@risingwave-labs.com" \
+            --arg subject "$SUBJECT" \
+            --arg html "$BODY_HTML" \
+            '{from: $from, to: [$to], subject: $subject, html: $html}')
+
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST https://api.resend.com/emails \
+            -H "Authorization: Bearer ${RESEND_API_KEY}" \
+            -H "Content-Type: application/json" \
+            -d "$PAYLOAD")
+
+          HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+          RESPONSE_BODY=$(echo "$RESPONSE" | sed '$d')
+
+          echo "Resend response (HTTP ${HTTP_CODE}): ${RESPONSE_BODY}"
+
+          if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
+            echo "::error::Failed to send email (HTTP ${HTTP_CODE})"
+            exit 1
+          fi
+
+          echo "Email sent successfully!"
