@@ -18,7 +18,7 @@
 - [Run Claude Code in a sandbox](/tutorials/ai-coding-tools.mdx): Run Claude Code inside an isolated VM
 - [Execute AI-generated code](/tutorials/code-execution.mdx): Run untrusted Python code safely with CodeBox
 - [Upload & download files](/tutorials/file-transfer.mdx): Move files in and out of a sandbox
-- [Connect to an LLM](/tutorials/llm-integration.mdx): Wire up OpenAI, Anthropic, or Vercel AI SDK tool calling
+- [LLM Tool Calling with BoxLite](/tutorials/llm-integration.mdx): Learn the framework-agnostic execution loop, then continue to provider-specific integration pages
 - [Automate a browser](/tutorials/browser-automation.mdx): Browser automation with Playwright or Puppeteer
 - [Automate a desktop](/tutorials/desktop-automation.mdx): GUI desktop automation with ComputerBox
 - [Interactive terminal](/tutorials/interactive-terminal.mdx): PTY sessions with InteractiveBox

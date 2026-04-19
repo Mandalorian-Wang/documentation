@@ -14,7 +14,7 @@ These tutorials are organized by task, not by internal subsystem. Start with the
 | Run a shell command in isolation | [**SimpleBox**](/reference/python/box-types) | [Quick start](/getting-started/quickstart-nodejs) |
 | Execute AI-generated Python code | [**CodeBox**](/reference/python/box-types) | [Execute AI-generated code](/tutorials/code-execution) |
 | Upload and download files | [**SimpleBox**](/reference/python/box-types) or [**CodeBox**](/reference/python/box-types) | [Upload and download files](/tutorials/file-transfer) |
-| Connect an LLM to a sandbox | [**CodeBox**](/reference/python/box-types) | [Connect to an LLM](/tutorials/llm-integration) |
+| Add LLM tool calling to a sandbox | [**CodeBox**](/reference/python/box-types) | [LLM tool calling](/tutorials/llm-integration) |
 | Automate a browser | [**BrowserBox**](/reference/python/box-types) | [Automate a browser](/tutorials/browser-automation) |
 | Control a full desktop | [**ComputerBox**](/reference/python/box-types) | [Automate a desktop](/tutorials/desktop-automation) |
 | Run an interactive shell session | [**InteractiveBox**](/reference/python/box-types) | [Interactive terminal](/tutorials/interactive-terminal) |
@@ -44,20 +44,14 @@ These tutorials are organized by task, not by internal subsystem. Start with the
   <Card title="Interactive terminal" icon="terminal" href="/tutorials/interactive-terminal">
     Launch PTY-backed shell sessions and work interactively inside a box.
   </Card>
-  <Card title="Connect to an LLM" icon="robot" href="/tutorials/llm-integration">
-    Give an LLM the ability to execute code inside BoxLite.
+  <Card title="LLM tool calling" icon="robot" href="/tutorials/llm-integration">
+    Learn the framework-agnostic pattern for letting an LLM call BoxLite execution tools.
   </Card>
   <Card title="Automate a browser" icon="globe" href="/tutorials/browser-automation">
     Launch a browser-capable box for web automation tasks.
   </Card>
   <Card title="Automate a desktop" icon="desktop" href="/tutorials/desktop-automation">
     Use a full desktop-capable box for GUI-oriented automation.
-  </Card>
-  <Card title="Stateful workspace patterns" icon="database" href="/tutorials/stateful-workspace-patterns">
-    Reuse box state across multiple steps and longer-lived workflows.
-  </Card>
-  <Card title="Snapshots, checkpoints, rollback" icon="camera" href="/tutorials/snapshots-checkpoint-rollback">
-    Save and restore box state when you need branching or recovery.
   </Card>
   <Card title="Run any language or tool" icon="toolbox" href="/tutorials/run-any-language">
     Use BoxLite as an isolated execution environment for more than one runtime.
@@ -69,4 +63,4 @@ These tutorials are organized by task, not by internal subsystem. Start with the
 
 ## What's next?
 
-Once you've worked through these tutorials, move into the [Production Guides](/guides/index) for sizing, networking, and operational decisions, then use the [SDK Reference](/reference/index) for API-specific details.
+Once you've worked through these tutorials, move into the [Production Guides](/guides/index) for persistent workspaces, snapshots, sizing, networking, and operational decisions, then use the [SDK Reference](/reference/index) for API-specific details.

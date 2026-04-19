@@ -6,6 +6,8 @@ sidebarTitle: "AI Integrations"
 
 This section is the routing page for AI framework and agent-platform integrations. Use it after you already understand the BoxLite product boundary and have chosen the SDK path you want to embed.
 
+If you first need the framework-agnostic execution pattern, start with [LLM Tool Calling with BoxLite](/tutorials/llm-integration). Return here when you are ready to implement a specific provider or framework.
+
 ## AI integration philosophy
 
 BoxLite provides the execution layer. Higher-level agent frameworks decide when to call tools, how to manage conversation state, and how to present results.
@@ -43,6 +45,7 @@ The integration model stays the same even when the calling framework changes:
 ## Choosing the right page
 
 - Use a framework page when your AI agent stack is already chosen.
+- Use the [LLM tool calling tutorial](/tutorials/llm-integration) when you need the generic execution loop before choosing framework-specific code.
 - Use the direct SDK path when BoxLite itself is the first integration decision.
 - Keep framework-specific code on the framework pages instead of duplicating it here.
 

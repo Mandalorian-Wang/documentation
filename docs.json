@@ -67,8 +67,6 @@
                   "tutorials/llm-integration",
                   "tutorials/browser-automation",
                   "tutorials/desktop-automation",
-                  "tutorials/stateful-workspace-patterns",
-                  "tutorials/snapshots-checkpoint-rollback",
                   "tutorials/run-any-language",
                   "tutorials/claude-code-integration"
                 ],
@@ -80,6 +78,8 @@
                 "icon": "book-open",
                 "pages": [
                   "guides/ai-agent-integration",
+                  "guides/persistent-workspaces",
+                  "guides/snapshots-and-rollback",
                   "guides/cross-sdk-behavior-differences",
                   "guides/resource-sizing-for-workloads",
                   "guides/networking-modes-and-port-strategy",

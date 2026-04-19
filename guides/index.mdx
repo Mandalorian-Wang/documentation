@@ -7,7 +7,7 @@ description: "Production-focused guidance for sizing, networking, operations, an
 These production guides cover the decisions you make after your first successful BoxLite workflow. Use them when you need to choose defaults, size workloads, design network exposure, integrate agents safely, or run BoxLite in production with fewer surprises.
 
 <Tip>
-  Looking for step-by-step task tutorials? See the [Tutorials](/tutorials/index) section for code execution, file transfer, LLM integration, and browser automation walkthroughs.
+  Looking for step-by-step task tutorials? See the [Tutorials](/tutorials/index) section for code execution, file transfer, LLM tool calling, and browser automation walkthroughs.
 </Tip>
 
 ## All production guides
@@ -15,6 +15,12 @@ These production guides cover the decisions you make after your first successful
 <CardGroup cols={2}>
   <Card title="AI Agent Production Patterns" icon="robot" href="/guides/ai-agent-integration">
     Production patterns for AI agent sandboxing, including concurrency, timeout handling, and execution boundaries.
+  </Card>
+  <Card title="Persistent Workspaces" icon="database" href="/guides/persistent-workspaces">
+    Decide when to preserve sandbox state across sessions and how to structure longer-lived workspaces.
+  </Card>
+  <Card title="Snapshots and Rollback" icon="camera" href="/guides/snapshots-and-rollback">
+    Use snapshots for checkpoints, branching, and state recovery when workflows need safe rollback paths.
   </Card>
   <Card title="Resource Sizing" icon="gauge-high" href="/guides/resource-sizing-for-workloads">
     Choose CPU, memory, disk, and lifecycle settings based on the workload you plan to run inside a box.
