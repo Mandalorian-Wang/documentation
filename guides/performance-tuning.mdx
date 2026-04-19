@@ -1,0 +1,659 @@
+---
+title: "Performance Tuning"
+description: "Optimize cold start times, image selection, and concurrency for better sandbox performance."
+---
+
+# Overview
+
+Performance optimization is critical for achieving low-latency, high-throughput sandbox execution. This guide covers key strategies for optimizing cold start times, resource allocation, and execution efficiency for BoxLite sandboxes.
+
+## Why Performance Matters
+
+For AI agents running at scale, performance directly impacts:
+
+- **User experience**: Latency affects response times
+- **Throughput**: Performance limits concurrent agent capacity
+- **Cost efficiency**: Faster execution means lower resource costs
+- **Scale**: Performance enables higher parallelism
+
+BoxLite provides multiple levers for tuning performance.
+
+## Prerequisites
+
+- BoxLite SDK installed (`python3 -m pip install boxlite`)
+- Basic understanding of Python async programming
+- Familiarity with BoxOptions configuration
+
+## Detailed Content
+
+### Resource Allocation Optimization
+
+Proper resource allocation is the foundation of performance:
+
+#### CPU Allocation
+
+Match CPU allocation to workload requirements:
+
+```python
+import boxlite
+
+# Minimum CPU for simple tasks
+min_options = boxlite.BoxOptions(
+    cpus=1,
+    memory_mib=512
+)
+
+# CPU-intensive workloads
+high_cpu_options = boxlite.BoxOptions(
+    cpus=4,
+    memory_mib=4096
+)
+```
+
+**Guidelines:**
+| Workload Type | CPU Cores | Notes |
+|-------------|----------|-------|
+| Simple scripts | 1 | Minimal overhead |
+| Package installation | 1-2 | Need space for pip |
+| Data processing | 2-4 | Parallel processing |
+| ML inference | 4+ | Multi-threaded |
+
+#### Memory Allocation
+
+Allocate sufficient memory to avoid OOM (Out of Memory) issues:
+
+```python
+# Memory allocation guidelines
+options = boxlite.BoxOptions(
+    cpus=2,
+    memory_mib=4096  # 4GB for data processing
+)
+```
+
+**Memory guidelines:**
+| Task Type | Memory (MiB) | Notes |
+|----------|-------------|-------|
+| Simple scripts | 512 | Minimal overhead |
+| Package installation | 2048 | pip cache space |
+| Data analysis | 4096 | pandas/numpy |
+| ML inference | 8192+ | Model loading |
+| Browser automation | 4096-8192 | Chromium |
+
+#### Disk Allocation
+
+Pre-allocate sufficient disk for data operations:
+
+```python
+# Disk allocation for data workloads
+options = boxlite.BoxOptions(
+    cpus=2,
+    memory_mib=2048,
+    disk_size_gb=50  # 50GB for data files
+)
+```
+
+### Startup Time Optimization
+
+Cold start time is a key performance metric:
+
+#### Image Selection
+
+Choose lightweight images for faster startup:
+
+```python
+# Use slim images for faster startup
+options = boxlite.BoxOptions(
+    image="python:3.11-slim",  # Smaller image
+    cpus=1,
+    memory_mib=512
+)
+```
+
+**Image sizes:**
+| Image | Size | Cold Start |
+|-------|------|----------|
+| python:3.11-slim | ~120MB | Fastest |
+| python:3.11 | ~1GB | Moderate |
+| python:3.11-full | ~3GB | Slowest |
+| ubuntu:22.04 | ~80MB | Fast |
+| node:18-slim | ~180MB | Fast |
+
+#### Image Caching
+
+BoxLite caches pulled images automatically:
+
+```python
+# First run pulls image (slower)
+async with boxlite.SimpleBox(
+    image="python:3.11-slim"
+) as box:
+    pass  # Image pulled
+
+# Subsequent runs use cache (faster)
+async with boxlite.SimpleBox(
+    image="python:3.11-slim"
+) as box:
+    pass  # Cached image used
+```
+
+#### Lazy Initialization
+
+BoxLite uses lazy initialization - box handle returns immediately:
+
+```python
+import boxlite
+
+# Handle created immediately (fast)
+box = await boxlite.SimpleBox.create(
+    image="python:3.11-slim"
+)
+
+# First exec triggers initialization
+# (image pull, VM start, etc.)
+result = await box.exec("python", "-c", "print('hello')")
+```
+
+### Execution Efficiency
+
+Optimize command execution patterns:
+
+#### Connection Reuse
+
+Reuse box instances for multiple operations:
+
+```python
+import boxlite
+
+# Reuse box for multiple operations
+async with boxlite.CodeBox(
+    image="python:3.11-slim",
+    cpus=1,
+    memory_mib=1024
+) as box:
+    # Multiple operations share same box
+    result1 = await box.exec("python", "-c", "x = 1")
+    result2 = await box.exec("python", "-c", "print(x + 1)")
+    result3 = await box.exec("python", "-c", "print(x * 2)")
+```
+
+#### Parallel Execution
+
+Use asyncio for parallel workloads:
+
+```python
+import asyncio
+import boxlite
+
+async def parallel_execution(tasks: list):
+    """Execute multiple tasks in parallel."""
+
+    async def run_task(task):
+        async with boxlite.SimpleBox(
+            image="python:3.11-slim"
+        ) as box:
+            return await box.exec("python", "-c", task)
+
+    # Execute all tasks in parallel
+    return await asyncio.gather(*[
+        run_task(task) for task in tasks
+    ])
+
+# Usage
+results = asyncio.run(parallel_execution([
+    "print(1)",
+    "print(2)",
+    "print(3)"
+]))
+```
+
+#### Streaming Output
+
+For long-running commands, use streaming:
+
+```python
+import boxlite
+
+async with boxlite.SimpleBox(
+    image="python:3.11-slim"
+) as box:
+    # Stream output as it's produced
+    async for line in box.exec_stream("python", "long_task.py"):
+        print(line)
+```
+
+### Performance Monitoring
+
+Track performance metrics to identify bottlenecks:
+
+#### Execution Timing
+
+Measure execution time:
+
+```python
+import time
+import boxlite
+
+async def timed_execution():
+    """Execute and report timing."""
+    start = time.perf_counter()
+
+    async with boxlite.SimpleBox(
+        image="python:3.11-slim"
+    ) as box:
+        result = await box.exec("python", "-c", "sum(range(1000000))")
+
+    elapsed = time.perf_counter() - start
+    print(f"Execution time: {elapsed:.3f}s")
+    return result
+```
+
+#### Metrics Collection
+
+Use BoxLite metrics for profiling:
+
+```python
+import boxlite
+
+async with boxlite.SimpleBox(
+    image="python:3.11-slim",
+    network=True
+) as box:
+    # Execute workload
+    result = await box.exec("python", "workload.py")
+
+    # Get performance metrics
+    metrics = await box.metrics()
+    print(f"CPU time: {metrics.cpu_time_ms}ms")
+    print(f"Memory peak: {metrics.memory_usage_bytes / 1024 / 1024:.2f}MB")
+    print(f"Exec count: {metrics.exec_count}")
+```
+
+### Cold Start Optimization Checklist
+
+<Steps>
+  <Step title="Use slim images">
+    Prefer python:3.11-slim over full images for faster startup.
+  </Step>
+  <Step title="Enable image caching">
+    Pull images once; BoxLite caches automatically.
+  </Step>
+  <Step title="Right-size resources">
+    Allocate sufficient CPU/memory, avoid over-provisioning.
+  </Step>
+  <Step title="Reuse box instances">
+    Execute multiple operations in same box when possible.
+  </Step>
+  <Step title="Minimize network calls">
+    Disable network if not needed for faster startup.
+  </Step>
+  <Step title="Monitor metrics">
+    Track performance to identify optimization opportunities.
+  </Step>
+</Steps>
+
+## Common Mistakes
+
+### 1. Using Large Images
+
+**Problem:** Large images slow down cold start.
+
+**Solution:** Use slim images:
+
+```python
+# Instead of full image
+options = boxlite.BoxOptions(
+    image="python:3.11"  # ~1GB
+)
+
+# Use slim image
+options = boxlite.BoxOptions(
+    image="python:3.11-slim"  # ~120MB
+)
+```
+
+### 2. Insufficient Memory
+
+**Problem:** OOM kills degrade performance.
+
+**Solution:** Allocate sufficient memory:
+
+```python
+# For data processing
+options = boxlite.BoxOptions(
+    cpus=2,
+    memory_mib=4096  # Minimum for pandas
+)
+```
+
+### 3. Creating New Boxes for Each Task
+
+**Problem:** Cold start overhead for each task.
+
+**Solution:** Reuse boxes for related tasks:
+
+```python
+# Reuse box for multiple operations
+async with boxlite.CodeBox(options) as box:
+    # All related tasks in same box
+    await box.exec("task1.py")
+    await box.exec("task2.py")
+    await box.exec("task3.py")
+```
+
+### 4. No Performance Monitoring
+
+**Problem:** Performance issues go unnoticed.
+
+**Solution:** Implement metrics collection:
+
+```python
+# Monitor performance
+async def monitored_execution():
+    async with boxlite.SimpleBox(options) as box:
+        start = time.perf_counter()
+        result = await box.exec("workload.py")
+        elapsed = time.perf_counter() - start
+
+        metrics = await box.metrics()
+
+        # Log performance data
+        print(f"Time: {elapsed:.3f}s")
+        print(f"CPU: {metrics.cpu_time_ms}ms")
+        print(f"Memory: {metrics.memory_usage_bytes / 1024 / 1024:.2f}MB")
+```
+
+## Code Examples
+
+### Example 1: Optimized Agent Execution
+
+```python
+import asyncio
+import boxlite
+from typing import Optional
+
+class OptimizedAgent:
+    """Performance-optimized agent executor."""
+
+    def __init__(
+        self,
+        cpus: int = 1,
+        memory_mib: int = 1024,
+        image: str = "python:3.11-slim"
+    ):
+        self.options = boxlite.BoxOptions(
+            cpus=cpus,
+            memory_mib=memory_mib,
+            image=image,
+            auto_remove=True
+        )
+        self._box: Optional[boxlite.LiteBox] = None
+
+    async def execute(self, code: str) -> str:
+        """Execute code in reused box."""
+        # Create box if needed
+        if self._box is None:
+            self._box = await boxlite.SimpleBox.create(self.options)
+
+        # Execute in existing box
+        result = await self._box.exec("python", "-c", code)
+        return result.stdout
+
+    async def close(self):
+        """Close box when done."""
+        if self._box:
+            await self._box.remove()
+            self._box = None
+
+# Usage
+async def main():
+    agent = OptimizedAgent()
+
+    # Multiple executions reuse box
+    result1 = await agent.execute("print(1)")
+    result2 = await agent.execute("print(2)")
+    result3 = await agent.execute("print(3)")
+
+    await agent.close()
+
+asyncio.run(main())
+```
+
+### Example 2: High-Throughput Batch Processing
+
+```python
+import asyncio
+import boxlite
+from datetime import timedelta
+
+async def batch_process(
+    items: list,
+    max_parallel: int = 10
+):
+    """High-throughput batch processing."""
+    semaphore = asyncio.Semaphore(max_parallel)
+
+    async def process_item(item):
+        async with semaphore:
+            options = boxlite.BoxOptions(
+                cpus=1,
+                memory_mib=512,
+                image="python:3.11-slim",
+                ttl=timedelta(minutes=5),
+                auto_remove=True
+            )
+
+            async with boxlite.SimpleBox(options) as box:
+                result = await box.exec(
+                    "python", "-c", f"print({item})"
+                )
+                return result.stdout
+
+    return await asyncio.gather(*[
+        process_item(item) for item in items
+    ])
+
+# Usage
+results = asyncio.run(batch_process(range(100)))
+print(results)
+```
+
+### Example 3: Performance Profiling
+
+```python
+import time
+import boxlite
+from typing import Dict
+
+class PerformanceProfiler:
+    """Profile box execution performance."""
+
+    def __init__(self):
+        self.runs: list[Dict] = []
+
+    async def profile(self, options, code: str):
+        """Profile a single execution."""
+        # Cold start timing
+        create_start = time.perf_counter()
+
+        async with boxlite.SimpleBox(options) as box:
+            create_time = time.perf_counter() - create_start
+
+            # Execution timing
+            exec_start = time.perf_counter()
+            result = await box.exec("python", "-c", code)
+            exec_time = time.perf_counter() - exec_start
+
+            # Get metrics
+            metrics = await box.metrics()
+
+        # Record metrics
+        self.runs.append({
+            "create_time_ms": create_time * 1000,
+            "exec_time_ms": exec_time * 1000,
+            "total_time_ms": (create_time + exec_time) * 1000,
+            "cpu_time_ms": metrics.cpu_time_ms,
+            "memory_bytes": metrics.memory_usage_bytes,
+            "exec_count": metrics.exec_count
+        })
+
+        return result.stdout
+
+    def report(self):
+        """Generate performance report."""
+        if not self.runs:
+            return "No runs recorded"
+
+        total_times = [r["total_time_ms"] for r in self.runs]
+        avg_time = sum(total_times) / len(total_times)
+
+        return f"""
+Performance Report
+==================
+Runs: {len(self.runs)}
+Avg time: {avg_time:.2f}ms
+Min: {min(total_times):.2f}ms
+Max: {max(total_times):.2f}ms
+"""
+
+# Usage
+profiler = PerformanceProfiler()
+
+options = boxlite.BoxOptions(
+    cpus=1,
+    memory_mib=512,
+    image="python:3.11-slim"
+)
+
+for i in range(5):
+    await profiler.profile(options, f"print({i})")
+
+print(profiler.report())
+```
+
+### Example 4: Connection Pool
+
+```python
+import asyncio
+import boxlite
+from typing import Optional
+from contextlib import asynccontextmanager
+
+class BoxPool:
+    """Connection pool for boxes."""
+
+    def __init__(
+        self,
+        pool_size: int = 5,
+        options: boxlite.BoxOptions = None
+    ):
+        self.pool_size = pool_size
+        self.options = options or boxlite.BoxOptions(
+            cpus=1,
+            memory_mib=512
+        )
+        self._available: asyncio.Queue = asyncio.Queue()
+        self._in_use: int = 0
+
+    async def __aenter__(self):
+        """Initialize pool."""
+        for _ in range(self.pool_size):
+            box = await boxlite.SimpleBox.create(self.options)
+            await self._available.put(box)
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Clean up pool."""
+        while not self._available.empty():
+            box = await self._available.get()
+            await box.remove()
+
+    @asynccontextmanager
+    async def acquire(self):
+        """Acquire a box from pool."""
+        box = await self._available.get()
+        try:
+            yield box
+        finally:
+            await self._available.put(box)
+
+# Usage with pool
+async def main():
+    async with BoxPool(pool_size=5) as pool:
+        tasks = []
+        for i in range(10):
+            async with pool.acquire() as box:
+                result = await box.exec("python", "-c", f"print({i})")
+                tasks.append(result.stdout)
+
+        print(tasks)
+
+asyncio.run(main())
+```
+
+### Example 5: Cached Package Installation
+
+```python
+import asyncio
+import boxlite
+from typing import Optional
+
+class PreloadedCodeBox:
+    """CodeBox with pre-installed packages."""
+
+    def __init__(self, packages: list[str]):
+        self.packages = packages
+        self._box: Optional[boxlite.LiteBox] = None
+
+    async def __aenter__(self):
+        """Create and preload box."""
+        options = boxlite.BoxOptions(
+            cpus=1,
+            memory_mib=2048,
+            image="python:3.11-slim"
+        )
+
+        self._box = await boxlite.CodeBox.create(options)
+
+        # Pre-install packages (done once)
+        for package in self.packages:
+            await self._box.install_package(package)
+
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Clean up."""
+        if self._box:
+            await self._box.remove()
+
+    async def execute(self, code: str) -> str:
+        """Execute in preloaded box."""
+        result = await self._box.exec("python", "-c", code)
+        return result.stdout
+
+# Usage
+async def main():
+    async with PreloadedCodeBox(["numpy", "pandas"]) as box:
+        # Packages already installed
+        result = await box.execute(
+            "import numpy as np; print(np.array([1,2,3]))"
+        )
+        print(result)
+
+asyncio.run(main())
+```
+
+## Performance Comparison
+
+| Configuration | Cold Start | Memory | Best For |
+|--------------|-----------|---------|--------|
+| 1 CPU, 512 MiB, slim | ~3s | Minimal | Simple scripts |
+| 2 CPU, 2 GiB, slim | ~5s | Moderate | Package installation |
+| 4 CPU, 4 GiB, slim | ~8s | High | Data processing |
+| 1 CPU, 512 MiB, full | ~15s | Minimal | Compatibility |
+
+## Related Reading
+
+- [Resource Sizing for Workloads](/guides/resource-sizing-for-workloads) - Detailed sizing
+- [Cost Control Best Practices](/guides/cost-control-best-practices) - Cost optimization
+- [Configuration Reference](/reference/index) - Full configuration options
+- [Architecture: Components](/architecture/components) - Performance architecture

@@ -1,0 +1,405 @@
+---
+title: "Upload Files"
+sidebarTitle: "Upload"
+description: "Upload files to BoxLite Boxes with batch support and progress tracking."
+---
+
+Upload files to Boxes using the `copy_in()` API. This guide covers single and batch upload patterns.
+
+## Overview
+
+File upload in BoxLite is achieved through the `copy_in()` method, which copies files from the host filesystem into the Box. The method supports:
+
+- Single file uploads
+- Directory uploads
+- Batch operations
+- Progress tracking (via manual implementation)
+
+## Basic Upload
+
+### Single File Upload
+
+```python
+import boxlite
+
+async with boxlite.SimpleBox(image="python:slim") as box:
+    # Upload a single file
+    await box.copy_in("./config.json", "/workspace/config.json")
+
+    # Verify upload
+    result = await box.exec("cat", "/workspace/config.json")
+    print(result.stdout)
+```
+
+### Directory Upload
+
+```python
+async with boxlite.SimpleBox(image="python:slim") as box:
+    # Upload entire directory
+    await box.copy_in("./src/", "/workspace/src/")
+
+    # Verify directory structure
+    result = await box.exec("find", "/workspace/src/", "-type", "f")
+    print(result.stdout)
+```
+
+## Batch Upload
+
+### Upload Multiple Files
+
+```python
+import os
+import asyncio
+
+async def upload_multiple_files(box, file_list, dest_dir):
+    """Upload multiple files to a directory."""
+    for file_path in file_list:
+        if os.path.exists(file_path):
+            filename = os.path.basename(file_path)
+            dest_path = f"{dest_dir}/{filename}"
+            await box.copy_in(file_path, dest_path)
+            print(f"Uploaded: {filename}")
+
+async with boxlite.SimpleBox(image="python:slim") as box:
+    files = [
+        "./data/file1.txt",
+        "./data/file2.txt",
+        "./data/file3.txt",
+    ]
+    await upload_multiple_files(files, "/workspace/data/")
+```
+
+### Upload with Parallel Processing
+
+```python
+import asyncio
+import os
+
+async def upload_file(box, src, dest):
+    """Upload a single file."""
+    await box.copy_in(src, dest)
+    return os.path.basename(src)
+
+async def upload_parallel(box, file_pairs):
+    """Upload multiple files in parallel."""
+    tasks = [
+        upload_file(box, src, dest)
+        for src, dest in file_pairs
+    ]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    for src, result in zip(file_pairs, results):
+        if isinstance(result, Exception):
+            print(f"Failed to upload {src}: {result}")
+        else:
+            print(f"Uploaded: {result}")
+
+async with boxlite.SimpleBox(image="python:slim") as box:
+    file_pairs = [
+        ("./data/a.txt", "/workspace/a.txt"),
+        ("./data/b.txt", "/workspace/b.txt"),
+        ("./data/c.txt", "/workspace/c.txt"),
+    ]
+    await upload_parallel(box, file_pairs)
+```
+
+### Upload Matching Files
+
+```python
+import glob
+import os
+
+async def upload_matching(box, pattern, dest_dir):
+    """Upload all files matching a glob pattern."""
+    files = glob.glob(pattern)
+    print(f"Found {len(files)} files matching {pattern}")
+
+    for file_path in files:
+        filename = os.path.basename(file_path)
+        await box.copy_in(file_path, f"{dest_dir}/{filename}")
+
+    return len(files)
+
+async with boxlite.SimpleBox(image="python:slim") as box:
+    # Upload all .py files
+    count = await upload_matching(box, "*.py", "/workspace/")
+    print(f"Uploaded {count} Python files")
+
+    # Upload all files in a directory
+    count = await upload_matching(box, "./src/**/*", "/workspace/src/")
+```
+
+## Progress Tracking
+
+### Manual Progress Implementation
+
+```python
+import os
+
+def get_file_size(path):
+    """Get file size in bytes."""
+    return os.path.getsize(path)
+
+async def upload_with_progress(box, file_pairs, callback=None):
+    """
+    Upload files with progress tracking.
+
+    Args:
+        box: Box instance
+        file_pairs: List of (host_path, container_dest) tuples
+        callback: Optional callback(processed, total, filename)
+    """
+    total_size = sum(
+        get_file_size(src) for src, _ in file_pairs
+        if os.path.exists(src)
+    )
+    processed_size = 0
+
+    for src, dest in file_pairs:
+        if not os.path.exists(src):
+            print(f"Skipping {src} - file not found")
+            continue
+
+        file_size = get_file_size(src)
+        await box.copy_in(src, dest)
+        processed_size += file_size
+
+        if callback:
+            callback(processed_size, total_size, os.path.basename(src))
+
+    return processed_size
+
+# Usage
+def progress_callback(processed, total, filename):
+    percent = (processed / total) * 100
+    print(f"Progress: {percent:.1f}% - {filename}")
+
+async with boxlite.SimpleBox(image="python:slim") as box:
+    await upload_with_progress(
+        box,
+        [("./data/a.txt", "/workspace/a.txt")],
+        callback=progress_callback
+    )
+```
+
+## Special File Handling
+
+### Hidden Files
+
+```python
+# Upload hidden files (starting with .)
+await box.copy_in("./.env", "/workspace/.env")
+await box.copy_in("./.config/", "/workspace/.config/")
+```
+
+### Symlinks
+
+```python
+# Copy symlinks as links (not the target)
+await box.copy_in(
+    "./project/",
+    "/workspace/project/",
+    follow_symlinks=False  # Default - preserves symlinks
+)
+
+# Follow symlinks during copy
+await box.copy_in(
+    "./project/",
+    "/workspace/project/",
+    follow_symlinks=True
+)
+```
+
+### Large Files
+
+```python
+# Large files are handled automatically
+# BoxLite uses streaming internally
+
+async def upload_large_directory(box, src_dir, dest_dir, chunk_size=100):
+    """Upload large directory in batches."""
+    files = []
+    for root, dirs, filenames in os.walk(src_dir):
+        for f in filenames:
+            files.append(os.path.join(root, f))
+
+    total = len(files)
+    for i in range(0, total, chunk_size):
+        batch = files[i:i+chunk_size]
+        for f in batch:
+            rel_path = os.path.relpath(f, src_dir)
+            await box.copy_in(f, f"{dest_dir}/{rel_path}")
+        print(f"Uploaded batch {i//chunk_size + 1}/{(total + chunk_size - 1)//chunk_size}")
+
+    print(f"Completed: {total} files")
+```
+
+## Concurrent Safety
+
+### Parallel Upload Considerations
+
+When uploading files in parallel, be aware of the following considerations:
+
+```python
+import asyncio
+
+async def upload_file(box, src, dest):
+    """Upload a single file."""
+    await box.copy_in(src, dest)
+    return src
+
+async def upload_parallel(box, file_pairs):
+    """Upload multiple files in parallel.
+
+    Note: copy_in() is safe to call concurrently from multiple async tasks.
+    BoxLite handles internal synchronization.
+    """
+    tasks = [
+        upload_file(box, src, dest)
+        for src, dest in file_pairs
+    ]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    for src, result in zip(file_pairs, results):
+        if isinstance(result, Exception):
+            print(f"Failed: {src} - {result}")
+        else:
+            print(f"Uploaded: {result}")
+
+async with boxlite.SimpleBox(image="python:slim") as box:
+    file_pairs = [
+        ("./data/a.txt", "/workspace/a.txt"),
+        ("./data/b.txt", "/workspace/b.txt"),
+        ("./data/c.txt", "/workspace/c.txt"),
+    ]
+    await upload_parallel(box, file_pairs)
+```
+
+### Integrity Verification
+
+For critical uploads, verify the transfer was successful:
+
+```python
+import hashlib
+
+def get_file_hash(path):
+    """Calculate MD5 hash of a file."""
+    with open(path, 'rb') as f:
+        return hashlib.md5(f.read()).hexdigest()
+
+async def upload_with_verification(box, src, dest):
+    """Upload file and verify integrity."""
+    src_hash = get_file_hash(src)
+
+    await box.copy_in(src, dest)
+
+    # Verify by computing hash in the box
+    result = await box.exec("md5sum", dest)
+    if result.exit_code == 0:
+        dest_hash = result.stdout.split()[0]
+        if src_hash == dest_hash:
+            print(f"Verified: {src}")
+            return True
+
+    raise RuntimeError(f"Verification failed for {src}")
+
+async with boxlite.SimpleBox(image="python:slim") as box:
+    await upload_with_verification(box, "./critical/data.bin", "/workspace/data.bin")
+
+### Preserving Structure
+
+```python
+import os
+
+async def upload_preserve_structure(box, host_src, container_dest):
+    """Upload directory while preserving directory structure."""
+    for root, dirs, files in os.walk(host_src):
+        for file in files:
+            host_path = os.path.join(root, file)
+            rel_path = os.path.relpath(host_path, host_src)
+            dest_path = os.path.join(container_dest, rel_path)
+
+            # Ensure directory exists
+            dest_dir = os.path.dirname(dest_path)
+            await box.exec("mkdir", "-p", dest_dir)
+
+            await box.copy_in(host_path, dest_path)
+
+async with boxlite.SimpleBox(image="python:slim") as box:
+    await upload_preserve_structure(
+        box,
+        "./my-project/",
+        "/workspace/project/"
+    )
+```
+
+### Incremental Upload
+
+```python
+import hashlib
+
+def get_file_hash(path):
+    """Calculate MD5 hash of file."""
+    with open(path, 'rb') as f:
+        return hashlib.md5(f.read()).hexdigest()
+
+async def upload_if_changed(box, src, dest):
+    """Upload only if file has changed."""
+    # Get current hash in box (if exists)
+    result = await box.exec("md5sum", dest)
+    if result.exit_code == 0:
+        current_hash = result.stdout.split()[0]
+        new_hash = get_file_hash(src)
+        if current_hash == new_hash:
+            print(f"Skipping {src} - unchanged")
+            return False
+
+    await box.copy_in(src, dest)
+    print(f"Uploaded {src}")
+    return True
+
+async with boxlite.SimpleBox(image="python:slim") as box:
+    await upload_if_changed(box, "./config.json", "/workspace/config.json")
+```
+
+## Error Handling
+
+```python
+import boxlite
+
+async def upload_with_retry(box, src, dest, max_retries=3):
+    """Upload with automatic retry on failure."""
+    for attempt in range(max_retries):
+        try:
+            await box.copy_in(src, dest)
+            return True
+        except Exception as e:
+            if attempt < max_retries - 1:
+                print(f"Upload failed (attempt {attempt + 1}): {e}")
+                await asyncio.sleep(1 * (attempt + 1))
+            else:
+                print(f"Upload failed after {max_retries} attempts")
+                raise
+    return False
+
+async with boxlite.SimpleBox(image="python:slim") as box:
+    await upload_with_retry(box, "./large-file.dat", "/workspace/data.dat")
+```
+
+## Best Practices
+
+1. **Use batch uploads** for multiple files to reduce overhead
+2. **Implement progress tracking** for large transfers
+3. **Handle errors gracefully** with retry logic
+4. **Verify uploads** after completion when critical
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Download Files" icon="download" href="/filesystem/download-files">
+    Download files from Boxes.
+  </Card>
+  <Card title="Read & Write Files" icon="file-arrow-up" href="/filesystem/read-write-files">
+    File operations basics.
+  </Card>
+</CardGroup>

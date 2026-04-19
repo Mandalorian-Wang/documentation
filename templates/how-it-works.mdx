@@ -1,0 +1,286 @@
+---
+title: "How Templates Work"
+description: "Understand the template build pipeline, caching mechanisms, and how BoxLite optimizes template creation and deployment."
+---
+
+# How Templates Work
+
+This document explains the internal workings of BoxLite templates, including the build pipeline, caching mechanisms, layer composition, and optimization strategies.
+
+## Overview
+
+BoxLite templates are not simple disk images. They are sophisticated constructs built on a layered architecture that combines efficient storage, fast provisioning, and flexible customization. Understanding how this works helps you optimize template creation and usage.
+
+## Architecture Overview
+
+Templates in BoxLite are built on a multi-layer architecture:
+
+```
+┌─────────────────────────────────────────┐
+│           TEMPLATE (User Layer)         │
+│  Custom packages, files, configurations│
+├─────────────────────────────────────────┤
+│        LAYER 2 (Template Layer)        │
+│   Base system, runtime, dependencies    │
+├─────────────────────────────────────────┤
+│        LAYER 1 (Image Layer)           │
+│        OCI Image (Read-only)           │
+├─────────────────────────────────────────┤
+│      BASE LAYER (Boot & Kernel)        │
+│        VM boot image (Shared)          │
+└─────────────────────────────────────────┘
+```
+
+### Layer Types
+
+| Layer | Persistence | Sharing | Description |
+|-------|-------------|---------|-------------|
+| Base | Read-only | Across all boxes | Boot filesystem, kernel |
+| Image | Read-only | Across templates using same image | OCI image contents |
+| Template | Read-write | Per-box copy | Customizations, packages |
+| Box | Read-write | Unique | Runtime state, temp data |
+
+## Build Pipeline
+
+When you create a template, BoxLite executes a multi-stage build pipeline:
+
+### Pipeline Stages
+
+```
+┌──────────────┐    ┌──────────────┐    ┌──────────────┐
+│   STAGE 1    │    │   STAGE 2    │    │   STAGE 3    │
+│   Import     │ -> │   Configure  │ -> │   Snapshot   │
+└──────────────┘    └──────────────┘    └──────────────┘
+       │                   │                   │
+       v                   v                   v
+  Load OCI image     Install packages    Create diff
+  Extract layers    Copy files           Snapshot layer
+  Verify manifest    Set env vars         Freeze state
+```
+
+### Stage 1: Image Import
+
+The first stage imports and prepares the base OCI image:
+
+```python
+# Stage 1: Import happens implicitly
+# When you create a template from an image:
+async with boxlite.SimpleBox(image="python:3.11-slim") as box:
+    # BoxLite pulls and caches the OCI image here
+    # Layers are extracted and prepared
+    pass
+```
+
+**What happens:**
+1. Fetch OCI manifest from registry
+2. Download all image layers
+3. Verify image signatures (if enabled)
+4. Extract layers to temporary storage
+5. Validate layer integrity
+
+### Stage 2: Configuration
+
+The second stage applies your customizations:
+
+```python
+# Stage 2: Apply customizations
+await box.exec("pip install numpy pandas")
+await box.upload("./config", "/app/config")
+
+# These changes are tracked
+```
+
+**What happens:**
+1. Execute your setup commands
+2. Track all filesystem modifications
+3. Build dependency graph
+4. Optimize for later use
+
+### Stage 3: Snapshot
+
+The final stage creates the template snapshot:
+
+```python
+# Stage 3: Create template
+template = await box.create_template(
+    name="data-science:v1",
+    description="Data science environment"
+)
+```
+
+**What happens:**
+1. Create diff layer from base image
+2. Compress and deduplicate data
+3. Generate metadata (size, checksums)
+4. Store in template registry
+
+## Caching Mechanisms
+
+BoxLite implements multiple caching strategies to optimize performance and storage.
+
+### Image Layer Caching
+
+OCI image layers are cached and shared across boxes:
+
+```python
+# First box - downloads and caches
+await boxlite.SimpleBox(image="python:3.11-slim")
+
+# Second box - uses cached layers (instant)
+await boxlite.SimpleBox(image="python:3.11-slim")
+```
+
+**Cache behavior:**
+- Reusing the same base image avoids repeated image downloads
+- Reusing the same template avoids repeating environment setup
+- Actual cache layout and cleanup behavior depend on the runtime implementation
+
+### Template Caching
+
+Templates use copy-on-write to provide fast provisioning:
+
+```python
+# Create boxes from same template
+box1 = await runtime.create(template="ml-env:v1")
+box2 = await runtime.create(template="ml-env:v1")
+
+# Both start fast - only diffs are new
+```
+
+### Build Cache
+
+Template builds use incremental compilation:
+
+```python
+# First build - full
+await box.create_template(name="app:v1")
+
+# Second build - incremental (if base unchanged)
+await box.create_template(name="app:v1.1")  # Faster!
+```
+
+## Layer Composition
+
+Understanding layer composition helps optimize template design.
+
+### Layer Priority
+
+Layers are applied in priority order:
+
+| Priority | Layer | Override? |
+|----------|-------|-----------|
+| 1 | Base (boot) | Never |
+| 2 | Image (OCI) | Never |
+| 3 | Template (custom) | Can change |
+| 4 | Box (runtime) | Temporary |
+
+### Union Filesystem
+
+BoxLite uses a union filesystem to compose layers:
+
+```
+/app/code.py     <- Box layer (highest priority)
+/app/config.yaml <- Template layer
+/etc/app.conf    <- Image layer (lowest priority)
+```
+
+### Layer Operations
+
+```python
+# View layer composition
+box = await runtime.get("my-box")
+layers = box.get_layers()
+
+for layer in layers:
+    print(f"{layer.name}: {layer.size_mb} MB")
+    print(f"  Source: {layer.source}")
+    print(f"  Modifications: {len(layer.changes)}")
+```
+
+## Optimization Strategies
+
+### Size Optimization
+
+Keep templates lean:
+
+```dockerfile
+# GOOD: Minimal base
+FROM python:3.11-slim
+
+# BAD: Large base
+FROM python:3.11-full
+
+# GOOD: Clean up in same layer
+RUN apt-get update && \
+    apt-get install -y package && \
+    rm -rf /var/lib/apt/lists/*
+
+# BAD: Separate layer keeps cache
+RUN apt-get install -y package
+RUN rm -rf /var/lib/apt/lists/*
+```
+
+### Build Time Optimization
+
+Use multi-stage builds:
+
+```dockerfile
+# Stage 1: Build
+FROM python:3.11-slim as builder
+RUN pip install --target=/deps package
+
+# Stage 2: Runtime
+FROM python:3.11-slim
+COPY --from=builder /deps /site-packages
+```
+
+### Runtime Optimization
+
+Pre-install common dependencies:
+
+```python
+# Cache pip packages
+await box.exec("pip download -d /cache numpy pandas scikit-learn")
+
+# Later - install from cache
+await box.exec("pip install --no-index --find-links=/cache numpy")
+```
+
+## Internal Storage
+
+The key operational point is that BoxLite separates the immutable base image from the reusable template state you capture after provisioning. You do not need to know the runtime's on-disk layout to use templates effectively.
+
+### What matters in practice
+
+- Smaller base images are usually faster to pull and initialize.
+- Large dependency installs make template creation slower.
+- Reusing an existing template is usually faster than rebuilding the same environment repeatedly.
+- Registry latency and host disk performance can materially affect first-run setup time.
+
+## Debugging Template Issues
+
+Use these commands to understand template internals:
+
+```bash
+# Inspect template layers
+boxrun template inspect my-template
+
+# Show storage usage
+boxrun template size my-template
+
+# Verify integrity
+boxrun template verify my-template
+
+# View build cache
+boxrun cache stats
+```
+
+## Related Documentation
+
+- [Creating Custom Templates](/templates/create-template) - Creating templates
+- [Template Versioning](/templates/versioning-and-rollout) - Version management
+- [Debug Build Failures](/templates/debug-build-failures) - Troubleshooting
+
+<Info>
+  Prefer explicit image tags for reproducibility. Roll forward to newer base images intentionally after validation instead of relying on floating tags.
+</Info>

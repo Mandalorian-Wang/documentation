@@ -1,0 +1,452 @@
+---
+title: "Volume Read and Write Operations"
+sidebarTitle: "Read & Write"
+description: "Read and write data to volumes in BoxLite, including file I/O operations, consistency guarantees, and best practices."
+---
+
+This guide covers reading and writing data to BoxLite volumes, including both QCOW2 persistent disks and virtiofs mounts.
+
+## Overview
+
+BoxLite provides two primary mechanisms for reading and writing volume data:
+
+- **copy_in / copy_out**: File-based copy operations between host and container
+- **exec with file commands**: Direct file operations executed inside the Box
+
+The choice of method depends on your use case:
+- Use `copy_in`/`copy_out` for bulk data transfer
+- Use `exec` with shell commands for in-place file modifications
+
+### When to Use Each Method
+
+| Method | Use Case | Performance |
+|--------|----------|-------------|
+| `copy_in` | Initial data population, bulk upload | High |
+| `copy_out` | Data export, backup | High |
+| `exec` | File editing, small modifications | Medium |
+
+## Prerequisites
+
+- BoxLite Python SDK installed (`python3 -m pip install boxlite`)
+- A running Box with volume configured
+- Understanding of volume types (QCOW2 vs virtiofs)
+
+## Reading and Writing Data
+
+### Using copy_in (Host to Container)
+
+```python
+import boxlite
+
+async def upload_data_to_box():
+    """Upload data from host to Box volume."""
+    async with boxlite.SimpleBox(
+        image="python:slim",
+        disk_size_gb=10
+    ) as box:
+        # Ensure target directory exists
+        await box.exec("mkdir", "-p", "/data/uploads")
+
+        # Copy file from host to container
+        await box.copy_in(
+            "/host/path/to/file.txt",
+            "/data/uploads/file.txt"
+        )
+
+        # Verify the copy
+        result = await box.exec("cat", "/data/uploads/file.txt")
+        print(result.stdout)
+
+asyncio.run(upload_data_to_box())
+```
+
+### Using copy_out (Container to Host)
+
+```python
+import boxlite
+import os
+
+async def download_data_from_box():
+    """Download data from Box volume to host."""
+    async with boxlite.SimpleBox(
+        image="python:slim",
+        disk_size_gb=10
+    ) as box:
+        # Create some data in the Box
+        await box.exec("bash", "-c", "echo 'Hello World' > /data/output.txt")
+
+        # Ensure host directory exists
+        os.makedirs("/host/download/path", exist_ok=True)
+
+        # Copy file from container to host
+        await box.copy_out(
+            "/data/output.txt",
+            "/host/download/path/output.txt"
+        )
+
+        print("Download complete")
+
+asyncio.run(download_data_from_box())
+```
+
+### Using exec for Direct File Operations
+
+```python
+import boxlite
+
+async def file_operations_in_box():
+    """Perform file operations directly in Box."""
+    async with boxlite.SimpleBox(
+        image="python:slim",
+        disk_size_gb=10
+    ) as box:
+        # Write to file using exec
+        await box.exec("bash", "-c", "echo 'test data' > /data/test.txt")
+
+        # Read file content
+        result = await box.exec("cat", "/data/test.txt")
+        print(f"Content: {result.stdout.strip()}")
+
+        # Append to file
+        await box.exec("bash", "-c", "echo 'more data' >> /data/test.txt")
+
+        # Read again
+        result = await box.exec("cat", "/data/test.txt")
+        print(f"Updated: {result.stdout}")
+
+asyncio.run(file_operations_in_box())
+```
+
+## Copy Options
+
+The `copy_in` and `copy_out` methods accept `CopyOptions` to control behavior:
+
+```python
+from boxlite import CopyOptions
+
+# Configure copy behavior
+copy_options = CopyOptions(
+    follow_symlinks=True,    # Follow symbolic links
+    recursive=True,          # Copy directories recursively
+    overwrite=True,          # Overwrite existing files
+    include_parent=False     # Include parent directory in path
+)
+
+async def copy_with_options():
+    """Copy files with custom options."""
+    async with boxlite.SimpleBox(
+        image="python:slim",
+        disk_size_gb=10
+    ) as box:
+        # Copy directory recursively
+        await box.copy_in(
+            "/host/path/to/directory/",
+            "/data/destination/",
+            copy_options=CopyOptions(
+                recursive=True,
+                overwrite=True
+            )
+        )
+
+asyncio.run(copy_with_options())
+```
+
+### CopyOptions Reference
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `follow_symlinks` | bool | False | Follow symbolic links during copy |
+| `recursive` | bool | False | Copy directories recursively |
+| `overwrite` | bool | True | Overwrite existing files at destination |
+| `include_parent` | bool | False | Include parent directory in destination path |
+
+## Volume I/O Consistency
+
+### QCOW2 Disk Consistency
+
+QCOW2 disks provide snapshot and rollback capabilities:
+
+```python
+import boxlite
+
+async def consistent_write_to_disk():
+    """Write data with consistency guarantee."""
+    async with boxlite.SimpleBox(
+        image="python:slim",
+        disk_size_gb=10,
+        auto_remove=False  # Keep box for consistency
+    ) as box:
+        # Perform atomic write operations
+        # QCOW2 ensures data is written to disk image
+        await box.exec("bash", "-c", """
+            # Atomic write pattern
+            echo "data" > /data/temp.txt
+            mv /data/temp.txt /data/data.txt
+        """)
+
+        # Data is persisted to QCOW2 image
+        result = await box.exec("cat", "/data/data.txt")
+        print(result.stdout)
+
+asyncio.run(consistent_write_to_disk())
+```
+
+### virtiofs Consistency
+
+Virtiofs mounts provide immediate host-container file visibility:
+
+```python
+import boxlite
+import os
+
+async def virtiofs_immediate_read():
+    """Read data immediately after write."""
+    # Host file that will be visible in Box
+    host_path = "/tmp/virtiofs_test/data.txt"
+    os.makedirs(os.path.dirname(host_path), exist_ok=True)
+
+    # Write to host
+    with open(host_path, "w") as f:
+        f.write("test data")
+
+    # Mount via virtiofs
+    async with boxlite.SimpleBox(
+        image="python:slim",
+        volumes=[(os.path.dirname(host_path), "/workspace/data", "rw")]
+    ) as box:
+        # Data is immediately visible
+        result = await box.exec("cat", "/workspace/data/data.txt")
+        print(f"Content: {result.stdout}")
+
+        # Write from Box is immediately visible on host
+        await box.exec("bash", "-c", "echo 'response' > /workspace/data/response.txt")
+
+    # Verify on host
+    with open("/tmp/virtiofs_test/response.txt") as f:
+        print(f"Host sees: {f.read()}")
+
+asyncio.run(virtiofs_immediate_read())
+```
+
+## Batch Operations
+
+### Copy Multiple Files
+
+```python
+import boxlite
+import os
+from pathlib import Path
+
+async def batch_copy_files():
+    """Copy multiple files to Box."""
+    async with boxlite.SimpleBox(
+        image="python:slim",
+        disk_size_gb=10
+    ) as box:
+        # Copy multiple files
+        files = [
+            "/host/path/file1.txt",
+            "/host/path/file2.txt",
+            "/host/path/file3.txt",
+        ]
+
+        for host_file in files:
+            if os.path.exists(host_file):
+                filename = os.path.basename(host_file)
+                await box.copy_in(
+                    host_file,
+                    f"/data/{filename}"
+                )
+                print(f"Copied {filename}")
+
+asyncio.run(batch_copy_files())
+```
+
+### Directory Copy
+
+```python
+import boxlite
+from boxlite import CopyOptions
+
+async def copy_directory():
+    """Copy entire directory to Box."""
+    async with boxlite.SimpleBox(
+        image="python:slim",
+        disk_size_gb=10
+    ) as box:
+        # Copy directory recursively
+        await box.copy_in(
+            "/host/path/project/",
+            "/data/project/",
+            copy_options=CopyOptions(
+                recursive=True,
+                include_parent=True
+            )
+        )
+
+        # Verify directory structure
+        result = await box.exec("find", "/data/project", "-type f")
+        print(result.stdout)
+
+asyncio.run(copy_directory())
+```
+
+## Error Handling
+
+### Handling Copy Failures
+
+```python
+import boxlite
+from boxlite import ExecError
+
+async def safe_copy_operations():
+    """Perform copy operations with error handling."""
+    async with boxlite.SimpleBox(
+        image="python:slim",
+        disk_size_gb=10
+    ) as box:
+        try:
+            # Try to copy file
+            await box.copy_in(
+                "/nonexistent/path/file.txt",
+                "/data/file.txt"
+            )
+        except FileNotFoundError as e:
+            print(f"Source file not found: {e}")
+            # Handle missing source file
+        except PermissionError as e:
+            print(f"Permission denied: {e}")
+            # Handle permission issues
+        except Exception as e:
+            print(f"Copy failed: {e}")
+            # Handle other errors
+
+asyncio.run(safe_copy_operations())
+```
+
+### Handling exec Errors
+
+```python
+import boxlite
+from boxlite import ExecError
+
+async def safe_exec_operations():
+    """Perform exec operations with error handling."""
+    async with boxlite.SimpleBox(
+        image="python:slim",
+        disk_size_gb=10
+    ) as box:
+        try:
+            result = await box.exec("cat", "/nonexistent/file.txt")
+            if result.exit_code != 0:
+                print(f"Command failed with exit code {result.exit_code}")
+                print(f"stderr: {result.stderr}")
+        except ExecError as e:
+            print(f"Execution error: {e}")
+        except Exception as e:
+            print(f"Unexpected error: {e}")
+
+asyncio.run(safe_exec_operations())
+```
+
+## Common Errors
+
+### Error 1: File Not Found
+
+**Symptom**: `FileNotFoundError` during copy_in or copy_out
+
+**Cause**: Source file or destination directory does not exist
+
+**Solution**:
+```python
+import os
+
+# Verify source exists before copy
+source = "/host/path/file.txt"
+if os.path.exists(source):
+    await box.copy_in(source, "/data/file.txt")
+else:
+    print(f"Source file not found: {source}")
+
+# Create destination directory if needed
+await box.exec("mkdir", "-p", "/data/destination")
+```
+
+### Error 2: Permission Denied
+
+**Symptom**: `PermissionError` during file operations
+
+**Cause**: Insufficient permissions to read/write files
+
+**Solution**:
+```python
+# Check and fix permissions on host
+os.chmod("/host/path", 0o755)
+
+# Or use user option in exec
+result = await box.exec("chmod", "-R", "755", "/data", user="root")
+```
+
+### Error 3: Disk Full
+
+**Symptom**: Write operations fail with "No space left on device"
+
+**Cause**: QCOW2 disk has reached capacity
+
+**Solution**:
+```python
+# Check disk space before write
+result = await box.exec("df", "-h", "/data")
+print(result.stdout)
+
+# Clean up old files
+await box.exec("bash", "-c", "rm -rf /data/temp/*")
+```
+
+### Error 4: Path Traversal
+
+**Symptom**: Copy operations fail or security errors
+
+**Cause**: Invalid path characters or traversal attempts
+
+**Solution**:
+```python
+import os
+
+def sanitize_path(path):
+    """Sanitize path to prevent traversal."""
+    # Get absolute path
+    abs_path = os.path.abspath(path)
+    # Check for traversal attempts
+    if ".." in path:
+        raise ValueError("Path traversal not allowed")
+    return abs_path
+
+# Use sanitized paths
+safe_source = sanitize_path("/host/input/file.txt")
+await box.copy_in(safe_source, "/data/output.txt")
+```
+
+## Security Notes
+
+1. **Path Validation**: Always validate paths before copy operations to prevent path traversal attacks
+2. **Permission Least Privilege**: Run file operations with minimal required permissions
+3. **Sensitive Data**: Avoid copying sensitive data to shared volumes
+4. **Volume Isolation**: Use separate volumes for different trust levels
+
+## Related Topics
+
+<CardGroup cols={2}>
+  <Card title="Volumes Overview" icon="database" href="/volumes/overview">
+    Volume type comparison and selection guide.
+  </Card>
+  <Card title="Create and Manage Volumes" icon="plus" href="/volumes/create-and-manage">
+    Creating and configuring volumes.
+  </Card>
+  <Card title="Volume Import/Export" icon="upload" href="/volumes/upload-download">
+    Bulk import and export operations.
+  </Card>
+  <Card title="Performance and Cost" icon="gauge" href="/volumes/performance-and-cost">
+    Volume performance optimization.
+  </Card>
+</CardGroup>

@@ -2,7 +2,6 @@
 title: "Connect to an LLM"
 description: "Give any LLM the ability to generate and execute Python code inside a BoxLite sandbox. Examples for OpenAI, Anthropic, and Vercel AI SDK."
 sidebarTitle: "LLM integration"
-icon: "robot"
 ---
 
 The most powerful BoxLite pattern: let an LLM generate code and execute it in a sandbox. The LLM reasons about the problem, writes Python, and BoxLite runs it safely. This tutorial shows how to wire up tool calling with three popular providers.
@@ -24,13 +23,13 @@ The pattern is the same regardless of provider:
 <Tabs>
   <Tab title="OpenAI">
     ```bash
-    pip install boxlite openai
+    python3 -m pip install boxlite openai
     export OPENAI_API_KEY="sk-..."
     ```
   </Tab>
   <Tab title="Anthropic">
     ```bash
-    pip install boxlite anthropic
+    python3 -m pip install boxlite anthropic
     export ANTHROPIC_API_KEY="sk-ant-..."
     ```
   </Tab>

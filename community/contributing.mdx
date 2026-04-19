@@ -1,0 +1,292 @@
+---
+title: "Contributing to BoxLite"
+description: "Developer guide for contributing to BoxLite"
+---
+
+This guide covers how to contribute to BoxLite, including setting up your development environment, the contribution process, and coding standards.
+
+## Getting Started
+
+BoxLite welcomes contributions from the community. Whether you want to fix a bug, add a feature, or improve documentation, this guide will help you get started.
+
+## Development Environment Setup
+
+### Prerequisites
+
+| Requirement | Version | Notes |
+|-------------|---------|-------|
+| Rust | 1.75+ | Stable toolchain |
+| Python | 3.10+ | For Python SDK |
+| Node.js | 18+ | For Node.js SDK |
+| Git | Latest | Version control |
+
+### Platform-Specific Requirements
+
+**macOS (Apple Silicon):**
+- macOS 12+ (Monterey or later)
+- Xcode Command Line Tools
+
+**Linux:**
+- KVM enabled
+- GCC/Clang for C SDK
+- Docker (for testing)
+
+### Quick Setup
+
+```bash
+# Clone the repository
+git clone https://github.com/boxlite-ai/boxlite.git
+cd boxlite
+
+# Initialize submodules
+git submodule update --init --recursive
+
+# Run setup script
+make setup
+
+# Build Python SDK for development
+make dev:python
+
+# Verify installation
+python -c "import boxlite; print(boxlite.__version__)"
+```
+
+For detailed build instructions, see [Building from Source](/guides/building-from-source).
+
+## Contribution Process
+
+### 1. Find an Issue
+
+Check the following locations for contribution opportunities:
+
+- [GitHub Issues](https://github.com/boxlite-ai/boxlite/issues) - Bug reports and feature requests
+- [GitHub Discussions](https://github.com/boxlite-ai/boxlite/discussions) - Community ideas
+- [Roadmap](/community/roadmap) - Planned features
+
+### 2. Claim the Issue
+
+1. Comment on the issue to indicate you want to work on it
+2. Wait for a maintainer to assign it to you
+3. If no response after 48 hours, feel free to start working
+
+### 3. Create a Branch
+
+```bash
+# Update your fork
+git fetch origin
+git checkout main
+git pull origin main
+
+# Create a feature branch
+git checkout -b feature/my-new-feature
+
+# Or for bug fixes
+git checkout -b fix/issue-description
+```
+
+### 4. Make Changes
+
+Follow the coding standards for your language:
+
+- [Rust Style Guide](/development/rust-style) - Rust code conventions
+- [CLI Conventions](/development/cli) - Command-line interface standards
+
+### 5. Write Tests
+
+All new features require tests. Run existing tests first:
+
+```bash
+# Run all tests
+make test
+
+# Run Python SDK tests
+cd sdks/python
+pytest
+
+# Run Rust tests
+cd src/boxlite
+cargo test
+```
+
+### 6. Submit a Pull Request
+
+```bash
+# Stage your changes
+git add .
+
+# Commit with descriptive message
+git commit -m "feat: Add new feature for handling timeouts
+
+- Added timeout parameter to exec()
+- Added tests for timeout behavior
+- Updated documentation"
+
+# Push to your fork
+git push origin feature/my-new-feature
+```
+
+#### PR Requirements
+
+- **Title format**: Use conventional commits (`feat:`, `fix:`, `docs:`, etc.)
+- **Description**: Include:
+  - Problem being solved
+  - Solution approach
+  - Testing performed
+  - Screenshots (if UI changes)
+- **CI checks**: All checks must pass
+- **Review**: At least one maintainer approval required
+
+## Code Standards
+
+### General Principles
+
+1. **Readability** - Code should be self-documenting
+2. **Simplicity** - Prefer simple solutions over clever ones
+3. **Consistency** - Follow existing patterns in the codebase
+4. **Testing** - All new code requires tests
+
+### Python
+
+```python
+# Use type hints
+async def execute_command(box: SimpleBox, cmd: str, timeout: int = 30) -> ExecResult:
+    """Execute a command with timeout."""
+    execution = await box.exec(cmd, timeout=timeout)
+    return await execution.wait()
+
+# Use async/await consistently
+async with SimpleBox(image="python:3.11") as box:
+    result = await box.exec("echo", "hello")
+
+# Handle errors properly
+try:
+    result = await box.exec("command")
+except boxlite.Error as e:
+    logger.error(f"Execution failed: {e}")
+```
+
+### Rust
+
+```rust
+// Use Result for error handling
+fn create_box(options: BoxOptions) -> Result<Box, BoxliteError> {
+    // ...
+}
+
+// Follow naming conventions
+pub struct BoxOptions { /* ... */ }
+pub fn create_box(options: BoxOptions) -> Result<Box, BoxliteError> { /* ... */ }
+
+// Use the Rust style guide
+impl BoxOptions {
+    pub fn new(image: String) -> Self { /* ... */ }
+}
+```
+
+### JavaScript/TypeScript
+
+```typescript
+// Use TypeScript for type safety
+interface BoxOptions {
+  image: string;
+  cpus: number;
+  memoryMb: number;
+}
+
+// Use async/await
+async function createBox(options: BoxOptions): Promise<Box> {
+  const box = await runtime.createBox(options);
+  return box;
+}
+```
+
+## Testing Guidelines
+
+### Unit Tests
+
+```python
+# Python
+import pytest
+
+class TestExec:
+    async def test_timeout_kills_process(self):
+        async with SimpleBox(image="python:3.11") as box:
+            result = await box.exec("sleep", "60", timeout=1)
+            assert result.exit_code < 0  # Killed by signal
+```
+
+```rust
+// Rust
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test_exec_timeout() {
+        // Test code here
+    }
+}
+```
+
+### Integration Tests
+
+```python
+# Use actual boxes for integration tests
+@pytest.mark.integration
+async def test_full_workflow():
+    async with SimpleBox(image="python:3.11") as box:
+        result = await box.exec("echo", "hello")
+        assert result.stdout.strip() == "hello"
+```
+
+## Documentation Standards
+
+All new features require documentation updates:
+
+1. **API changes** - Update relevant reference docs
+2. **New features** - Add to appropriate guide
+3. **Breaking changes** - Add to migration guide
+
+### Documentation Structure
+
+- **Guides** - How-to articles for common tasks
+- **References** - API documentation
+- **Tutorials** - Step-by-step learning
+- **Troubleshooting** - Problem-solving guides
+
+## Pull Request Review Process
+
+### What Reviewers Look For
+
+1. **Correctness** - Does the code work as intended?
+2. **Tests** - Are there adequate tests?
+3. **Style** - Does it follow coding standards?
+4. **Documentation** - Is it documented?
+5. **Performance** - Any performance implications?
+
+### Addressing Feedback
+
+```bash
+# Make changes based on feedback
+git add .
+git commit --amend
+git push --force-with-lease
+```
+
+## Recognition
+
+Contributors are recognized in:
+
+- GitHub Contributors page
+- Discord #contributors channel
+
+## Getting Help
+
+- **Discord** - [Join our community](https://go.boxlite.ai/discord)
+- **GitHub Discussions** - [Ask questions](https://github.com/boxlite-ai/boxlite/discussions)
+- ** IRC** - #boxlite on libera.chat
+
+## Related Documentation
+
+- [Building from Source](/guides/building-from-source) - Detailed build instructions
+- [Rust Style Guide](/development/rust-style) - Code conventions
+- [CLI Conventions](/development/cli) - CLI standards
+- [Release Notes](/community/release-notes) - Published release updates

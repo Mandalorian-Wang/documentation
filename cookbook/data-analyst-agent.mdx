@@ -1,0 +1,382 @@
+---
+title: "Data Analyst Agent"
+description: "Build an AI data analyst agent using BoxLite for safe execution"
+---
+
+This cookbook shows how to build a data analyst AI agent that runs analytical code in isolated BoxLite environments.
+
+## Overview
+
+A data analyst agent needs to:
+1. Execute user-provided Python/R code safely
+2. Handle large datasets without affecting the host
+3. Generate visualizations and reports
+4. Maintain reproducibility
+
+BoxLite provides the isolation and resource limits needed for safe data analysis.
+
+## Architecture
+
+```
+User Query -> AI Agent -> BoxLite -> Analysis -> Visualization -> Report
+```
+
+## Implementation
+
+### Basic Data Analyst Agent
+
+```python
+import asyncio
+import json
+import base64
+from io import BytesIO
+from boxlite import SimpleBox
+
+class DataAnalystAgent:
+    """AI-powered data analyst using BoxLite for safe execution."""
+
+    def __init__(
+        self,
+        timeout: int = 300,
+        memory_mb: int = 2048,
+        image: str = "python:3.11-slim"
+    ):
+        self.timeout = timeout
+        self.memory_mb = memory_mb
+        self.image = image
+
+    async def analyze(self, query: str, data_source: str = None) -> dict:
+        """Analyze data based on user query."""
+        async with SimpleBox(
+            image=self.image,
+            network=data_source is not None,
+            timeout=self.timeout,
+            memory_mb=self.memory_mb,
+            auto_remove=True
+        ) as box:
+            # Install required packages
+            await self._install_packages(box)
+
+            # Load data if provided
+            if data_source:
+                await self._load_data(box, data_source)
+
+            # Generate and execute analysis code
+            code = self._generate_analysis_code(query)
+            result = await box.exec("python", "-c", code)
+
+            return self._parse_result(result)
+
+    async def _install_packages(self, box):
+        """Install data analysis packages."""
+        await box.exec(
+            "pip", "install", "-q",
+            "pandas", "numpy", "matplotlib", "seaborn", "scikit-learn"
+        )
+
+    async def _load_data(self, box, data_source: str):
+        """Load data into the analysis environment."""
+        # Support various data sources
+        if data_source.startswith("http"):
+            # Download from URL
+            await box.exec(
+                "curl", "-L", "-o", "/data/file.csv", data_source
+            )
+        elif data_source.startswith("s3://"):
+            # Download from S3
+            await box.exec(
+                "aws", "s3", "cp", data_source, "/data/file.csv"
+            )
+        else:
+            # Local file - mount volume
+            pass
+
+    def _generate_analysis_code(self, query: str) -> str:
+        """Generate Python code for the analysis."""
+        # This would normally use an LLM to generate appropriate code
+        # For demonstration, we use a simple pattern
+        return f"""
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+import json
+import base64
+from io import BytesIO
+
+# Load sample data
+df = pd.read_csv('/data/file.csv')
+
+# Perform analysis
+result = {{
+    'columns': list(df.columns),
+    'shape': list(df.shape),
+    'dtypes': df.dtypes.astype(str).to_dict(),
+    'head': df.head().to_dict(),
+    'describe': df.describe().to_dict(),
+}}
+
+# Generate visualization
+fig, ax = plt.subplots(figsize=(10, 6))
+df.hist(ax=ax)
+plt.tight_layout()
+
+buf = BytesIO()
+plt.savefig(buf, format='png')
+buf.seek(0)
+result['chart'] = base64.b64encode(buf.read()).decode('utf-8')
+
+print(json.dumps(result))
+"""
+
+    def _parse_result(self, exec_result) -> dict:
+        """Parse execution result."""
+        if exec_result.exit_code != 0:
+            return {
+                "error": exec_result.stderr,
+                "success": False
+            }
+
+        try:
+            result = json.loads(exec_result.stdout)
+            result["success"] = True
+            return result
+        except json.JSONDecodeError:
+            return {
+                "output": exec_result.stdout,
+                "success": True
+            }
+
+
+# Usage
+async def main():
+    agent = DataAnalystAgent(timeout=300, memory_mb=2048)
+
+    result = await agent.analyze(
+        query="Show distribution of age and income",
+        data_source="https://example.com/data.csv"
+    )
+
+    if result.get("success"):
+        print(f"Columns: {result.get('columns')}")
+        print(f"Shape: {result.get('shape')}")
+    else:
+        print(f"Error: {result.get('error')}")
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+### Advanced: LLM-Powered Analyst
+
+```python
+import asyncio
+import json
+from boxlite import SimpleBox
+
+class LLMPoweredAnalyst:
+    """Data analyst that uses LLM to generate analysis code."""
+
+    def __init__(self, llm_client=None):
+        self.llm = llm_client
+
+    async def ask(self, question: str, context: dict = None) -> dict:
+        """Answer data analysis question."""
+        async with SimpleBox(
+            image="python:3.11-slim",
+            timeout=180,
+            memory_mb=2048,
+            auto_remove=True
+        ) as box:
+            # Get available data info
+            data_info = await self._get_data_info(box, context)
+
+            # Generate analysis code
+            code = await self._generate_code(question, data_info, self.llm)
+
+            # Execute
+            result = await box.exec("python", "-c", code)
+
+            return {
+                "code": code,
+                "result": result.stdout,
+                "error": result.stderr if result.exit_code != 0 else None
+            }
+
+    async def _get_data_info(self, box, context: dict = None) -> dict:
+        """Get information about available data."""
+        if not context:
+            return {"message": "No data loaded"}
+
+        return {
+            "columns": context.get("columns", []),
+            "types": context.get("types", {}),
+            "sample": context.get("sample", {})
+        }
+
+    async def _generate_code(self, question: str, data_info: dict, llm) -> str:
+        """Generate Python analysis code using LLM."""
+        if llm:
+            prompt = f"""Generate Python code to answer this data analysis question:
+
+Question: {question}
+
+Available data: {json.dumps(data_info)}
+
+Requirements:
+- Use pandas for data manipulation
+- Use matplotlib/seaborn for visualization
+- Output JSON with results
+- Handle errors gracefully
+"""
+            code = await llm.complete(prompt)
+        else:
+            # Fallback to simple pattern matching
+            code = self._fallback_code(question)
+
+        return code
+
+    def _fallback_code(self, question: str) -> str:
+        """Fallback code generation."""
+        return f"""
+import pandas as pd
+import json
+
+df = pd.read_csv('/data/file.csv')
+
+# Simple analysis
+if 'average' in '{question}'.lower():
+    numeric_cols = df.select_dtypes(include='number').columns
+    result = {{'averages': df[numeric_cols].mean().to_dict()}}
+elif 'count' in '{question}'.lower():
+    result = {{'counts': df.count().to_dict()}}
+else:
+    result = {{'summary': df.describe().to_dict()}}
+
+print(json.dumps(result))
+"""
+```
+
+### Visualization Agent
+
+```python
+import asyncio
+import base64
+from io import BytesIO
+from boxlite import SimpleBox
+
+class VisualizationAgent:
+    """Agent specialized in creating visualizations."""
+
+    async def create_chart(
+        self,
+        data_source: str,
+        chart_type: str,
+        x_column: str,
+        y_column: str = None,
+        **options
+    ) -> dict:
+        """Create a chart from data."""
+        async with SimpleBox(
+            image="python:3.11-slim",
+            timeout=60,
+            auto_remove=True
+        ) as box:
+            await box.exec("pip", "install", "-q", "pandas", "matplotlib", "seaborn")
+
+            code = self._generate_chart_code(
+                chart_type, x_column, y_column, options
+            )
+
+            result = await box.exec("python", "-c", code)
+
+            if result.exit_code == 0:
+                data = json.loads(result.stdout)
+                return {
+                    "success": True,
+                    "chart": data.get("chart"),
+                    "data": data.get("data")
+                }
+            else:
+                return {
+                    "success": False,
+                    "error": result.stderr
+                }
+
+    def _generate_chart_code(
+        self,
+        chart_type: str,
+        x_column: str,
+        y_column: str,
+        options: dict
+    ) -> str:
+        """Generate chart creation code."""
+        import json
+
+        return f"""
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+import json
+import base64
+from io import BytesIO
+
+df = pd.read_csv('/data/file.csv')
+
+fig, ax = plt.subplots(figsize=(10, 6))
+
+chart_type = '{chart_type}'
+if chart_type == 'bar':
+    df.plot(kind='bar', x='{x_column}', y='{y_column}', ax=ax)
+elif chart_type == 'line':
+    df.plot(kind='line', x='{x_column}', y='{y_column}', ax=ax)
+elif chart_type == 'scatter':
+    df.plot(kind='scatter', x='{x_column}', y='{y_column}', ax=ax)
+elif chart_type == 'hist':
+    df['{x_column}'].hist(ax=ax)
+elif chart_type == 'heatmap':
+    sns.heatmap(df.corr(), ax=ax)
+
+plt.tight_layout()
+
+buf = BytesIO()
+plt.savefig(buf, format='png')
+buf.seek(0)
+
+result = {{
+    'chart': base64.b64encode(buf.read()).decode('utf-8'),
+    'data': df[['{x_column}'{", '" + y_column + "'" if y_column else ""}]].head(20).to_dict()
+}}
+
+print(json.dumps(result))
+"""
+```
+
+## Security and Resource Management
+
+```python
+# Secure configuration for data analysis
+async with SimpleBox(
+    image="python:3.11-slim",
+    network=False,  # Usually not needed for local analysis
+    timeout=600,    # 10 minutes for complex analysis
+    cpu=2,          # More CPU for computation
+    memory_mb=4096, # More memory for large datasets
+    auto_remove=True
+) as box:
+    # Analysis code here
+    pass
+```
+
+## Best Practices
+
+1. **Resource limits** - Set appropriate memory and timeout
+2. **Clean data** - Validate and sanitize input data
+3. **Capture errors** - Log failures for debugging
+4. **Clean output** - Sanitize results before returning
+
+## Related Documentation
+
+- [AI Agent Integration](/guides/ai-agent-integration) - General AI agent patterns
+- [Execution Reference](/reference/python/execution) - Full execution API
+- [Templates](/templates/overview) - Pre-configured analysis environments

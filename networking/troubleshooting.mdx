@@ -1,0 +1,494 @@
+---
+title: "Network Troubleshooting"
+description: "Debug DNS resolution, connection timeouts, and network connectivity issues in BoxLite."
+---
+
+Network issues can occur at various levels when working with BoxLite sandboxes. This guide provides systematic debugging procedures for common networking problems, covering diagnostics, root cause analysis, and resolution steps for DNS, connectivity, port forwarding, and performance issues.
+
+## Overview of Network Troubleshooting
+
+When troubleshooting network issues in BoxLite, follow a systematic approach:
+
+1. **Verify network configuration**: Confirm networking is enabled and properly configured
+2. **Check sandbox network status**: Verify IP assignment and network interface state
+3. **Test basic connectivity**: Validate reachability at each network layer
+4. **Diagnose specific issues**: Apply targeted solutions for known problems
+
+## Diagnostic Commands
+
+### Network Information
+
+Get detailed network information about a sandbox:
+
+```python
+from boxlite import SimpleBox
+
+async with SimpleBox(
+    image="python:3.11-slim",
+    network=True
+) as box:
+    # Get comprehensive box info
+    info = await box.info()
+    print(f"Network enabled: {info.network.enabled}")
+    print(f"Network mode: {info.network.mode}")
+    print(f"IP address: {info.network.ip}")
+    print(f"Gateway: {info.network.gateway}")
+    print(f"DNS servers: {info.network.dns}")
+
+    # Get network metrics
+    metrics = await box.network_metrics()
+    print(f"Bytes sent: {metrics.bytes_sent}")
+    print(f"Bytes received: {metrics.bytes_received}")
+```
+
+### Network Interface Diagnostics
+
+Check network interface status inside the sandbox:
+
+```python
+# Check IP address configuration
+result = await box.exec("ip", "addr", "show")
+print(result.stdout)
+
+# Check routing table
+result = await box.exec("ip", "route", "show")
+print(result.stdout)
+
+# Check DNS configuration
+result = await box.exec("cat", "/etc/resolv.conf")
+print(result.stdout)
+```
+
+### Connectivity Tests
+
+Test network connectivity from inside the sandbox:
+
+```python
+# Test basic connectivity (ping)
+result = await box.exec("ping", "-c", "3", "8.8.8.8")
+print(result.stdout)
+
+# Test DNS resolution
+result = await box.exec("nslookup", "google.com")
+print(result.stdout)
+
+# Test HTTP connectivity
+result = await box.exec("curl", "-v", "https://example.com")
+print(result.stdout)
+```
+
+## Common Issues and Solutions
+
+### Network Not Enabled
+
+**Symptom:** Sandbox cannot access the internet, all connections fail.
+
+**Root Cause:** Networking was not enabled when creating the sandbox.
+
+**Solution:**
+
+```python
+# Enable networking explicitly
+async with SimpleBox(
+    image="python:3.11-slim",
+    network=True  # Must be explicitly set to True
+) as box:
+    # Now has network access
+    result = await box.exec("curl", "https://api.github.com")
+```
+
+### DNS Resolution Failures
+
+**Symptom:** Cannot resolve domain names, but IP addresses work.
+
+**Root Cause:** DNS server not configured or unreachable.
+
+**Solution:**
+
+```python
+# Verify DNS configuration
+result = await box.exec("cat", "/etc/resolv.conf")
+print(result.stdout)
+
+# Test DNS resolution manually
+result = await box.exec("nslookup", "example.com")
+
+# If DNS is not working, configure custom DNS
+async with SimpleBox(
+    image="python:3.11-slim",
+    network=True,
+    dns=["8.8.8.8", "1.1.1.1"]  # Use Google and Cloudflare DNS
+) as box:
+    result = await box.exec("nslookup", "example.com")
+```
+
+**Advanced DNS troubleshooting:**
+
+```python
+# Use dig for detailed DNS queries
+result = await box.exec("apt-get", "update")
+await box.exec("apt-get", "install", "-y", "dnsutils")
+
+# Query specific DNS server
+result = await box.exec("dig", "@8.8.8.8", "example.com")
+print(result.stdout)
+
+# Check DNS search domain
+result = await box.exec("cat", "/etc/resolv.conf")
+```
+
+### Connection Timeout
+
+**Symptom:** Connections hang and eventually timeout.
+
+**Root Cause:** Network proxy not running, firewall blocking, or NAT issues.
+
+**Solution:**
+
+```python
+# Check if gvproxy is running
+import subprocess
+result = subprocess.run(["ps", "aux"], capture_output=True)
+print("gvproxy" in result.stdout.decode())
+
+# Test with verbose curl
+result = await box.exec("curl", "-v", "--connect-timeout", "10", "https://example.com")
+print(result.stdout)
+
+# Check network routes
+result = await box.exec("ip", "route", "show")
+print(result.stdout)
+```
+
+**Firewall troubleshooting:**
+
+```python
+# Check iptables rules (if available)
+result = await box.exec("iptables", "-L", "-n")
+print(result.stdout)
+
+# Check connection tracking
+result = await box.exec("ss", "-tan")
+print(result.stdout)
+```
+
+### Port Forwarding Not Working
+
+**Symptom:** Port is exposed but connection is refused or times out.
+
+**Root Cause:** Service not running inside sandbox, or incorrect port mapping.
+
+**Solution:**
+
+```python
+# Verify port forwarding configuration
+info = await box.info()
+print(info.network.ports)
+
+# Check if service is listening inside sandbox
+result = await box.exec("ss", "-tlnp")
+print(result.stdout)
+
+# Verify service is running
+result = await box.exec("ps", "aux")
+print(result.stdout)
+
+# Test port from inside sandbox
+result = await box.exec("curl", "-v", "http://localhost:8080")
+```
+
+**Port conflict resolution:**
+
+```python
+# Check if port is already in use on host
+import socket
+sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+result = sock.connect_ex(('localhost', 8080))
+if result == 0:
+    print("Port 8080 is already in use")
+sock.close()
+
+# Use a different port
+async with SimpleBox(
+    image="nginx:latest",
+    network=True,
+    ports=[(8081, 80, "tcp")]  # Use 8081 instead
+) as box:
+    pass
+```
+
+### Private Network Connectivity Issues
+
+**Symptom:** Cannot communicate between sandboxes in private mode.
+
+**Root Cause:** Incorrect IP configuration or subnet mismatch.
+
+**Solution:**
+
+```python
+# Verify both sandboxes are in same network mode
+box1_info = await box1.info()
+box2_info = await box2.info()
+
+print(f"Box1 mode: {box1_info.network.mode}")
+print(f"Box2 mode: {box2_info.network.mode}")
+
+# Check IP addresses are in same subnet
+result = await box1.exec("ip", "addr", "show", "eth0")
+print(result.stdout)
+
+result = await box2.exec("ip", "addr", "show", "eth0")
+print(result.stdout)
+
+# Test direct connectivity
+result = await box1.exec("ping", "-c", "3", box2_info.network.ip)
+print(result.stdout)
+```
+
+### Egress Control Blocking Traffic
+
+**Symptom:** Connections to allowed destinations still fail.
+
+**Root Cause:** Domain/IP not in allowlist or allowlist configuration issue.
+
+**Solution:**
+
+```python
+# Verify egress policy is configured
+info = await box.info()
+print(info.network.allowed_domains)
+print(info.network.allowed_ips)
+
+# Test with explicit IP
+result = await box.exec("curl", "-v", "93.184.216.34")
+print(result.stdout)
+
+# Check if domain resolution matches allowed IP
+result = await box.exec("nslookup", "api.example.com")
+print(result.stdout)
+
+# Verify against allowlist configuration
+# allowed_domains=["api.example.com"]
+# Ensure api.example.com resolves to allowed IP
+```
+
+### High Network Latency
+
+**Symptom:** Connections are slow, high latency observed.
+
+**Root Cause:** Network proxy overhead, DNS resolution delay, or network congestion.
+
+**Solution:**
+
+```python
+# Measure connection latency
+import time
+
+start = time.time()
+result = await box.exec("curl", "-s", "-o", "/dev/null", "https://example.com")
+end = time.time()
+
+print(f"Connection time: {end - start:.3f}s")
+
+# Test DNS resolution time
+start = time.time()
+result = await box.exec("nslookup", "example.com")
+end = time.time()
+
+print(f"DNS resolution time: {end - start:.3f}s")
+
+# Use IP address directly to bypass DNS
+result = await box.exec("curl", "http://93.184.216.34/")
+```
+
+## Debug Mode
+
+### Enable Debug Logging
+
+Enable detailed logging for troubleshooting:
+
+```python
+import logging
+import os
+
+# Enable Python logging
+logging.basicConfig(level=logging.DEBUG)
+
+# Enable BoxLite debug mode
+os.environ["BOXLITE_DEBUG"] = "1"
+
+from boxlite import SimpleBox
+
+async with SimpleBox(
+    image="python:3.11-slim",
+    network=True
+) as box:
+    # Debug output will show network operations
+    result = await box.exec("curl", "https://example.com")
+```
+
+### Verbose Network Testing
+
+Use verbose tools for detailed diagnostics:
+
+```python
+# TCP connection tracing
+result = await box.exec("curl", "-v", "-T", "https://example.com/api")
+print(result.stdout)
+
+# Test with strace (if available)
+result = await box.exec("strace", "-e", "network", "curl", "https://example.com")
+print(result.stdout)
+
+# Packet capture with tcpdump (if available)
+result = await box.exec("tcpdump", "-i", "eth0", "-c", "10")
+print(result.stdout)
+```
+
+## Network Metrics and Monitoring
+
+### Monitor Network Usage
+
+Track network traffic for anomalies:
+
+```python
+from boxlite import SimpleBox
+
+async with SimpleBox(
+    image="python:3.11-slim",
+    network=True
+) as box:
+    # Perform some operations
+    await box.exec("curl", "https://api.example.com/data")
+
+    # Get network metrics
+    metrics = await box.network_metrics()
+
+    print(f"Total bytes sent: {metrics.bytes_sent}")
+    print(f"Total bytes received: {metrics.bytes_received}")
+    print(f"Packets sent: {metrics.packets_sent}")
+    print(f"Packets received: {metrics.packets_received}")
+
+    # Monitor for unusual patterns
+    if metrics.bytes_sent > 1000000:  # 1MB
+        print("Warning: Unusually high outbound traffic")
+```
+
+### Continuous Monitoring
+
+Implement ongoing network monitoring:
+
+```python
+import asyncio
+from boxlite import SimpleBox
+
+async def network_monitor(box, interval=5):
+    """Monitor network metrics periodically"""
+    baseline = await box.network_metrics()
+
+    while True:
+        await asyncio.sleep(interval)
+        current = await box.network_metrics()
+
+        sent_delta = current.bytes_sent - baseline.bytes_sent
+        recv_delta = current.bytes_received - baseline.bytes_received
+
+        print(f"Sent: {sent_delta} bytes, Received: {recv_delta} bytes")
+
+        baseline = current
+
+async def main():
+    async with SimpleBox(
+        image="python:3.11-slim",
+        network=True
+    ) as box:
+        monitor_task = asyncio.create_task(network_monitor(box))
+
+        # Run for 60 seconds
+        await asyncio.sleep(60)
+        monitor_task.cancel()
+
+asyncio.run(main())
+```
+
+## Advanced Diagnostics
+
+### Network Namespace Inspection
+
+Inspect network namespaces for isolation verification:
+
+```python
+# Check network namespace
+result = await box.exec("ip", "netns", "identify")
+print(result.stdout)
+
+# List all network interfaces
+result = await box.exec("ip", "link", "show")
+print(result.stdout)
+
+# Check ARP table
+result = await box.exec("ip", "neigh", "show")
+print(result.stdout)
+```
+
+### Gateway and Routing Debugging
+
+Debug routing and gateway issues:
+
+```python
+# Check default gateway
+result = await box.exec("ip", "route", "show", "default")
+print(result.stdout)
+
+# Trace route to destination
+result = await box.exec("traceroute", "-m", "10", "8.8.8.8")
+print(result.stdout)
+
+# Check specific route
+result = await box.exec("ip", "route", "show", "table", "all")
+print(result.stdout)
+```
+
+### Socket and Connection State
+
+Inspect socket states for connection issues:
+
+```python
+# List all TCP connections
+result = await box.exec("ss", "-tunap")
+print(result.stdout)
+
+# List listening sockets
+result = await box.exec("ss", "-tlnp")
+print(result.stdout)
+
+# Check connection states
+result = await box.exec("cat", "/proc/net/tcp")
+print(result.stdout)
+```
+
+## Checklist for Network Issues
+
+Use this checklist when debugging network problems:
+
+- [ ] Networking enabled (`network=True` in box creation)
+- [ ] Network mode correct (NAT/private/host)
+- [ ] IP address assigned and valid
+- [ ] Gateway reachable
+- [ ] DNS servers configured and accessible
+- [ ] Domain resolution working
+- [ ] gvproxy or network proxy running
+- [ ] Port forwarding correctly configured
+- [ ] Service listening on expected port
+- [ ] Firewall not blocking connections
+- [ ] Egress policy allowing destination
+- [ ] Network metrics showing activity
+- [ ] No port conflicts on host
+
+## See Also
+
+- [Network Overview](/networking/overview) - Network architecture and topology
+- [Port Forwarding](/networking/port-forwarding) - Exposing services from sandbox
+- [Private Connectivity](/networking/private-connectivity) - Private networking options
+- [Egress Control](/networking/egress-control) - Outbound traffic management
+- [Architecture: Networking & Storage](/architecture/networking-storage) - Detailed networking architecture

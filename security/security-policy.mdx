@@ -1,0 +1,311 @@
+---
+title: "Security Policy"
+description: "Vulnerability disclosure policy, security SLA, and responsible security practices."
+---
+
+# Security Policy
+
+This document outlines BoxLite's security policies, including vulnerability disclosure procedures, security service level agreements (SLAs), compliance certifications, and responsible security practices.
+
+## Overview
+
+BoxLite is committed to maintaining the highest standards of security for its users. This policy document establishes the framework for security-related processes, including how we handle vulnerabilities, communicate security incidents, and ensure continuous improvement of our security posture.
+
+### Policy Scope
+
+This security policy applies to:
+
+- BoxLite core platform and infrastructure
+- All BoxLite services and APIs
+- Client libraries and SDKs
+- Documentation and example code
+- Third-party integrations
+
+## Vulnerability Disclosure
+
+BoxLite maintains a responsible disclosure program that rewards security researchers for identifying vulnerabilities in our platform.
+
+### Reporting Vulnerabilities
+
+If you discover a security vulnerability in BoxLite, please report it through our responsible disclosure program:
+
+```python
+# Example: No actual code - this is documentation only
+# Contact: security@boxlite.io
+# PGP Key: Available on our security page
+```
+
+### Disclosure Process
+
+| Phase | Timeline | Description |
+|-------|----------|-------------|
+| Initial Response | 24-48 hours | Acknowledge receipt of report |
+| Status Update | Within 7 days | Provide initial assessment |
+| Remediation | Per severity | Fix implemented and tested |
+| Disclosure | After fix | Public announcement |
+
+### Vulnerability Severity Ratings
+
+We use a standardized severity rating system based on CVSS 3.1:
+
+| Severity | CVSS Score | Response Time |
+|----------|------------|---------------|
+| Critical | 9.0 - 10.0 | 24 hours |
+| High | 7.0 - 8.9 | 7 days |
+| Medium | 4.0 - 6.9 | 30 days |
+| Low | 0.1 - 3.9 | 90 days |
+| Informational | 0.0 | Best effort |
+
+### Bug Bounty Program
+
+BoxLite operates a bug bounty program for critical and high-severity vulnerabilities:
+
+| Severity | Bounty Range |
+|----------|--------------|
+| Critical | $5,000 - $10,000 |
+| High | $1,000 - $5,000 |
+| Medium | $250 - $1,000 |
+
+<Info>
+  Bug bounty rewards are subject to terms and conditions. See our bug bounty program page for details.
+</Info>
+
+## Security Service Level Agreement (SLA)
+
+BoxLite commits to specific security SLAs for enterprise customers.
+
+### Incident Response Times
+
+| Severity | Response Time | Resolution Target |
+|----------|---------------|-------------------|
+| Critical | 15 minutes | 4 hours |
+| High | 1 hour | 24 hours |
+| Medium | 4 hours | 7 days |
+| Low | 24 hours | 30 days |
+
+### Security Updates
+
+BoxLite commits to the following security update timelines:
+
+| Priority | Description | Patch Timeline |
+|----------|-------------|----------------|
+| Critical | Active exploitation, data breach risk | 24-48 hours |
+| High | Severe vulnerability, high impact | 1-2 weeks |
+| Medium | Moderate vulnerability | 1 month |
+| Low | Minor issues, enhancements | Quarterly |
+
+### Availability Commitments
+
+Enterprise customers receive:
+
+- **Uptime Guarantee**: 99.99% availability for core services
+- **Security Incident Notifications**: Within 1 hour of detection
+- **Security Bulletins**: Proactive notification of security updates
+
+## Compliance and Certifications
+
+BoxLite maintains industry-standard compliance certifications to meet enterprise requirements.
+
+### Certifications Achieved
+
+| Certification | Status | Renewal |
+|---------------|--------|---------|
+| SOC 2 Type II | Active | Annual |
+| ISO 27001 | In Progress | - |
+| PCI-DSS Level 1 | Planned | - |
+| HIPAA | Available for Enterprise | Annual |
+
+### SOC 2 Type II
+
+BoxLite has achieved SOC 2 Type II certification, demonstrating our commitment to security, availability, and confidentiality.
+
+```python
+# SOC 2 compliance can be verified in production
+box_options = BoxOptions(
+    compliance_mode="soc2",  # Enable SOC 2 controls
+    audit_logging=True,
+    data_residency="us-east-1"
+)
+```
+
+### Compliance Controls
+
+BoxLite implements the following control categories:
+
+| Control Category | Description |
+|------------------|-------------|
+| Access Control | Role-based access, MFA, SSO |
+| Encryption | TLS 1.3, AES-256, key rotation |
+| Logging | Comprehensive audit trails |
+| Monitoring | 24/7 security monitoring |
+| Incident Response | Documented procedures |
+
+### Data Residency
+
+For enterprise customers with data residency requirements:
+
+```python
+# Configure data residency
+box_options = BoxOptions(
+    data_residency="eu-west-1",  # EU data residency
+    # Options: us-east-1, us-west-2, eu-west-1, ap-southeast-1
+)
+```
+
+Available regions:
+- **United States**: us-east-1, us-west-2
+- **European Union**: eu-west-1, eu-central-1
+- **Asia Pacific**: ap-southeast-1, ap-northeast-1
+
+## Security Practices
+
+### Development Security
+
+BoxLite implements secure development practices:
+
+- **Secure Coding Standards**: All code follows OWASP guidelines
+- **Code Review**: Security review required for all changes
+- **Dependency Scanning**: Automated vulnerability scanning
+- **Penetration Testing**: Annual third-party penetration testing
+
+```python
+# Enable security features in development
+security = SecurityOptions(
+    seccomp_enabled=True,
+    jailer_enabled=True,
+    sanitize_env=True
+)
+```
+
+### Infrastructure Security
+
+Our infrastructure security includes:
+
+| Layer | Implementation |
+|-------|----------------|
+| Network | VPC isolation, WAF, DDoS protection |
+| Compute | Isolated VMs, minimal attack surface |
+| Storage | Encrypted at rest, key rotation |
+| Identity | RBAC, MFA, SSO integration |
+
+### Operational Security
+
+Operational security measures include:
+
+- **24/7 Monitoring**: Security operations center
+- **Threat Intelligence**: Real-time threat feeds
+- **Incident Response**: Documented playbooks
+- **Backup and Recovery**: Regular tested backups
+
+## Third-Party Security
+
+### Vendor Assessment
+
+All third-party vendors undergo security assessment:
+
+1. **Initial Review**: Security questionnaire
+2. **Technical Review**: Architecture review
+3. **Ongoing Monitoring**: Annual reassessment
+
+### Dependencies
+
+BoxLite maintains a software bill of materials (SBOM):
+
+```bash
+# View BoxLite dependencies
+boxrun sbom --output json
+```
+
+| Dependency Type | Update Frequency |
+|-----------------|------------------|
+| Security patches | Within 7 days |
+| Major updates | Quarterly |
+| Minor updates | As needed |
+
+## Customer Security Responsibilities
+
+While BoxLite provides robust security features, customers have responsibilities for their deployments:
+
+### Configuration Security
+
+```python
+# REQUIRED: Use maximum security preset for production
+security = SecurityOptions.maximum()  # Required for production
+
+# REQUIRED: Enable audit logging
+audit_config = AuditConfig(
+    destinations=[LogDestination.file(...)],
+    min_severity="info"
+)
+```
+
+### Access Management
+
+| Requirement | Description |
+|-------------|-------------|
+| MFA | Enable multi-factor authentication |
+| SSO | Integrate with enterprise identity |
+| RBAC | Implement role-based access control |
+| Secrets | Use external secrets management |
+
+### Compliance Verification
+
+Customers are responsible for:
+
+- Verifying their compliance requirements
+- Configuring BoxLite to meet those requirements
+- Maintaining evidence of compliance
+- Regular security assessments
+
+## Policy Updates
+
+This security policy is reviewed and updated regularly.
+
+### Update Schedule
+
+| Review Type | Frequency |
+|-------------|-----------|
+| Major review | Annual |
+| Minor updates | As needed |
+| Emergency updates | Immediate if critical |
+
+### Notification
+
+- **Major changes**: 30 days notice via security bulletin
+- **Minor changes**: Documented in release notes
+
+### Version History
+
+| Version | Date | Changes |
+|---------|------|---------|
+| 1.0 | 2026-01-01 | Initial policy |
+| 1.1 | 2026-04-01 | Added bug bounty details |
+
+## Contact Information
+
+For security-related inquiries:
+
+- **Security Issues**: security@boxlite.io
+- **Abuse Reports**: abuse@boxlite.io
+- **Compliance**: compliance@boxlite.io
+- **PGP Key**: Available on security page
+
+### Incident Contact
+
+For critical security incidents:
+
+1. Email: security@boxlite.io
+2. Include "CRITICAL" in subject
+3. Provide detailed description
+4. Expect response within 15 minutes (enterprise)
+
+## Related Documentation
+
+- [Security Overview](/security/overview) - Security architecture
+- [Audit Logging](/security/audit-logging) - Logging and compliance
+- [Shared Responsibility Model](/security/shared-responsibility) - Security boundaries
+- [Threat Model and Hardening](/security/threat-model-and-hardening) - Hardening guide
+
+<Warning>
+  This policy is subject to change. Customers should review the latest version periodically. Significant changes will be communicated via security bulletins.
+</Warning>

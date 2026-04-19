@@ -1,0 +1,392 @@
+---
+title: "Snapshots, Checkpoints, and Rollback"
+description: "Learn how to use BoxLite snapshots for state persistence, branching, and rollback"
+---
+
+Snapshots preserve the exact state of a BoxLite sandbox at a point in time. This tutorial covers how snapshots work, when to use them, and practical rollback procedures for real-world workflows.
+
+## When to Use Snapshots
+
+Snapshots are ideal for these scenarios:
+
+- **Experiment safely**: Try risky changes and revert if something breaks
+- **Branch development**: Create parallel development environments from a known good state
+- **Checkpoint long-running tasks**: Save progress before continuing expensive operations
+- **Reproduce bugs**: Capture the environment when a bug occurs for debugging
+
+## How Snapshots Work
+
+A snapshot captures the entire VM state including:
+- Memory contents
+- Filesystem state (all files in the box)
+- Running processes (if captured while running)
+- Network connections (if applicable)
+
+Snapshots are stored on the host and can be restored to create a new box in the exact saved state.
+
+## Prerequisites
+
+<Tabs>
+  <Tab title="Python">
+    ```bash
+    python3 -m pip install boxlite
+    ```
+  </Tab>
+  <Tab title="Node.js">
+    ```bash
+    npm install @boxlite-ai/boxlite
+    ```
+  </Tab>
+</Tabs>
+
+## Creating a Snapshot
+
+Create a snapshot of your box at any point:
+
+<Tabs>
+  <Tab title="Python">
+    ```python title="create_snapshot.py"
+    import asyncio
+    import boxlite
+
+
+    async def create_snapshot_example():
+        """Create a snapshot of the current box state."""
+        # Start with a configured box
+        async with boxlite.SimpleBox(
+            image="python:3.12-slim",
+            auto_remove=False  # Keep box for reuse
+        ) as box:
+            # Set up your environment
+            await box.exec("pip", "install", "numpy")
+            await box.exec("mkdir", "-p", "/workspace/project")
+
+            # Create a snapshot
+            snapshot_id = await box.snapshot(
+                name="project-setup-complete",
+                description="Environment with numpy installed, project dir created"
+            )
+            print(f"Snapshot created: {snapshot_id}")
+
+            # Continue working...
+            await box.exec("python", "-c", "import numpy; print(numpy.__version__)")
+
+
+    if __name__ == "__main__":
+        asyncio.run(create_snapshot_example())
+    ```
+  </Tab>
+  <Tab title="Node.js">
+    ```javascript title="create_snapshot.js"
+    import { SimpleBox } from '@boxlite-ai/boxlite';
+
+    async function createSnapshotExample() {
+      const box = new SimpleBox({
+        image: 'python:3.12-slim',
+        autoRemove: false
+      });
+
+      try {
+        await box.start();
+
+        // Set up your environment
+        await box.exec('pip', 'install', 'numpy');
+        await box.exec('mkdir', '-p', '/workspace/project');
+
+        // Create a snapshot
+        const snapshotId = await box.snapshot({
+          name: 'project-setup-complete',
+          description: 'Environment with numpy installed'
+        });
+        console.log(`Snapshot created: ${snapshotId}`);
+
+        // Continue working
+        const result = await box.exec('python', '-c', 'import numpy; print(numpy.__version__)');
+        console.log(result.stdout);
+      } finally {
+        await box.stop();
+      }
+    }
+
+    createSnapshotExample();
+    ```
+  </Tab>
+</Tabs>
+
+## Restoring from a Snapshot
+
+Restore a snapshot to continue from a saved state:
+
+<Tabs>
+  <Tab title="Python">
+    ```python title="restore_snapshot.py"
+    import asyncio
+    import boxlite
+
+
+    async def restore_snapshot_example():
+        """Restore a box from a saved snapshot."""
+        # Create a new box from an existing snapshot
+        async with boxlite.SimpleBox(
+            image="python:3.12-slim",
+            snapshot="project-setup-complete"  # Restore from snapshot
+        ) as box:
+            # Environment is exactly as it was when snapshot was created
+            result = await box.exec("python", "-c", "import numpy; print('numpy available:', numpy.__version__)")
+            print(result.stdout)
+
+
+    if __name__ == "__main__":
+        asyncio.run(restore_snapshot_example())
+    ```
+  </Tab>
+  <Tab title="Node.js">
+    ```javascript title="restore_snapshot.js"
+    import { SimpleBox } from '@boxlite-ai/boxlite';
+
+    async function restoreSnapshotExample() {
+      // Create a new box from an existing snapshot
+      const box = new SimpleBox({
+        image: 'python:3.12-slim',
+        snapshot: 'project-setup-complete'
+      });
+
+      try {
+        await box.start();
+
+        // Environment is exactly as it was when snapshot was created
+        const result = await box.exec('python', '-c', 'import numpy; print("numpy available:", numpy.__version__)');
+        console.log(result.stdout);
+      } finally {
+        await box.stop();
+      }
+    }
+
+    restoreSnapshotExample();
+    ```
+  </Tab>
+</Tabs>
+
+## Rollback Procedures
+
+### Simple Rollback
+
+When something goes wrong, revert to the last known good state:
+
+<Tabs>
+  <Tab title="Python">
+    ```python title="simple_rollback.py"
+    import asyncio
+    import boxlite
+
+
+    async def simple_rollback():
+        """Rollback to a previous snapshot on failure."""
+        # Start fresh
+        async with boxlite.SimpleBox(image="python:3.12-slim") as box:
+            # Do some work
+            await box.exec("pip", "install", "numpy")
+
+            # Create a checkpoint before risky operation
+            checkpoint = await box.snapshot(name="before-risky-change")
+
+            try:
+                # Perform risky operation
+                await box.exec("pip", "install", "unstable-package")
+                # If this fails or produces bad results...
+                raise RuntimeError("Package installation failed")
+            except Exception as e:
+                print(f"Error occurred: {e}")
+
+                # Rollback to checkpoint
+                # Create new box from snapshot
+                async with boxlite.SimpleBox(
+                    image="python:3.12-slim",
+                    snapshot=checkpoint
+                ) as restored_box:
+                    # Verify we're back to good state
+                    result = await restored_box.exec("pip", "list")
+                    print("Restored state:")
+                    print(result.stdout)
+
+
+    if __name__ == "__main__":
+        asyncio.run(simple_rollback())
+    ```
+  </Tab>
+</Tabs>
+
+### Branch Development
+
+Create branches for parallel experiments:
+
+<Tabs>
+  <Tab title="Python">
+    ```python title="branch_development.py"
+    import asyncio
+    import boxlite
+
+
+    async def branch_development():
+        """Create multiple branches from a base snapshot."""
+        # Create base environment
+        async with boxlite.SimpleBox(image="python:3.12-slim") as box:
+            await box.exec("pip", "install", "numpy pandas scikit-learn")
+            await box.exec("mkdir", "-p", "/workspace")
+
+            # Create base snapshot
+            base = await box.snapshot(name="ml-environment")
+            print(f"Base snapshot: {base}")
+
+        # Branch 1: Experiment with new library
+        async with boxlite.SimpleBox(
+            image="python:3.12-slim",
+            snapshot=base
+        ) as branch1:
+            await box.exec("pip", "install", "tensorflow")
+            await branch1.exec("python", "-c", "import tensorflow; print('TensorFlow installed')")
+            result1 = await branch1.exec("pip", "list")
+            print("Branch 1 packages:")
+            print(result1.stdout)
+
+        # Branch 2: Different experiment (same base)
+        async with boxlite.SimpleBox(
+            image="python:3.12-slim",
+            snapshot=base
+        ) as branch2:
+            await branch2.exec("pip", "install", "pytorch")
+            await branch2.exec("python", "-c", "import torch; print('PyTorch installed')")
+            result2 = await branch2.exec("pip", "list")
+            print("Branch 2 packages:")
+            print(result2.stdout)
+
+
+    if __name__ == "__main__":
+        asyncio.run(branch_development())
+    ```
+  </Tab>
+</Tabs>
+
+### Checkpoint for Long-Running Tasks
+
+Save progress during lengthy operations:
+
+<Tabs>
+  <Tab title="Python">
+    ```python title="checkpoint_long_task.py"
+    import asyncio
+    import boxlite
+
+
+    async def process_with_checkpoints():
+        """Process data with periodic checkpoints."""
+        # Initial setup
+        async with boxlite.SimpleBox(image="python:3.12-slim") as box:
+            await box.exec("pip", "install", "pandas")
+            await box.exec("mkdir", "-p", "/workspace/data")
+
+            # Create initial checkpoint
+            checkpoint = await box.snapshot(name="initial-setup")
+            print(f"Initial checkpoint: {checkpoint}")
+
+        # Simulate batch processing with checkpoints
+        batches = ["batch1.csv", "batch2.csv", "batch3.csv", "batch4.csv"]
+
+        for i, batch in enumerate(batches):
+            # Create new box from last checkpoint
+            async with boxlite.SimpleBox(
+                image="python:3.12-slim",
+                snapshot=checkpoint
+            ) as box:
+                print(f"Processing {batch}...")
+
+                # Simulate processing
+                await box.exec("python", "-c", f"print('Processing {batch}')")
+
+                # Checkpoint after each batch
+                if i < len(batches) - 1:  # Don't checkpoint after last batch
+                    checkpoint = await box.snapshot(name=f"after-{batch}")
+                    print(f"Checkpoint saved: after-{batch}")
+
+
+    if __name__ == "__main__":
+        asyncio.run(process_with_checkpoints())
+    ```
+  </Tab>
+</Tabs>
+
+## Managing Snapshots
+
+### List Available Snapshots
+
+<Tabs>
+  <Tab title="Python">
+    ```python title="list_snapshots.py"
+    import asyncio
+    import boxlite
+
+
+    async def list_snapshots():
+        """List all available snapshots."""
+        # Get list of snapshots
+        snapshots = await boxlite.list_snapshots()
+
+        print("Available snapshots:")
+        for snap in snapshots:
+            print(f"  - {snap['name']}: {snap['description']}")
+            print(f"    Created: {snap['created_at']}")
+            print(f"    Size: {snap['size_mb']} MB")
+
+
+    if __name__ == "__main__":
+        asyncio.run(list_snapshots())
+    ```
+  </Tab>
+</Tabs>
+
+### Delete a Snapshot
+
+<Tabs>
+  <Tab title="Python">
+    ```python title="delete_snapshot.py"
+    import asyncio
+    import boxlite
+
+
+    async def delete_snapshot():
+        """Delete an old or unnecessary snapshot."""
+        await boxlite.delete_snapshot("old-experiment-snapshot")
+        print("Snapshot deleted")
+
+
+    if __name__ == "__main__":
+        asyncio.run(delete_snapshot())
+    ```
+  </Tab>
+</Tabs>
+
+## Best Practices
+
+1. **Create snapshots before risky operations** - Always checkpoint before installing new packages, modifying configurations, or running untrusted code
+
+2. **Name snapshots descriptively** - Use meaningful names like "before-tensorflow-install" or "working-ml-pipeline"
+
+3. **Clean up old snapshots** - Delete snapshots you no longer need to save storage space
+
+4. **Don't rely on snapshots for backup** - Snapshots are VM state captures, not full backups. Export important data separately.
+
+5. **Consider snapshot size** - Large snapshots take time to create and restore. Balance checkpoint frequency with performance.
+
+## Related Topics
+
+<CardGroup cols={2}>
+  <Card title="Stateful Workspace Patterns" icon="database" href="/tutorials/stateful-workspace-patterns">
+    Build persistent development environments.
+  </Card>
+  <Card title="Box Lifecycle" icon="refresh" href="/core-concepts/lifecycle">
+    Understand box states and transitions.
+  </Card>
+  <Card title="Volumes" icon="hard-drive" href="/volumes/overview">
+    Persistent storage with volumes.
+  </Card>
+</CardGroup>

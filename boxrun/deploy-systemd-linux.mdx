@@ -1,0 +1,395 @@
+---
+title: "Deploy with systemd on Linux"
+description: "Deploy BoxRun as a systemd service for production Linux environments."
+sidebarTitle: "systemd on Linux"
+---
+
+This guide explains how to deploy BoxRun as a systemd service on Linux. systemd provides automatic restarts, log management via journald, and start-on-boot capabilities — essential for production deployments.
+
+## Prerequisites
+
+- Linux system with systemd
+- BoxRun binary installed (see [Quick Start](/boxrun/quickstart))
+- KVM support enabled (required for BoxLite micro-VMs)
+- Root/sudo access for service installation
+
+## Installation
+
+### 1. Verify BoxRun Installation
+
+```bash
+boxrun --version
+```
+
+If not installed:
+
+```bash
+curl -fsSL https://boxlite.ai/boxrun/install | sh
+```
+
+### 2. Create Systemd Service User (Recommended)
+
+Create a dedicated user for running BoxRun:
+
+```bash
+sudo useradd -r -s /bin/false boxrun
+```
+
+This provides isolation — the service runs with minimal privileges.
+
+### 3. Create Systemd Service File
+
+Create `/etc/systemd/system/boxrun.service`:
+
+```ini
+[Unit]
+Description=BoxRun Server - BoxLite Sandbox Management
+Documentation=https://boxlite.ai/docs
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=boxrun
+Group=boxrun
+ExecStart=/usr/local/bin/boxrun serve --socket /var/lib/boxrun/boxrun.sock
+WorkingDirectory=/var/lib/boxrun
+Restart=always
+RestartSec=10
+
+# Environment configuration
+Environment="BOXRUN_STATE_DIR=/var/lib/boxrun"
+Environment="BOXRUN_SOCKET=/var/lib/boxrun/boxrun.sock"
+Environment="RUST_LOG=info"
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/var/lib/boxrun
+
+[Install]
+WantedBy=multi-user.target
+```
+
+### 4. Create State Directory
+
+```bash
+sudo mkdir -p /var/lib/boxrun
+sudo chown boxrun:boxrun /var/lib/boxrun
+```
+
+### 5. Enable and Start Service
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable boxrun
+sudo systemctl start boxrun
+```
+
+### 6. Verify Service Status
+
+```bash
+sudo systemctl status boxrun
+```
+
+Expected output:
+
+```
+● boxrun.service - BoxRun Server - BoxLite Sandbox Management
+     Loaded: loaded (/etc/systemd/system/boxrun.service; enabled; vendor preset: enabled)
+     Active: active (running) since Thu 2025-01-15 10:30:00 UTC; 5s ago
+   Main PID: 1234 (boxrun)
+      Tasks: 5 (limit: 4915)
+     Memory: 50.0M
+        CPU: 0.500s
+     CGroup: /system.slice/boxrun.service
+             └─1234 /usr/local/bin/boxrun serve --socket /var/lib/boxrun/boxrun.sock
+```
+
+## Configuration Options
+
+### Environment Variables
+
+The systemd service file supports all BoxRun environment variables:
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `BOXRUN_STATE_DIR` | State directory | `~/.boxrun` |
+| `BOXRUN_SOCKET` | Unix socket path | `~/.boxrun/boxrun.sock` |
+| `BOXRUN_HOST` | TCP bind host | `127.0.0.1` |
+| `BOXRUN_PORT` | TCP bind port | `9090` |
+| `BOXRUN_MAX_CPU` | Total CPU limit | auto-detected |
+| `BOXRUN_MAX_MEMORY_MB` | Total memory limit (MB) | auto-detected |
+| `RUST_LOG` | Log level | `info` |
+
+### Example: TCP Mode with Custom Port
+
+For TCP mode instead of Unix socket:
+
+```ini
+[Service]
+ExecStart=/usr/local/bin/boxrun serve --host 127.0.0.1 --port 9090
+Environment="BOXRUN_HOST=127.0.0.1"
+Environment="BOXRUN_PORT=9090"
+Environment="BOXRUN_MAX_CPU=8"
+Environment="BOXRUN_MAX_MEMORY_MB=16384"
+```
+
+### Example: Production with All Options
+
+```ini
+[Service]
+ExecStart=/usr/local/bin/boxrun serve --socket /var/lib/boxrun/boxrun.sock
+Environment="BOXRUN_STATE_DIR=/var/lib/boxrun"
+Environment="BOXRUN_SOCKET=/var/lib/boxrun/boxrun.sock"
+Environment="BOXRUN_MAX_CPU=16"
+Environment="BOXRUN_MAX_MEMORY_MB=32768"
+Environment="RUST_LOG=warn,boxrun=info"
+```
+
+## Accessing the Service
+
+### Via Unix Socket
+
+The CLI automatically connects to the socket:
+
+```bash
+# Set socket path for CLI
+export BOXRUN_SOCKET=/var/lib/boxrun/boxrun.sock
+
+boxrun ls
+boxrun create ubuntu --name test
+```
+
+### Via TCP (If Enabled)
+
+```bash
+curl http://127.0.0.1:9090/v1/boxes
+```
+
+### Web Dashboard
+
+If TCP mode is enabled, access the dashboard at:
+
+```
+http://127.0.0.1:9090/ui
+```
+
+<Note>
+  The web dashboard is only available when running in TCP mode (`--host`/`--port`) rather than Unix socket mode.
+</Note>
+
+## Managing the Service
+
+### Common Commands
+
+```bash
+# View logs
+sudo journalctl -u boxrun -f
+
+# View recent logs
+sudo journalctl -u boxrun --since "1 hour ago"
+
+# Restart service
+sudo systemctl restart boxrun
+
+# Stop service
+sudo systemctl stop boxrun
+
+# Check status
+sudo systemctl status boxrun
+```
+
+### Log Configuration
+
+Logs go to journald. Filter by service:
+
+```bash
+# All BoxRun logs
+sudo journalctl -u boxrun
+
+# Only error-level logs
+sudo journalctl -u boxrun -p err
+
+# Follow logs in real-time
+sudo journalctl -u boxrun -f
+```
+
+### Rotate Logs
+
+systemd handles log rotation automatically via journald. Default retention:
+
+- Files up to 50MB
+- Files older than 30 days
+
+Configure in `/etc/systemd/journald.conf`:
+
+```ini
+[Journal]
+SystemMaxUse=500M
+SystemMaxFileSize=50M
+MaxRetentionSec=30day
+```
+
+## Security Hardening
+
+### Current Security Settings
+
+The service file includes:
+
+- **NoNewPrivileges** — Prevents privilege escalation
+- **PrivateTmp** — Isolates /tmp
+- **ProtectSystem** — Restricts filesystem access
+- **ProtectHome** — Makes home directories read-only
+- **ReadWritePaths** — Explicitly allowed write paths
+
+### Additional Hardening
+
+For enhanced security, add:
+
+```ini
+[Service]
+# Network isolation
+PrivateNetwork=true
+
+# Additional filesystem restrictions
+ProtectControlGroups=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+
+# Restrict capabilities
+AmbientCapabilities=
+CapabilityBoundingSet=
+```
+
+<Warning>
+  Some security settings may interfere with BoxRun's ability to create micro-VMs. Test thoroughly before deploying.
+</Warning>
+
+### Firewall Configuration
+
+If exposing BoxRun via TCP:
+
+```bash
+# Allow only local access
+sudo ufw allow from 127.0.0.1 to any port 9090
+
+# Or restrict to specific IP range
+sudo ufw allow from 10.0.0.0/24 to any port 9090
+```
+
+## Troubleshooting
+
+### Service Fails to Start
+
+Check logs:
+
+```bash
+sudo journalctl -u boxrun -n 50
+```
+
+Common issues:
+
+- **KVM not available** — BoxRun requires KVM. Verify: `ls /dev/kvm`
+- **Permission denied** — Check socket directory permissions
+- **Port in use** — Another service on port 9090
+
+### Verify KVM Availability
+
+```bash
+# Check if KVM is available
+ls -la /dev/kvm
+
+# Check KVM modules loaded
+lsmod | grep kvm
+
+# Verify KVM can be used
+kvm-ok
+```
+
+### Permission Issues
+
+If the service fails due to permissions:
+
+```bash
+# Check socket directory
+ls -la /var/lib/boxrun
+
+# Verify user has access
+sudo -u boxrun ls /var/lib/boxrun
+
+# Fix ownership
+sudo chown -R boxrun:boxrun /var/lib/boxrun
+```
+
+### View Detailed Logs
+
+For debug-level logging:
+
+```ini
+[Service]
+Environment="RUST_LOG=debug"
+```
+
+Then restart:
+
+```bash
+sudo systemctl restart boxrun
+```
+
+## Upgrading BoxRun
+
+To upgrade BoxRun:
+
+1. Download new binary
+2. Stop the service
+3. Replace binary
+4. Start the service
+
+```bash
+# Download and install new version
+curl -fsSL https://boxlite.ai/boxrun/install | sudo sh
+
+# Restart to pick up new version
+sudo systemctl restart boxrun
+
+# Verify version
+boxrun --version
+```
+
+## Uninstalling
+
+To remove BoxRun and its systemd service:
+
+```bash
+# Stop and disable service
+sudo systemctl stop boxrun
+sudo systemctl disable boxrun
+
+# Remove service file
+sudo rm /etc/systemd/system/boxrun.service
+sudo systemctl daemon-reload
+
+# Remove user and data
+sudo userdel boxrun
+sudo rm -rf /var/lib/boxrun
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Production Architecture" icon="cloud" href="/boxrun/production-deployment-overview">
+    Understand the full production deployment architecture.
+  </Card>
+  <Card title="Reverse Proxy" icon="server" href="/boxrun/deploy-reverse-proxy">
+    Deploy behind nginx or Caddy for TLS termination.
+  </Card>
+  <Card title="Capacity Planning" icon="chart-line" href="/boxrun/capacity-planning">
+    Plan resources for your production workload.
+  </Card>
+  <Card title="Observability" icon="chart-bar" href="/boxrun/observability-metrics-and-alerts">
+    Set up monitoring and alerting for production.
+  </Card>
+</CardGroup>

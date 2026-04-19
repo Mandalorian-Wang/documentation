@@ -1,0 +1,453 @@
+---
+title: "Download Files"
+sidebarTitle: "Download"
+description: "Download files from BoxLite Boxes with batch support and path safety."
+---
+
+Download files from Boxes using the `copy_out()` API. This guide covers single and batch download patterns with security considerations.
+
+## Overview
+
+File download in BoxLite is achieved through the `copy_out()` method, which copies files from the Box to the host filesystem. Key features include:
+
+- Single file downloads
+- Directory downloads
+- Path traversal protection
+- Overwrite control
+
+## Basic Download
+
+### Single File Download
+
+```python
+import boxlite
+
+async with boxlite.SimpleBox(image="python:slim") as box:
+    # Create a file in the Box
+    await box.exec("bash", "-c", "echo 'Hello from Box' > /workspace/data.txt")
+
+    # Download the file
+    await box.copy_out("/workspace/data.txt", "./downloaded-data.txt")
+
+    # Verify
+    with open("./downloaded-data.txt") as f:
+        print(f.read())  # "Hello from Box\n"
+```
+
+### Directory Download
+
+```python
+async with boxlite.SimpleBox(image="python:slim") as box:
+    # Create multiple files
+    await box.exec("mkdir", "-p", "/workspace/output")
+    await box.exec("bash", "-c", "echo 'file1' > /workspace/output/a.txt")
+    await box.exec("bash", "-c", "echo 'file2' > /workspace/output/b.txt")
+
+    # Download entire directory
+    await box.copy_out("/workspace/output/", "./local-output/")
+
+    # Verify
+    import os
+    for f in os.listdir("./local-output"):
+        print(f"Downloaded: {f}")
+```
+
+## Path Security
+
+BoxLite implements path traversal protection to prevent security vulnerabilities.
+
+### Path Traversal Protection
+
+The `copy_out()` method blocks attempts to access files outside the container:
+
+```python
+# These will be blocked by path traversal protection
+try:
+    # Attempt to escape container - BLOCKED
+    await box.copy_out("/workspace/../../../etc/passwd", "./passwd")
+except Exception as e:
+    print(f"Blocked: {e}")
+
+# Relative path traversal - BLOCKED
+try:
+    await box.copy_out("/workspace/../../root", "./root")
+except Exception as e:
+    print(f"Blocked: {e}")
+```
+
+### Allowed Paths
+
+```python
+# These are valid
+await box.copy_out("/workspace/file.txt", "./local.txt")
+await box.copy_out("/tmp/output.csv", "./data.csv")  # tmpfs also allowed
+await box.copy_out("/home/user/data/", "./backup/")  # user directories
+```
+
+### Safe Download Pattern
+
+```python
+import os
+
+async def safe_download(box, container_path, host_dest, allowed_base="/workspace"):
+    """Download with explicit path validation."""
+    # Resolve and validate the path
+    container_path = os.path.normpath(container_path)
+
+    # Check path is within allowed base
+    if not container_path.startswith(allowed_base):
+        raise ValueError(f"Path {container_path} is outside allowed base {allowed_base}")
+
+    # Perform download
+    await box.copy_out(container_path, host_dest)
+    print(f"Downloaded {container_path} to {host_dest}")
+
+async with boxlite.SimpleBox(image="python:slim") as box:
+    await safe_download(box, "/workspace/data.txt", "./output.txt")
+```
+
+## Batch Download
+
+### Download Multiple Files
+
+```python
+import asyncio
+
+async def download_multiple(box, file_list, dest_dir):
+    """Download multiple files to a directory."""
+    for src in file_list:
+        filename = os.path.basename(src)
+        dest_path = os.path.join(dest_dir, filename)
+        await box.copy_out(src, dest_path)
+        print(f"Downloaded: {filename}")
+
+async with boxlite.SimpleBox(image="python:slim") as box:
+    await download_multiple(
+        box,
+        ["/workspace/a.txt", "/workspace/b.txt", "/workspace/c.txt"],
+        "./output/"
+    )
+```
+
+### Parallel Download
+
+```python
+import asyncio
+
+async def download_file(box, src, dest):
+    """Download a single file."""
+    await box.copy_out(src, dest)
+    return os.path.basename(src)
+
+async def download_parallel(box, file_pairs):
+    """Download multiple files in parallel."""
+    tasks = [
+        download_file(box, src, dest)
+        for src, dest in file_pairs
+    ]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    for (src, dest), result in zip(file_pairs, results):
+        if isinstance(result, Exception):
+            print(f"Failed: {src} - {result}")
+        else:
+            print(f"Downloaded: {result}")
+
+async with boxlite.SimpleBox(image="python:slim") as box:
+    file_pairs = [
+        ("/workspace/a.txt", "./output/a.txt"),
+        ("/workspace/b.txt", "./output/b.txt"),
+        ("/workspace/c.txt", "./output/c.txt"),
+    ]
+    await download_parallel(box, file_pairs)
+```
+
+### Download Matching Files
+
+```python
+import asyncio
+
+async def download_by_pattern(box, pattern_in_box, dest_dir):
+    """Download files matching a pattern."""
+    # Find files in Box
+    result = await box.exec("find", "/workspace/", "-name", pattern_in_box)
+    files = result.stdout.strip().split("\n")
+
+    for file_path in files:
+        if file_path:
+            filename = os.path.basename(file_path)
+            dest_path = os.path.join(dest_dir, filename)
+            await box.copy_out(file_path, dest_path)
+            print(f"Downloaded: {filename}")
+
+    return len(files)
+
+async with boxlite.SimpleBox(image="python:slim") as box:
+    # Download all .txt files
+    count = await download_by_pattern(box, "*.txt", "./output/")
+    print(f"Downloaded {count} files")
+```
+
+## Download with Progress
+
+```python
+import os
+
+def get_download_size(box, file_list):
+    """Get total size of files in Box."""
+    total = 0
+    for f in file_list:
+        result = await box.exec("stat", "-c", "%s", f)
+        if result.exit_code == 0:
+            total += int(result.stdout.strip())
+    return total
+
+async def download_with_progress(box, file_pairs):
+    """Download with progress tracking."""
+    total_size = 0
+    for src, _ in file_pairs:
+        result = await box.exec("stat", "-c", "%s", src)
+        if result.exit_code == 0:
+            total_size += int(result.stdout.strip())
+
+    downloaded = 0
+    for src, dest in file_pairs:
+        await box.copy_out(src, dest)
+        result = await box.exec("stat", "-c", "%s", src)
+        if result.exit_code == 0:
+            downloaded += int(result.stdout.strip())
+
+        percent = (downloaded / total_size) * 100
+        print(f"Progress: {percent:.1f}%")
+
+async with boxlite.SimpleBox(image="python:slim") as box:
+    await download_with_progress(
+        box,
+        [("/workspace/a.txt", "./output/a.txt"), ("/workspace/b.txt", "./output/b.txt")]
+    )
+```
+
+## Special Cases
+
+### Downloading to Existing Directory
+
+```python
+import os
+import shutil
+
+async def download_to_existing_dir(box, container_path, host_dir):
+    """Download file to existing directory."""
+    # Ensure host directory exists
+    os.makedirs(host_dir, exist_ok=True)
+
+    # Get filename
+    filename = os.path.basename(container_path)
+    dest = os.path.join(host_dir, filename)
+
+    # Check if file exists
+    if os.path.exists(dest):
+        backup = f"{dest}.backup"
+        shutil.move(dest, backup)
+        print(f"Backed up existing file to {backup}")
+
+    await box.copy_out(container_path, dest)
+    return dest
+
+async with boxlite.SimpleBox(image="python:slim") as box:
+    await download_to_existing_dir(
+        box,
+        "/workspace/data.csv",
+        "./existing-dir/"
+    )
+```
+
+### Downloading Large Directories
+
+```python
+async def download_large_directory(box, container_dir, host_dir, batch_size=50):
+    """Download large directories in batches."""
+    # List all files first
+    result = await box.exec(
+        "find", container_dir, "-type", "f", "-print"
+    )
+    files = [f for f in result.stdout.strip().split("\n") if f]
+
+    total = len(files)
+    print(f"Downloading {total} files...")
+
+    for i in range(0, total, batch_size):
+        batch = files[i:i+batch_size]
+        for f in batch:
+            rel_path = os.path.relpath(f, container_dir)
+            dest = os.path.join(host_dir, rel_path)
+            os.makedirs(os.path.dirname(dest), exist_ok=True)
+            await box.copy_out(f, dest)
+
+        print(f"Batch {i//batch_size + 1}/{(total + batch_size - 1)//batch_size} complete")
+
+async with boxlite.SimpleBox(image="python:slim") as box:
+    await download_large_directory(
+        box,
+        "/workspace/large-project/",
+        "./backup/"
+    )
+```
+
+## Error Handling
+
+```python
+import boxlite
+
+async def safe_download(box, src, dest):
+    """Download with comprehensive error handling."""
+    try:
+        # Check if source exists
+        result = await box.exec("test", "-e", src)
+        if result.exit_code != 0:
+            raise FileNotFoundError(f"Source does not exist: {src}")
+
+        # Check if it's a file (not directory)
+        result = await box.exec("test", "-f", src)
+        is_file = result.exit_code == 0
+
+        if is_file:
+            # Download single file
+            await box.copy_out(src, dest)
+        else:
+            # Download directory
+            await box.copy_out(f"{src}/", dest)
+
+        print(f"Successfully downloaded {src} to {dest}")
+        return True
+
+    except boxlite.BoxNotStartedError:
+        print("Error: Box not started")
+    except Exception as e:
+        print(f"Download failed: {e}")
+        raise
+
+    return False
+```
+
+## Complete Example
+
+```python
+import boxlite
+import os
+import tempfile
+import asyncio
+
+async def main():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        async with boxlite.SimpleBox(image="python:slim") as box:
+            # 1. Set up test files
+            await box.exec("mkdir", "-p", "/workspace/project")
+            await box.exec("bash", "-c", "echo 'content1' > /workspace/project/file1.txt")
+            await box.exec("bash", "-c", "echo 'content2' > /workspace/project/file2.txt")
+            await box.exec("bash", "-c", "echo 'data' > /workspace/data.csv")
+
+            # 2. Download specific files
+            await box.copy_out("/workspace/data.csv", os.path.join(tmpdir, "data.csv"))
+
+            # 3. Download directory
+            await box.copy_out("/workspace/project/", os.path.join(tmpdir, "project/"))
+
+            # 4. Verify downloads
+            for root, dirs, files in os.walk(tmpdir):
+                for f in files:
+                    path = os.path.join(root, f)
+                    print(f"Downloaded: {path}")
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+## Performance Considerations
+
+### Batch Size Guidelines
+
+For large directory downloads, batch processing improves efficiency:
+
+```python
+async def download_large_directory(box, container_dir, host_dir, batch_size=50):
+    """Download large directories in batches for better performance.
+
+    Batch downloading:
+    - Reduces individual transfer overhead
+    - Allows progress tracking between batches
+    - Handles partial failures gracefully
+    """
+    # List all files first
+    result = await box.exec(
+        "find", container_dir, "-type", "f", "-print"
+    )
+    files = [f for f in result.stdout.strip().split("\n") if f]
+
+    total = len(files)
+    print(f"Downloading {total} files...")
+
+    for i in range(0, total, batch_size):
+        batch = files[i:i+batch_size]
+        for f in batch:
+            rel_path = os.path.relpath(f, container_dir)
+            dest = os.path.join(host_dir, rel_path)
+            os.makedirs(os.path.dirname(dest), exist_ok=True)
+            await box.copy_out(f, dest)
+
+        print(f"Batch {i//batch_size + 1}/{(total + batch_size - 1)//batch_size} complete")
+
+async with boxlite.SimpleBox(image="python:slim") as box:
+    await download_large_directory(
+        box,
+        "/workspace/large-project/",
+        "./backup/"
+    )
+```
+
+### Concurrent Download Safety
+
+The `copy_out()` method is safe for concurrent calls:
+
+```python
+async def download_parallel(box, file_pairs):
+    """Download multiple files in parallel.
+
+    Note: copy_out() is safe to call concurrently.
+    BoxLite handles internal synchronization.
+    """
+    tasks = [
+        box.copy_out(src, dest)
+        for src, dest in file_pairs
+    ]
+    await asyncio.gather(*tasks, return_exceptions=True)
+
+async with boxlite.SimpleBox(image="python:slim") as box:
+    file_pairs = [
+        ("/workspace/a.txt", "./output/a.txt"),
+        ("/workspace/b.txt", "./output/b.txt"),
+    ]
+    await download_parallel(box, file_pairs)
+```
+
+## Best Practices
+
+1. **Always validate paths** before download to prevent traversal attacks
+2. **Use batch downloads** for multiple files to reduce overhead
+3. **Implement progress tracking** for large transfers
+4. **Handle existing files** appropriately (backup or skip)
+5. **Verify downloads** after completion when critical
+6. **Use parallel downloads** for multiple independent files
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Upload Files" icon="upload" href="/filesystem/upload-files">
+    Upload files to Boxes.
+  </Card>
+  <Card title="Read & Write Files" icon="file-arrow-up" href="/filesystem/read-write-files">
+    File operations basics.
+  </Card>
+  <Card title="Volume Management" icon="database" href="/volumes/overview">
+    Persistent volume storage.
+  </Card>
+</CardGroup>

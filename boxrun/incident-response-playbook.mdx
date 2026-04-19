@@ -1,0 +1,460 @@
+---
+title: "Incident Response Playbook"
+description: "Step-by-step procedures for handling BoxRun incidents, service failures, and recovery."
+---
+
+This playbook provides structured procedures for responding to BoxRun incidents. Use these steps to minimize downtime and ensure consistent, effective responses.
+
+## Overview
+
+This playbook covers:
+- Incident classification
+- Initial response procedures
+- Common incident scenarios
+- Recovery procedures
+- Post-incident review
+
+## Incident Classification
+
+### Severity Levels
+
+| Severity | Response Time | Example |
+|----------|---------------|---------|
+| **P1 - Critical** | Immediate (< 15 min) | Complete service outage |
+| **P2 - High** | < 1 hour | Partial outage, degraded performance |
+| **P3 - Medium** | < 4 hours | Minor functionality loss |
+| **P4 - Low** | < 24 hours | Non-critical issues |
+
+### Impact Assessment
+
+Determine severity based on:
+
+1. **User impact**: How many users affected?
+2. **Functionality**: What features are unavailable?
+3. **Duration**: How long has the issue persisted?
+4. **Data impact**: Is data at risk?
+
+## Initial Response
+
+### Step 1: Acknowledge
+
+Acknowledge the incident immediately:
+
+```bash
+# Quick acknowledgment in Slack/Teams
+"Incident acknowledged. Starting investigation."
+```
+
+### Step 2: Assess
+
+Quickly determine scope:
+
+```bash
+# Check BoxRun status
+curl http://localhost:9090/v1/info
+
+# List boxes
+boxrun list
+
+# Check recent logs
+journalctl -u boxrun -n 50 --since "10 minutes ago"
+```
+
+### Step 3: Communicate
+
+Notify stakeholders:
+
+- Update status page
+- Post in incident channel
+- Notify on-call team
+
+### Step 4: Resolve
+
+Follow the appropriate procedure below.
+
+## Common Incidents
+
+### Incident 1: BoxRun Server Down
+
+**Symptoms**: Cannot connect to BoxRun API
+
+**Diagnosis**:
+```bash
+# Check if process is running
+ps aux | grep "boxrun serve"
+
+# Check if port is listening
+lsof -i :9090
+
+# Check system resources
+df -h
+free -h
+
+# Check logs
+journalctl -u boxrun -n 100
+```
+
+**Resolution**:
+```bash
+# If not running, start it
+sudo systemctl start boxrun
+
+# If won't start, check error
+journalctl -u boxrun -n 50
+
+# If port conflict, find and kill
+lsof -i :9090
+kill <pid>
+
+# Then restart
+sudo systemctl start boxrun
+```
+
+**Verification**:
+```bash
+curl http://localhost:9090/v1/info
+# Should return: {"max_cpu": X, "max_memory_mb": Y}
+```
+
+### Incident 2: Boxes Stuck in Creating State
+
+**Symptoms**: Boxes remain in "creating" state indefinitely
+
+**Diagnosis**:
+```bash
+# Check box state
+boxrun list
+
+# Check for stuck processes
+ps aux | grep qemu
+
+# Check gvproxy status
+ps aux | grep gvproxy
+
+# Check logs
+journalctl -u boxrun | grep -i "creating\|error\|failed"
+```
+
+**Resolution**:
+```bash
+# Force stop stuck boxes
+boxrun stop <box-id> --force
+
+# Or delete and recreate
+boxrun rm <box-id>
+boxrun create ubuntu --name <box-id>
+
+# If all stuck, restart service
+sudo systemctl restart boxrun
+```
+
+### Incident 3: Database Corruption
+
+**Symptoms**: Cannot start BoxRun, SQLite errors
+
+**Diagnosis**:
+```bash
+# Check database integrity
+sqlite3 ~/.boxrun/boxrun.db "PRAGMA integrity_check;"
+
+# Check for lock files
+ls -la ~/.boxrun/*.lock
+
+# Try to read database
+sqlite3 ~/.boxrun/boxrun.db "SELECT COUNT(*) FROM boxes;"
+```
+
+**Resolution**:
+```bash
+# Stop BoxRun
+sudo systemctl stop boxrun
+
+# Restore from backup (if available)
+cp /var/backups/boxrun/boxrun-$(date +%Y%m%d).db ~/.boxrun/boxrun.db
+
+# If no backup, attempt repair
+sqlite3 ~/.boxrun/boxrun.db ".recover"
+
+# Fix permissions
+chmod 600 ~/.boxrun/boxrun.db
+
+# Start BoxRun
+sudo systemctl start boxrun
+```
+
+### Incident 4: Network Connectivity Lost
+
+**Symptoms**: Boxes cannot access network
+
+**Diagnosis**:
+```bash
+# Check gvproxy
+ps aux | grep gvproxy
+
+# Test from inside box
+boxrun exec <box> -- ping -c 3 8.8.8.8
+
+# Check DNS
+boxrun exec <box> -- nslookup google.com
+```
+
+**Resolution**:
+```bash
+# Restart gvproxy
+pkill gvproxy
+boxrun serve &
+
+# Or restart network for specific box
+boxrun stop <box>
+boxrun start <box>
+```
+
+### Incident 5: High Resource Usage
+
+**Symptoms**: System slow, boxes unresponsive
+
+**Diagnosis**:
+```bash
+# Check host resources
+top
+free -h
+df -h
+
+# Find resource-heavy boxes
+ps aux | grep qemu | sort -k4 -r
+
+# Check box count
+boxrun list | wc -l
+```
+
+**Resolution**:
+```bash
+# Stop unnecessary boxes
+boxrun stop --all
+
+# Clear old images
+rm -rf ~/.boxrun/runtime/images/*
+
+# Clean up disk space
+docker system prune  # if using docker
+```
+
+### Incident 6: Image Pull Failure
+
+**Symptoms**: Cannot create new boxes, image errors
+
+**Diagnosis**:
+```bash
+# Check network
+curl -I https://registry.hub.docker.com
+
+# Check image exists
+boxrun images
+
+# Check recent pull logs
+journalctl -u boxrun | grep -i pull
+```
+
+**Resolution**:
+```bash
+# Try pulling manually
+boxrun pull ubuntu:24.04
+
+# Use different registry
+boxrun create ubuntu --registry mirror.gcr.io
+
+# Clear cache and retry
+rm -rf ~/.boxrun/runtime/images/*
+boxrun create ubuntu
+```
+
+## Recovery Procedures
+
+### Full System Recovery
+
+If the entire system needs rebuilding:
+
+```bash
+#!/bin/bash
+# full-recovery.sh
+
+set -e
+
+echo "=== Starting full recovery ==="
+
+# 1. Verify binaries
+echo "[1/6] Verifying BoxRun installation..."
+boxrun --version
+
+# 2. Restore database
+echo "[2/6] Restoring database..."
+LATEST_BACKUP=$(ls -t /var/backups/boxrun/boxrun-*.db | head -1)
+if [ -n "$LATEST_BACKUP" ]; then
+    cp "$LATEST_BACKUP" ~/.boxrun/boxrun.db
+    chmod 600 ~/.boxrun/boxrun.db
+    echo "Restored from $LATEST_BACKUP"
+else
+    echo "WARNING: No backup found, starting fresh"
+fi
+
+# 3. Restore runtime (optional)
+echo "[3/6] Restoring runtime..."
+LATEST_RUNTIME=$(ls -t /var/backups/boxrun/runtime-*.tar.gz | head -1)
+if [ -n "$LATEST_RUNTIME" ]; then
+    tar -xzf "$LATEST_RUNTIME" -C ~/.boxrun/
+    echo "Runtime restored from $LATEST_RUNTIME"
+fi
+
+# 4. Start BoxRun
+echo "[4/6] Starting BoxRun..."
+sudo systemctl start boxrun
+
+# 5. Verify
+echo "[5/6] Verifying system..."
+sleep 3
+curl -s http://localhost:9090/v1/info || { echo "FAILED: BoxRun not responding"; exit 1; }
+boxrun list || { echo "FAILED: Cannot list boxes"; exit 1; }
+
+# 6. Start previously running boxes
+echo "[6/6] Starting boxes from database..."
+boxrun start --all || true
+
+echo "=== Recovery complete ==="
+```
+
+### Database-Only Recovery
+
+If only the database is corrupted:
+
+```bash
+# Quick fix
+sudo systemctl stop boxrun
+cp /var/backups/boxrun/boxrun-latest.db ~/.boxrun/boxrun.db
+chmod 600 ~/.boxrun/boxrun.db
+sudo systemctl start boxrun
+
+# Verify
+boxrun list
+curl http://localhost:9090/v1/info
+```
+
+## Escalation
+
+### When to Escalate
+
+| Condition | Action |
+|-----------|--------|
+| Data loss | Escalate to P1, notify data team |
+| Security breach | Escalate to security team immediately |
+| Customer data exposed | Notify legal/compliance |
+| Service down > 1 hour | Escalate to management |
+
+### Escalation Contacts
+
+Maintain a current list:
+
+- On-call engineer: Check PagerDuty
+- Infrastructure lead: @infrastructure-team
+- Security: security@company.com
+- Management: ops-manager@company.com
+
+## Post-Incident Review
+
+### Step 1: Document
+
+Create incident report:
+
+```markdown
+# Incident Report: [Title]
+
+## Summary
+[What happened]
+
+## Timeline
+- 10:00 - Alert triggered
+- 10:05 - Incident acknowledged
+- 10:15 - Root cause identified
+- 10:30 - Resolution implemented
+
+## Root Cause
+[Why did this happen]
+
+## Impact
+[Who was affected, for how long]
+
+## Resolution
+[What did we do to fix it]
+
+## Prevention
+[What will we do to prevent recurrence]
+```
+
+### Step 2: Review
+
+Schedule post-incident review within 48 hours:
+- What went well?
+- What could be improved?
+- Process updates needed?
+- Tooling improvements needed?
+
+### Step 3: Implement
+
+Create follow-up tickets:
+- Fix root cause
+- Improve monitoring
+- Update runbooks
+- Conduct training
+
+## Runbook Maintenance
+
+### Keeping Runbooks Current
+
+- Review after each incident
+- Update with lessons learned
+- Test procedures quarterly
+- Include in onboarding
+
+### Adding New Procedures
+
+When adding new procedures:
+
+1. Document step-by-step
+2. Include verification steps
+3. Add to this playbook
+4. Share with team
+5. Test in non-production
+
+## Quick Reference Card
+
+Print this for on-call engineers:
+
+```
+BoxRun Incident Quick Reference
+================================
+
+Check Status:
+  curl http://localhost:9090/v1/info
+  boxrun list
+
+Restart BoxRun:
+  sudo systemctl restart boxrun
+
+View Logs:
+  journalctl -u boxrun -n 100 -f
+
+Database Restore:
+  cp /var/backups/boxrun/boxrun-*.db ~/.boxrun/boxrun.db
+  chmod 600 ~/.boxrun/boxrun.db
+
+Network Restart:
+  pkill gvproxy
+  boxrun serve &
+
+Emergency Contact:
+  on-call: @oncall-engineer
+  escalation: ops-lead@company.com
+```
+
+<Info>
+  For more debugging procedures, see [Debugging Playbook](/observability/debugging-playbook).
+</Info>

@@ -1,0 +1,571 @@
+---
+title: "Troubleshooting"
+sidebarTitle: "Start Here"
+description: "Troubleshooting guide for common BoxLite issues. Find solutions for startup problems, network issues, command execution, and more."
+---
+
+This guide covers common issues you may encounter when using BoxLite. Use the table of contents to navigate to the relevant section, or search for your specific error message.
+
+## Quick Diagnosis
+
+If you're experiencing an issue, start with these diagnostic commands:
+
+```bash
+# Check BoxLite version
+python -c "import boxlite; print(boxlite.__version__)"
+
+# Verify hypervisor access
+# Linux
+ls -l /dev/kvm
+
+# macOS
+sw_vers  # Should be 12+
+
+# Check disk space
+df -h ~/.boxlite
+
+# Enable debug logging
+RUST_LOG=debug python your_script.py
+
+# List boxes and their status
+boxrun ls
+```
+
+## Box Startup Issues
+
+### "Timeout waiting for guest ready" / Box only starts with sudo
+
+**Symptom:** Box creation fails with "Timeout waiting for guest ready (30s)" or "VM subprocess exited before guest became ready".
+
+**Affected:** Ubuntu 24.04 (works on Ubuntu 25.04+ or with sudo)
+
+**Root Cause:** Ubuntu 24.04 restricts unprivileged user namespaces via AppArmor but does not ship the required `bwrap-userns-restrict` profile.
+
+**Diagnosis:**
+```bash
+# Check for AppArmor denials
+dmesg | grep apparmor
+
+# Check if bwrap profile exists
+aa-status | grep bwrap
+```
+
+**Solution A — Install AppArmor profile (recommended):**
+
+```bash
+sudo tee /etc/apparmor.d/bwrap-userns-restrict << 'PROFILE'
+abi <abi/4.0>,
+
+include <tunables/global>
+
+profile bwrap /usr/bin/bwrap flags=(attach_disconnected,mediate_deleted) {
+  allow capability,
+  allow file rwlkm /{**,},
+  allow network,
+  allow unix,
+  allow ptrace,
+  allow signal,
+  allow mqueue,
+  allow io_uring,
+  allow userns,
+  allow mount,
+  allow umount,
+  allow pivot_root,
+  allow dbus,
+  include if exists <local/bwrap-userns-restrict>
+}
+
+profile unpriv_bwrap flags=(attach_disconnected,mediate_deleted) {
+  allow file rwlkm /{**,},
+  allow network,
+  allow unix,
+  allow ptrace,
+  allow signal,
+  allow mqueue,
+  allow io_uring,
+  allow userns,
+  allow mount,
+  allow umount,
+  allow pivot_root,
+  allow dbus,
+  audit deny capability,
+  include if exists <local/unpriv_bwrap>
+}
+PROFILE
+
+sudo apparmor_parser -r /etc/apparmor.d/bwrap-userns-restrict
+```
+
+**Solution B — Disable restriction (less secure):**
+
+```bash
+sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
+# Persist across reboots:
+echo "kernel.apparmor_restrict_unprivileged_userns=0" | \
+  sudo tee /etc/sysctl.d/99-boxlite-userns.conf
+```
+
+**Solution C — Disable jailer (development only):**
+
+```python
+from boxlite.boxlite import SecurityOptions
+
+boxlite.BoxOptions(
+    security=SecurityOptions(jailer_enabled=False),
+)
+```
+
+---
+
+### KVM not available (Linux)
+
+**Symptom:** Error message indicates KVM is not accessible.
+
+**Causes:**
+
+1. KVM module not loaded
+2. User not in kvm group
+3. CPU doesn't support virtualization
+4. Virtualization disabled in BIOS
+
+**Solutions:**
+
+```bash
+# Check if KVM device exists
+ls -l /dev/kvm
+
+# Load KVM module (Intel)
+sudo modprobe kvm kvm_intel
+
+# Load KVM module (AMD)
+sudo modprobe kvm kvm_amd
+
+# Verify module loaded
+lsmod | grep kvm
+
+# Check CPU support
+grep -E 'vmx|svm' /proc/cpuinfo
+
+# Add user to kvm group
+sudo usermod -aG kvm $USER
+
+# Logout and login for group change to take effect
+```
+
+<Note>
+  If your CPU doesn't support virtualization (no vmx/svm in /proc/cpuinfo), you cannot run BoxLite on that machine. Consider using a cloud-based sandbox or a different machine.
+</Note>
+
+---
+
+### Hypervisor.framework not available (macOS)
+
+**Symptom:** BoxLite fails to start boxes on macOS.
+
+**Requirements:**
+- macOS 12+ (Monterey or later)
+- Apple Silicon (M1, M2, M3, M4)
+
+**Diagnosis:**
+
+```bash
+# Check macOS version
+sw_vers
+
+# Check architecture
+uname -m
+# Should output: arm64
+```
+
+**Solution:**
+
+If you're on an Intel Mac, BoxLite is not supported. Consider:
+- Using a Linux VM
+- Deploying to cloud (AWS, GCP, Azure)
+- Using a cloud-based sandboxing service
+
+---
+
+### Box fails to start
+
+**Debug checklist:**
+
+1. **Check disk space:**
+   ```bash
+   df -h ~/.boxlite
+   # Should have at least 1 GB free
+   ```
+
+2. **Verify hypervisor:**
+   ```bash
+   # Linux
+   ls -l /dev/kvm
+   lsmod | grep kvm
+
+   # macOS
+   sw_vers | grep ProductVersion
+   ```
+
+3. **Check image:**
+   ```bash
+   docker pull <image>
+   # Should succeed
+   ```
+
+4. **Enable debug logging:**
+   ```bash
+   RUST_LOG=debug python script.py
+   ```
+
+5. **Check permissions:**
+   ```bash
+   groups | grep kvm
+   ```
+
+---
+
+## Image and Network Issues
+
+### Image pull failed
+
+**Causes:**
+- Network connectivity issues
+- Invalid image name/tag
+- Private image requires authentication
+- Registry not reachable
+
+**Solutions:**
+
+```bash
+# Test with Docker first
+docker pull <image>
+
+# Check network connectivity
+ping registry-1.docker.io
+
+# For private images, authenticate
+docker login
+
+# Verify image name format
+# Correct: "python:3.11-slim"
+# Wrong: "python/3.11-slim"
+
+# Clear corrupted cache
+rm -rf ~/.boxlite/images/*
+```
+
+---
+
+### Port forward not working
+
+**Debug steps:**
+
+1. **Check port availability:**
+   ```bash
+   lsof -i :8080
+   # Should be empty, or show boxlite process
+   ```
+
+2. **Verify port configuration:**
+   ```python
+   # Correct: (host_port, guest_port, protocol)
+   ports=[(8080, 80, "tcp")]
+
+   # Wrong (swapped ports):
+   # ports=[(80, 8080, "tcp")]  # Don't do this
+   ```
+
+3. **Test from inside box:**
+   ```python
+   # Start server in box
+   await box.exec("python", "-m", "http.server", "80", background=True)
+
+   # Test from host
+   import requests
+   response = requests.get("http://localhost:8080")
+   ```
+
+4. **Check gvproxy:**
+   ```bash
+   ps aux | grep gvproxy
+
+   ls ~/.boxlite/gvproxy/
+   ```
+
+---
+
+### No internet access from box
+
+**Causes:**
+- Networking not enabled
+- Firewall blocking outbound connections
+- gvproxy not running
+
+**Solutions:**
+
+```bash
+# Create box with networking enabled
+boxrun create ubuntu:24.04 --name box --network
+
+# Or enable in Python
+boxlite.BoxOptions(network=True)
+```
+
+---
+
+## Command Execution Issues
+
+### Command hangs or execution timeout
+
+**Causes:**
+- Command waiting for input
+- Long-running operation
+- Deadlock or infinite loop
+
+**Solutions:**
+
+```python
+import asyncio
+
+async def execute_with_timeout():
+    execution = await box.exec("command")
+
+    try:
+        result = await asyncio.wait_for(
+            execution.wait(),
+            timeout=30  # 30 second timeout
+        )
+        return result
+    except asyncio.TimeoutError:
+        await execution.kill()
+        print("Command timed out")
+```
+
+**Provide stdin if needed:**
+
+```python
+execution = await box.exec("command")
+stdin = execution.stdin()
+await stdin.send_input(b"input\n")
+```
+
+---
+
+### Exit code non-zero but no error details
+
+**Diagnosis:**
+
+```python
+execution = await box.exec("your-command")
+result = await execution.wait()
+
+print(f"Exit code: {result.exit_code}")
+print(f"Stdout: {result.stdout}")
+print(f"Stderr: {result.stderr}")
+```
+
+**Common exit codes:**
+
+| Code | Description |
+|------|-------------|
+| `0` | Success |
+| `1` | General error |
+| `2` | Invalid argument |
+| `127` | Command not found |
+| `130` | Interrupted (Ctrl+C) |
+
+---
+
+### "Box not found" error
+
+**Causes:**
+- Box ID or name is incorrect
+- Box was removed
+- Typo in box identifier
+
+**Solutions:**
+
+```bash
+# List all boxes
+boxrun ls
+
+# Use the exact box ID or name
+boxrun exec box_abc123 -- command
+
+# Or use the box name
+boxrun exec mybox -- command
+```
+
+---
+
+## Permission and File System Issues
+
+### Permission denied errors
+
+**1. BoxLite home directory:**
+```bash
+chmod 755 ~/.boxlite
+chown -R $USER ~/.boxlite
+```
+
+**2. KVM device (Linux):**
+```bash
+ls -l /dev/kvm
+# Should be: crw-rw---- 1 root kvm
+
+# Add user to kvm group
+sudo usermod -aG kvm $USER
+```
+
+**3. Volume mounts:**
+```bash
+# Ensure host path is accessible
+chmod 755 /host/path
+```
+
+---
+
+### Disk full / Out of space
+
+**Solutions:**
+
+1. **Clean up unused boxes:**
+   ```bash
+   boxrun gc --older-than 0
+   ```
+
+2. **Remove specific box:**
+   ```bash
+   boxrun rm box_id
+   ```
+
+3. **Clear image cache:**
+   ```bash
+   rm -rf ~/.boxlite/images/*
+   ```
+
+4. **Check disk space:**
+   ```bash
+   df -h ~/.boxlite
+   ```
+
+---
+
+### Volume mount not working
+
+**Checklist:**
+
+1. **Path exists on host:**
+   ```bash
+   ls -la /host/path
+   ```
+
+2. **Path is absolute (not relative):**
+   ```bash
+   # Correct
+   -v /home/user/project:/root/project
+
+   # Wrong
+   -v ./project:/root/project
+   ```
+
+3. **Permissions:**
+   ```bash
+   chmod 755 /host/path
+   ```
+
+---
+
+## Performance Issues
+
+### Box is slow
+
+**Common causes:**
+
+1. **Insufficient resources:**
+   ```python
+   boxlite.BoxOptions(
+       cpus=4,
+       memory_mib=4096,
+   )
+   ```
+
+2. **Disk I/O bottleneck:**
+   - Use ephemeral storage (faster than QCOW2)
+   - Check host disk speed: `dd if=/dev/zero of=test bs=1M count=1024`
+
+3. **Too many concurrent boxes:**
+   ```python
+   metrics = await runtime.metrics()
+   print(f"Running boxes: {metrics.running}")
+   ```
+
+4. **Large image size:**
+   - Use smaller images: `alpine:latest` (5 MB) vs `ubuntu:latest` (77 MB)
+
+---
+
+### Out of memory / Box killed
+
+**Cause:** Box exceeded configured memory limit.
+
+**Solutions:**
+
+1. **Increase memory limit:**
+   ```python
+   boxlite.BoxOptions(
+       memory_mib=4096,  # Increase from default 2048
+   )
+   ```
+
+2. **Check actual usage:**
+   ```python
+   metrics = await box.metrics()
+   print(f"Memory: {metrics.mem / (1024**2):.2f} MB")
+   ```
+
+3. **Optimize code:**
+   - Reduce memory footprint
+   - Process data in chunks
+   - Clear variables when done
+
+---
+
+## Getting Help
+
+If you're still experiencing issues after trying these solutions:
+
+1. **Check the FAQ** — Your question may already be answered in the [FAQ](/faq)
+
+2. **Enable debug logging** and capture full output:
+   ```bash
+   RUST_LOG=debug python your_script.py 2>&1 | tee debug.log
+   ```
+
+3. **Gather system information:**
+   ```bash
+   # BoxLite version
+   python -c "import boxlite; print(boxlite.__version__)"
+
+   # Platform
+   uname -a
+
+   # Python version
+   python --version
+   ```
+
+4. **Search existing issues:**
+   - [GitHub Issues](https://github.com/boxlite-ai/boxlite/issues) — Bug reports
+   - [GitHub Discussions](https://github.com/boxlite-ai/boxlite/discussions) — Q&A
+
+5. **Ask on Discord:** [Join our community](https://go.boxlite.ai/discord)
+
+---
+
+## Related Documentation
+
+- [FAQ](/faq) — Frequently asked questions
+- [BoxRun Configuration](/boxrun/configuration) — Configuration file reference
+- [Architecture: Networking & Storage](/architecture/networking-storage) — Networking details
+- [macOS Sandbox Debugging](/guides/macos-sandbox-debugging) — macOS-specific guide

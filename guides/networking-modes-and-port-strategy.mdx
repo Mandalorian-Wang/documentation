@@ -1,0 +1,593 @@
+---
+title: "Networking Modes and Port Strategy"
+description: "Learn how to configure network access, handle port conflicts, and manage multi-service architectures in BoxLite."
+---
+
+# Overview
+
+BoxLite provides flexible networking options to support different architecture patterns. Understanding the available networking modes and port strategies is essential for building secure, performant sandbox applications.
+
+This guide covers:
+- Network modes and their use cases
+- Port forwarding configuration
+- Security considerations
+- Performance implications with code examples
+
+## Prerequisites
+
+- BoxLite SDK installed (`python3 -m pip install boxlite`)
+- Basic understanding of networking concepts
+- Familiarity with BoxOptions configuration
+
+## Detailed Content
+
+### Network Modes Overview
+
+BoxLite supports three primary network modes that provide different levels of connectivity and isolation:
+
+| Mode | Description | Use Case |
+|------|-------------|----------|
+| `True` (NAT) | Full outbound access via NAT | Default, internet access |
+| `"host"` | Host network namespace | Port conflicts, direct access |
+| `False` | No network | Maximum isolation |
+
+### NAT Mode (Default)
+
+NAT (Network Address Translation) mode is the default networking configuration. In this mode:
+
+- The sandbox receives an IP from a virtual subnet (typically 10.0.2.x)
+- Outbound connections work via NAT
+- Inbound connections are blocked (sandbox not reachable from external)
+- Uses gvproxy for user-space networking
+
+```python
+import boxlite
+
+# NAT mode - default behavior
+options = boxlite.BoxOptions(
+    image="python:3.11-slim",
+    network=True  # NAT mode enabled
+)
+
+async with boxlite.SimpleBox(options) as box:
+    # Outbound connections work
+    result = await box.exec("curl", "-s", "https://api.github.com")
+    print(result.stdout)
+```
+
+**Behavior:**
+- Sandbox can initiate connections to any external service
+- External services cannot connect to sandbox
+- Uses virtual DHCP for IP assignment
+- DNS resolved through virtual resolver
+
+### Host Network Mode
+
+Use host network mode when you need the sandbox to share the host's network namespace:
+
+```python
+import boxlite
+
+# Host network mode - shares host's network
+options = boxlite.BoxOptions(
+    image="python:3.11-slim",
+    network="host"
+)
+
+async with boxlite.SimpleBox(options) as box:
+    # Has same IP as host
+    result = await box.exec("hostname", "-I")
+    print(result.stdout)
+```
+
+<Warning>
+Host network mode provides less isolation. Only use when required for specific use cases like port conflicts.
+</Warning>
+
+**Use cases:**
+- Running services that need to bind to specific ports
+- Testing against host services
+- Development workflows requiring direct network access
+
+### No Network Mode
+
+For maximum isolation with complete network isolation:
+
+```python
+import boxlite
+
+# No network - completely isolated
+options = boxlite.BoxOptions(
+    image="python:3.11-slim",
+    network=False
+)
+
+async with boxlite.SimpleBox(options) as box:
+    # No network connectivity
+    result = await box.exec("ping", "-c", "1", "google.com")
+    # Will fail - no network access
+```
+
+**Use cases:**
+- Air-gapped execution environments
+- Processing sensitive data with no external communication
+- Benchmarking compute-only workloads
+- Security-sensitive operations
+
+### Custom DNS Configuration
+
+Configure custom DNS servers when you need specific domain resolution:
+
+```python
+import boxlite
+
+# Custom DNS servers
+options = boxlite.BoxOptions(
+    image="python:3.11-slim",
+    network=True,
+    dns=["8.8.8.8", "1.1.1.1"]  # Google and Cloudflare DNS
+)
+
+async with boxlite.SimpleBox(options) as box:
+    result = await box.exec("nslookup", "example.com")
+    print(result.stdout)
+```
+
+### Port Forwarding Strategies
+
+Expose services running inside the sandbox to the host or external network:
+
+#### Basic Port Forwarding
+
+Forward a host port to a service in the sandbox:
+
+```python
+import boxlite
+
+# Forward host port 8080 to sandbox port 80
+options = boxlite.BoxOptions(
+    image="nginx:latest",
+    network=True,
+    ports=[(8080, 80, "tcp")]  # (host_port, guest_port, protocol)
+)
+
+async with boxlite.SimpleBox(options) as box:
+    # nginx now accessible at http://localhost:8080
+    await box.wait_for_service(80)
+    print("Service ready")
+```
+
+#### Multiple Port Forwarding
+
+Expose multiple services:
+
+```python
+import boxlite
+
+# Multiple services
+options = boxlite.BoxOptions(
+    image="python:3.11-slim",
+    network=True,
+    ports=[
+        (8080, 80, "tcp"),    # HTTP
+        (8443, 443, "tcp"),   # HTTPS
+        (3000, 3000, "tcp")   # Dev server
+    ]
+)
+
+async with boxlite.SimpleBox(options) as box:
+    # All services accessible on host
+    pass
+```
+
+#### UDP Port Forwarding
+
+For UDP-based services:
+
+```python
+import boxlite
+
+# UDP port forwarding
+options = boxlite.BoxOptions(
+    image="python:3.11-slim",
+    network=True,
+    ports=[
+        (53, 53, "udp"),     # DNS
+        (123, 123, "udp")    # NTP
+    ]
+)
+```
+
+### Private Connectivity
+
+For sandbox-to-sandbox communication or private network access:
+
+```python
+import boxlite
+
+# Private network configuration
+options = boxlite.BoxOptions(
+    image="python:3.11-slim",
+    network=True,
+    network_mode="private",
+    ip="192.168.100.10"
+)
+
+async with boxlite.SimpleBox(options) as box:
+    # In private network subnet
+    result = await box.exec("hostname", "-I")
+```
+
+### Security Considerations
+
+#### Egress Control
+
+Restrict outbound connectivity with allowlists:
+
+```python
+import boxlite
+
+# Allow specific domains only
+options = boxlite.BoxOptions(
+    image="python:3.11-slim",
+    network=True,
+    allowed_domains=[
+        "api.example.com",
+        "cdn.example.com"
+    ]
+)
+
+async with boxlite.SimpleBox(options) as box:
+    # Can only connect to allowed domains
+    result = await box.exec("curl", "-s", "https://api.example.com")
+```
+
+#### Network Best Practices
+
+1. **Disable networking by default**: Only enable when necessary
+2. **Use egress controls**: Implement allowlists for external connectivity
+3. **Avoid host network mode**: Prefer NAT mode for better isolation
+4. **Monitor network metrics**: Track data transfer for unusual patterns
+
+```python
+import boxlite
+
+# Comprehensive security configuration
+options = boxlite.BoxOptions(
+    image="python:3.11-slim",
+    network=True,
+    dns=["10.0.2.3"],  # Internal DNS
+    allowed_domains=["internal.example.com"],
+    blocked_ips=["10.0.0.0/8"]  # Block internal ranges
+)
+
+async with boxlite.SimpleBox(options) as box:
+    # Secure network configuration
+    pass
+```
+
+### Performance Implications
+
+Network mode selection affects performance:
+
+| Mode | Latency | Throughput | Notes |
+|------|---------|-------------|-------|
+| NAT (default) | Moderate | High | gvproxy overhead |
+| Host | Lowest | Highest | Direct host access |
+| None | N/A | N/A | No network stack |
+
+#### Optimize Network Performance
+
+For high-throughput workloads:
+
+```python
+import boxlite
+
+# Performance-optimized configuration
+options = boxlite.BoxOptions(
+    image="python:3.11-slim",
+    network=True,
+    # Disable DNS caching for fresh lookups
+    dns=["8.8.8.8"],
+    # Connection pooling
+    network_pool_size=10
+)
+
+async def high_throughput_workload(box: boxlite.SimpleBox, urls: list):
+    """Execute multiple network requests efficiently."""
+    import asyncio
+
+    # Reuse connections
+    async with box.session() as session:
+        tasks = [session.get(url) for url in urls]
+        return await asyncio.gather(*tasks)
+```
+
+### Code Examples
+
+#### Example 1: Web Service with Port Forwarding
+
+```python
+import asyncio
+import boxlite
+
+async def run_web_service():
+    """Run a web service with port forwarding."""
+    options = boxlite.BoxOptions(
+        image="nginx:latest",
+        network=True,
+        ports=[(8080, 80, "tcp")],
+        auto_remove=True
+    )
+
+    async with boxlite.SimpleBox(options) as box:
+        # Wait for nginx to start
+        await box.wait_for_port(80, timeout=30)
+
+        # Service accessible at localhost:8080
+        result = await box.exec("curl", "-s", "http://localhost:80")
+        return result.stdout
+
+# Usage
+result = asyncio.run(run_web_service())
+print(result)
+```
+
+#### Example 2: Agent API Service
+
+```python
+import asyncio
+import boxlite
+
+async def run_agent_api_service(port: int = 8000):
+    """Run an API service for agent interactions."""
+    options = boxlite.BoxOptions(
+        image="python:3.11-slim",
+        network=True,
+        ports=[(port, 8000, "tcp")],
+        cpus=1,
+        memory_mib=1024,
+        auto_remove=True
+    )
+
+    async with boxlite.CodeBox(options) as box:
+        # Install FastAPI
+        await box.install_package("fastapi", "uvicorn")
+
+        # Create API app
+        api_code = """
+from fastapi import FastAPI
+import uvicorn
+
+app = FastAPI()
+
+@app.get("/execute")
+async def execute(code: str):
+    exec(code)
+    return {"status": "executed"}
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8000)
+"""
+
+        # Write and run the app
+        await box.write_file("/app/api.py", api_code)
+        await box.exec("python", "/app/api.py")
+
+        # Service now available
+        return f"http://localhost:{port}"
+
+# Usage
+url = asyncio.run(run_agent_api_service())
+print(f"Service available at: {url}")
+```
+
+#### Example 3: Multiple Boxes with Private Network
+
+```python
+import asyncio
+import boxlite
+
+async def run_private_network_app():
+    """Run multiple boxes in a private network."""
+    # Backend service
+    backend_options = boxlite.BoxOptions(
+        image="python:3.11-slim",
+        network=True,
+        network_mode="private",
+        ip="192.168.100.10",
+        ports=[(8080, 8080, "tcp")]
+    )
+
+    # Frontend service
+    frontend_options = boxlite.BoxOptions(
+        image="python:3.11-slim",
+        network=True,
+        network_mode="private",
+        ip="192.168.100.11"
+    )
+
+    async with boxlite.SimpleBox(backend_options) as backend, \
+              boxlite.SimpleBox(frontend_options) as frontend:
+        # Frontend can reach backend via private network
+        result = await frontend.exec(
+            "curl", "-s", "http://192.168.100.10:8080"
+        )
+        return result.stdout
+
+# Usage
+result = asyncio.run(run_private_network_app())
+print(result)
+```
+
+#### Example 4: Egress-Controlled Agent
+
+```python
+import asyncio
+import boxlite
+
+async def run_egress_controlled_agent(
+    allowed_endpoints: list[str]
+):
+    """Run agent with restricted network access."""
+    options = boxlite.BoxOptions(
+        image="python:3.11-slim",
+        network=True,
+        allowed_domains=allowed_endpoints,
+        # Only allow HTTPS
+        allowed_protocols=["https"]
+    )
+
+    async with boxlite.CodeBox(options) as box:
+        # Try connecting to allowed endpoint
+        for endpoint in allowed_endpoints:
+            try:
+                result = await box.exec(
+                    "curl", "-s", f"https://{endpoint}/health"
+                )
+                print(f"{endpoint}: {result.stdout}")
+            except Exception as e:
+                print(f"{endpoint}: {e}")
+
+        # This will fail - not in allowlist
+        try:
+            result = await box.exec(
+                "curl", "-s", "https://google.com"
+            )
+        except Exception as e:
+            print(f"Blocked as expected: {e}")
+
+# Usage
+asyncio.run(run_egress_controlled_agent([
+    "api.example.com",
+    "services.internal.com"
+]))
+```
+
+#### Example 5: Air-Gapped Security Sandbox
+
+```python
+import asyncio
+import boxlite
+
+async def run_secure_computation(data: str):
+    """Run computation in air-gapped environment."""
+    options = boxlite.BoxOptions(
+        image="python:3.11-slim",
+        network=False,  # No network
+        cpus=1,
+        memory_mib=512,
+        # Attach volume for output (write to host)
+        volumes=[("/tmp/output", "/output", "rw")]
+    )
+
+    async with boxlite.SimpleBox(options) as box:
+        # Process data - completely isolated
+        result = await box.exec(
+            "python", "-c", f"print('{data} encrypted')"
+        )
+
+        # Write result to shared volume
+        await box.write_file("/output/result.txt", result.stdout)
+
+        return result.stdout
+
+# Usage
+result = asyncio.run(run_secure_computation("sensitive data"))
+print(result)
+```
+
+## Common Mistakes
+
+### 1. Port Conflicts with Host Services
+
+**Problem:** Service fails to bind to port because host already uses it.
+
+**Solution:** Use port forwarding to map to different host port:
+
+```python
+# Instead of directly binding to 80
+options = boxlite.BoxOptions(
+    image="nginx:latest",
+    network=True,
+    ports=[(8080, 80, "tcp")]  # Forward to 8080
+)
+```
+
+### 2. Assuming Inbound Connectivity Works
+
+**Problem:** NAT mode blocks inbound connections.
+
+**Solution:** Use port forwarding or host mode if you need to accept connections:
+
+```python
+# Port forwarding for inbound access
+options = boxlite.BoxOptions(
+    image="python:3.11-slim",
+    network=True,
+    ports=[(8080, 8000, "tcp")]
+)
+```
+
+### 3. Ignoring DNS Configuration
+
+**Problem:** DNS resolution fails for internal domains.
+
+**Solution:** Configure custom DNS servers:
+
+```python
+# Custom DNS for internal domains
+options = boxlite.BoxOptions(
+    image="python:3.11-slim",
+    network=True,
+    dns=["10.0.0.53"]  # Internal DNS server
+)
+```
+
+### 4. Overly Permissive Egress
+
+**Problem:** Agent can access arbitrary endpoints creating security risk.
+
+**Solution:** Implement egress allowlists:
+
+```python
+# Strict allowlist
+options = boxlite.BoxOptions(
+    image="python:3.11-slim",
+    network=True,
+    allowed_domains=["api.example.com"]
+)
+```
+
+## Best Practices Checklist
+
+<Steps>
+  <Step title="Use NAT mode by default">
+    Default to NAT mode for best isolation. Only use host mode when necessary.
+  </Step>
+  <Step title="Configure port forwarding explicitly">
+    Use explicit port forwarding rather than relying on host port conflicts.
+  </Step>
+  <Step title="Set up egress controls">
+    Implement allowlists to restrict external network access.
+  </Step>
+  <Step title="Monitor network usage">
+    Track network metrics for unusual patterns or excessive data transfer.
+  </Step>
+  <Step title="Use no network mode for sensitive tasks">
+    Enable no network mode for security-sensitive or air-gapped operations.
+  </Step>
+  <Step title="Configure custom DNS when needed">
+    Set up internal DNS servers for private domain resolution.
+  </Step>
+  <Step title="Test network configurations">
+    Verify network behavior in test environments before production.
+  </Step>
+</Steps>
+
+## Related Reading
+
+- [Network Overview](/networking/overview) - Full networking documentation
+- [Port Forwarding](/networking/port-forwarding) - Detailed port configuration
+- [Private Connectivity](/networking/private-connectivity) - Private network setup
+- [Egress Control](/networking/egress-control) - Outbound traffic management

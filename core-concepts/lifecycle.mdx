@@ -1,0 +1,350 @@
+---
+title: "Box Lifecycle"
+sidebarTitle: "Lifecycle"
+description: "Understand box lifecycle states, state transitions, context manager patterns, manual lifecycle control, and auto_remove behavior."
+---
+
+Every box follows the same lifecycle: **create → start → use → stop**. This guide covers all lifecycle states, transitions, and the patterns for managing them.
+
+## Lifecycle Overview
+
+BoxLite boxes operate in distinct states throughout their existence:
+
+| State | Description |
+|-------|-------------|
+| **Created** | Box object instantiated but VM not yet running |
+| **Starting** | VM is booting and initializing |
+| **Running** | Box is active and ready to execute commands |
+| **Stopping** | VM is shutting down |
+| **Stopped** | VM has halted but box metadata may persist |
+| **Removed** | Box fully cleaned up (when auto_remove=True) |
+
+### State Transition Diagram
+
+```
+                    ┌─────────────────────────────────────────────────────────┐
+                    │                                                         │
+                    ▼                                                         │
+┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐    ┌───────────┐ │
+│  CREATED │───▶│ STARTING │───▶│ RUNNING  │───▶│ STOPPING │───▶│ STOPPED   │ │
+└──────────┘    └──────────┘    └──────────┘    └──────────┘    └───────────┘ │
+     │                                       │                    │           │
+     │                                       │                    │           │
+     │                                       ▼                    ▼           │
+     │                              ┌──────────────────┐    ┌─────────────┐     │
+     │                              │ auto_remove=True │    │ auto_remove │     │
+     │                              │  (cleanup happens) │    │ =False (persist)│ │
+     │                              └──────────────────┘    └─────────────┘     │
+     │                                                                 │        │
+     │                                                                 │        │
+     └─────────────────────────────────────────────────────────────────┘        │
+                              reuse_existing=True                                   │
+                                                                                  │
+                    ◀────────────────────────────────────────────────────────────┘
+```
+
+## Context Manager Pattern (Recommended)
+
+The context manager handles startup and cleanup automatically, ensuring proper resource cleanup even if exceptions occur:
+
+```python
+import boxlite
+
+async def context_manager_example():
+    """Recommended pattern for most use cases."""
+    async with boxlite.SimpleBox(image="python:3.12-slim") as box:
+        result = await box.exec("echo", "hello")
+        print(result.stdout)  # Output: hello
+
+    # Box automatically stops and cleans up here
+```
+
+### Why Context Manager?
+
+1. **Automatic cleanup** - Box stops even if your code raises an exception
+2. **Simpler code** - No need to track box state manually
+3. **Exception safe** - Resources released in `finally` block
+
+```python
+async def safe_example():
+    """Context manager ensures cleanup on exception."""
+    async with boxlite.SimpleBox(image="python:3.12-slim") as box:
+        await box.exec("pip", "install", "numpy")
+        raise RuntimeError("Unexpected error")  # Box still cleaned up!
+
+    # Cleanup happens before exception propagates
+```
+
+## Manual Lifecycle Pattern
+
+For long-lived boxes or cross-function usage, manage lifecycle explicitly:
+
+```python
+import boxlite
+
+async def manual_lifecycle_example():
+    """Manual control for advanced use cases."""
+    # Create box instance
+    box = boxlite.SimpleBox(
+        image="python:3.12-slim",
+        auto_remove=False  # Persist after shutdown
+    )
+
+    try:
+        # Explicit start
+        await box.start()
+        print(f"Box started: {box.id}")
+
+        # Use the box
+        result = await box.exec("echo", "hello")
+        print(result.stdout)
+
+        # Multiple commands in same session
+        result = await box.exec("pwd")
+        print(result.stdout)
+
+    finally:
+        # Explicit shutdown
+        await box.shutdown()
+        print("Box stopped")
+```
+
+### When to Use Manual Lifecycle
+
+| Use Case | Pattern |
+|----------|---------|
+| Short-lived command execution | Context manager |
+| Long-running background box | Manual |
+| Shared box across multiple functions | Manual |
+| Conditional cleanup logic | Manual |
+| Box reuse across sessions | Manual with `auto_remove=False` |
+
+## auto_remove Behavior
+
+The `auto_remove` parameter controls what happens when a box stops:
+
+```python
+# Default: True - box fully removed after shutdown
+async with boxlite.SimpleBox(image="python:3.12-slim", auto_remove=True) as box:
+    await box.exec("echo", "hello")
+# Box automatically deleted
+
+# False - box persists after shutdown (can be inspected/reused)
+async with boxlite.SimpleBox(image="python:3.12-slim", auto_remove=False) as box:
+    await box.exec("echo", "hello")
+# Box persists but is stopped
+```
+
+### Persisting and Reusing Boxes
+
+With `auto_remove=False`, you can inspect stopped boxes and reconnect:
+
+```python
+import boxlite
+
+async def persist_and_reuse():
+    """Create, use, stop, then reuse the same box."""
+    box = boxlite.SimpleBox(
+        image="python:3.12-slim",
+        auto_remove=False,
+        name="my-persistent-box"  # Named boxes can be reused
+    )
+
+    # First session
+    await box.start()
+    await box.exec("echo", "session 1")
+    await box.shutdown()
+
+    # Inspect stopped box
+    print(f"Box state: {box.info.state}")  # Shows stopped
+
+    # Second session - reuse same box
+    await box.start()  # Reconnects to existing box
+    await box.exec("echo", "session 2")
+    await box.shutdown()
+
+    # Explicit removal when done
+    await box.remove()
+```
+
+## Lifecycle API Reference
+
+### Box Creation Options
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `image` | str | Required | OCI image to use |
+| `auto_remove` | bool | True | Remove box on shutdown |
+| `name` | str | None | Unique name for box reuse |
+| `reuse_existing` | bool | False | Reuse existing named box |
+| `cpus` | int | 1 | CPU cores |
+| `memory_mib` | int | 2048 | Memory in MiB |
+
+### Lifecycle Methods
+
+| Method | Description |
+|--------|-------------|
+| `start()` | Boot the VM and initialize the box |
+| `stop()` | Gracefully stop the VM |
+| `shutdown()` | Forcefully stop the VM (alias for stop) |
+| `remove()` | Permanently delete the box |
+
+### BoxInfo Properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `id` | str | Unique box identifier |
+| `name` | str | Box name (if assigned) |
+| `state` | str | Current state (created/running/stopped) |
+| `image` | str | OCI image used |
+| `cpus` | int | CPU cores allocated |
+| `memory_mib` | int | Memory limit in MiB |
+| `created_at` | datetime | Creation timestamp |
+
+## Common Patterns
+
+### Pattern 1: Simple One-Shot
+
+```python
+async def one_shot():
+    """Run a single command and done."""
+    async with boxlite.SimpleBox(image="python:3.12-slim") as box:
+        result = await box.exec("echo", "one shot")
+        return result.stdout
+```
+
+### Pattern 2: Reusable Box
+
+```python
+async def reusable_box():
+    """Create once, use many times."""
+    box = boxlite.SimpleBox(
+        image="python:3.12-slim",
+        auto_remove=False,
+        name="work-box"
+    )
+
+    try:
+        await box.start()
+
+        # Multiple independent operations
+        for task in ["task1", "task2", "task3"]:
+            result = await box.exec("echo", task)
+            print(result.stdout)
+
+    finally:
+        await box.shutdown()
+        await box.remove()
+```
+
+### Pattern 3: Shared Persistent Box
+
+```python
+# Global or module-level box
+_shared_box = None
+
+async def get_shared_box():
+    """Get or create a shared box."""
+    global _shared_box
+
+    if _shared_box is None:
+        _shared_box = boxlite.SimpleBox(
+            image="python:3.12-slim",
+            auto_remove=False,
+            name="shared-box"
+        )
+        await _shared_box.start()
+
+    return _shared_box
+
+async def shared_box_example():
+    """Use the shared box."""
+    box = await get_shared_box()
+    result = await box.exec("hostname")
+    return result.stdout
+```
+
+## TTL (Time-to-Live) Configuration
+
+For production workloads, configure TTL to prevent runaway boxes:
+
+```python
+import boxlite
+
+async def with_ttl():
+    """Box with automatic timeout."""
+    async with boxlite.SimpleBox(
+        image="python:3.12-slim",
+        # TTL configuration handled via health check
+    ) as box:
+        result = await box.exec("echo", "ttl example")
+        print(result.stdout)
+```
+
+<Note>
+BoxLite does not currently expose a direct TTL parameter. Use health check timeouts or external orchestration to implement TTL-based cleanup.
+</Note>
+
+## Error Handling
+
+### Startup Failures
+
+```python
+import boxlite
+
+async def handle_startup_failure():
+    """Handle box creation failures."""
+    try:
+        async with boxlite.SimpleBox(image="nonexistent:image") as box:
+            await box.exec("echo", "hello")
+    except boxlite.BoxliteError as e:
+        print(f"Box creation failed: {e}")
+        # Handle: check image name, network connectivity
+    except boxlite.PackageNotFoundError as e:
+        print(f"Image not found: {e}")
+        # Handle: verify image exists
+```
+
+### Shutdown Failures
+
+```python
+async def handle_shutdown_failure():
+    """Handle shutdown failures gracefully."""
+    box = boxlite.SimpleBox(image="python:3.12-slim")
+
+    try:
+        await box.start()
+        await box.exec("echo", "hello")
+    finally:
+        try:
+            await box.shutdown()
+        except Exception as e:
+            print(f"Shutdown failed: {e}")
+            # Force kill if needed
+```
+
+## Best Practices
+
+1. **Use context manager by default** - Automatic cleanup prevents resource leaks
+2. **Set `auto_remove=True` for short-lived boxes** - Default behavior, no cleanup needed
+3. **Use `auto_remove=False` only when inspecting/reusing** - Adds complexity, use intentionally
+4. **Always use `try/finally` with manual lifecycle** - Ensure cleanup even on exceptions
+5. **Name boxes for reuse** - Enables reconnection and debugging
+6. **Monitor box state** - Check `box.info.state` to verify box health
+
+## Related Topics
+
+<CardGroup cols={2}>
+  <Card title="Core Concepts Overview" icon="lightbulb" href="/core-concepts">
+    Core concepts introduction.
+  </Card>
+  <Card title="Box Types" icon="box" href="/core-concepts#box-types">
+    SimpleBox, CodeBox, BrowserBox, and more.
+  </Card>
+  <Card title="Images" icon="image" href="/core-concepts/images">
+    OCI images and image management.
+  </Card>
+  <Card title="Resource Model" icon="cpu" href="/core-concepts/resource-model">
+    CPU, memory, and disk allocation.
+  </Card>
+</CardGroup>

@@ -1,0 +1,572 @@
+---
+title: "Port Forwarding"
+description: "Configure port mapping between host and container for service exposure."
+---
+
+Port forwarding enables services running inside BoxLite sandboxes to be accessible from the host machine or external network. This guide covers how to configure port forwarding, expose services, and integrate with reverse proxies.
+
+## Understanding Port Forwarding
+
+Port forwarding maps network ports from the host machine to ports inside the sandbox virtual machine. This allows external traffic to reach services running inside isolated sandbox environments.
+
+### How It Works
+
+BoxLite uses gvproxy to handle port forwarding through the vsock interface:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                         Host Machine                            │
+│                                                                 │
+│  ┌──────────────────┐                                          │
+│  │   External       │                                          │
+│  │   Request        │                                          │
+│  │   :8080          │                                          │
+│  └────────┬─────────┘                                          │
+│           │                                                    │
+│           ▼                                                    │
+│  ┌──────────────────────────────────────────────────────────┐ │
+│  │                    gvproxy                                │ │
+│  │  Port Mapping: 8080 -> 80 (via vsock)                    │ │
+│  │                                                          │ │
+│  │   Host Port   Guest Port   Protocol                      │ │
+│  │   ─────────────────────────────────                      │ │
+│  │     8080    ->    80       TCP                          │ │
+│  │     8443    ->   443       TCP                          │ │
+│  │     2222    ->    22       TCP                          │ │
+│  └──────────────────────────────────────────────────────────┘ │
+│           │                                                    │
+│           ▼ vsock                                             │
+│  ┌──────────────────┐                                          │
+│  │  Sandbox VM      │                                          │
+│  │                  │                                          │
+│  │  ┌────────────┐  │                                          │
+│  │  │ nginx      │  │                                          │
+│  │  │ listening  │  │                                          │
+│  │  │ on :80     │  │                                          │
+│  │  └────────────┘  │                                          │
+│  └──────────────────┘                                          │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+## Basic Port Forwarding Configuration
+
+### Creating a Box with Port Forwarding
+
+Configure port forwarding when creating a sandbox:
+
+```python
+from boxlite import SimpleBox
+import asyncio
+import httpx
+
+async def main():
+    # Forward host port 8080 to sandbox port 80
+    async with SimpleBox(
+        image="nginx:latest",
+        network=True,
+        ports=[(8080, 80, "tcp")]
+    ) as box:
+        # Wait for nginx to start
+        await asyncio.sleep(2)
+
+        # nginx is now accessible at http://localhost:8080
+        async with httpx.AsyncClient() as client:
+            response = await client.get("http://localhost:8080")
+            print(f"Status: {response.status_code}")
+
+asyncio.run(main())
+```
+
+### Port Configuration Format
+
+The port configuration uses tuples of `(host_port, guest_port, protocol)`:
+
+```python
+# Format: (host_port, guest_port, protocol)
+ports = [
+    (8080, 80, "tcp"),    # HTTP
+    (8443, 443, "tcp"),   # HTTPS
+    (2222, 22, "tcp"),    # SSH
+    (53, 53, "udp"),      # DNS
+]
+```
+
+<Warning>
+Ensure host ports are not already in use by other processes.
+</Warning>
+
+## Exposing Services from Sandboxes
+
+### HTTP Server Example
+
+Run an HTTP server inside the sandbox and expose it to the host:
+
+```python
+from boxlite import SimpleBox
+import asyncio
+import httpx
+
+async def main():
+    async with SimpleBox(
+        image="python:3.11-slim",
+        network=True,
+        ports=[(8000, 8000, "tcp")]
+    ) as box:
+        # Start HTTP server in background
+        await box.exec(
+            "python", "-m", "http.server", "8000",
+            background=True
+        )
+
+        # Wait for server to start
+        await asyncio.sleep(2)
+
+        # Access from host
+        async with httpx.AsyncClient() as client:
+            response = await client.get("http://localhost:8000")
+            print(f"Server responded with: {response.status_code}")
+
+asyncio.run(main())
+```
+
+### Flask Application Example
+
+Expose a Flask web application running inside the sandbox:
+
+```python
+from boxlite import SimpleBox
+
+# Create a custom image with Flask (or use startup script)
+async with SimpleBox(
+    image="python:3.11-slim",
+    network=True,
+    ports=[(5000, 5000, "tcp")]
+) as box:
+    # Install Flask
+    await box.exec("pip", "install", "flask")
+
+    # Write Flask app
+    await box.write_file("/app/app.py", """
+from flask import Flask
+app = Flask(__name__)
+
+@app.route('/')
+def hello():
+    return 'Hello from BoxLite!'
+
+if __name__ == '__main__':
+        app.run(host='0.0.0.0', port=5000)
+""")
+
+    # Run Flask in background
+    await box.exec("python", "/app/app.py", background=True)
+
+    # Flask app now accessible at http://localhost:5000
+```
+
+### Database Server Example
+
+Expose a database server for development:
+
+```python
+from boxlite import SimpleBox
+
+async with SimpleBox(
+    image="postgres:15",
+    network=True,
+    ports=[(5432, 5432, "tcp")]
+) as box:
+    # PostgreSQL now accessible at localhost:5432
+    # Default credentials: postgres/postgres
+    pass
+```
+
+## Multiple Port Configuration
+
+### Multiple TCP Ports
+
+Configure multiple TCP ports for different services:
+
+```python
+from boxlite import SimpleBox
+
+async with SimpleBox(
+    image="myapp:latest",
+    network=True,
+    ports=[
+        (80, 80, "tcp"),      # HTTP
+        (443, 443, "tcp"),    # HTTPS
+        (3000, 3000, "tcp"),  # Dev server
+        (9229, 9229, "tcp"),  # Debugger
+    ]
+) as box:
+    # All ports forwarded to respective sandbox ports
+    pass
+```
+
+### Mixed TCP and UDP Ports
+
+Combine TCP and UDP ports for various protocols:
+
+```python
+from boxlite import SimpleBox
+
+async with SimpleBox(
+    image="media-server:latest",
+    network=True,
+    ports=[
+        (80, 80, "tcp"),       # HTTP
+        (443, 443, "tcp"),     # HTTPS
+        (554, 554, "tcp"),     # RTSP
+        (5000, 5000, "udp"),   # RTP
+        (5001, 5001, "udp"),   # RTCP
+    ]
+) as box:
+    pass
+```
+
+## Dynamic Port Allocation
+
+Let the system assign available host ports:
+
+```python
+from boxlite import SimpleBox
+
+async with SimpleBox(
+    image="python:3.11-slim",
+    network=True,
+    ports=[(0, 8080, "tcp")]  # port 0 = auto-assign
+) as box:
+    # Get the assigned port
+    info = await box.info()
+    assigned_port = info.network.ports[0].host_port
+    print(f"Assigned port: {assigned_port}")
+```
+
+## Reverse Proxy Integration
+
+### Nginx Reverse Proxy
+
+Integrate BoxLite with Nginx for load balancing:
+
+```nginx
+# /etc/nginx/conf.d/boxlite.conf
+
+upstream boxlite_backend {
+    server 127.0.0.1:8080;
+    server 127.0.0.1:8081;
+    server 127.0.0.1:8082;
+}
+
+server {
+    listen 80;
+    server_name api.example.com;
+
+    location / {
+        proxy_pass http://boxlite_backend;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+}
+```
+
+### Dynamic Backend Registration
+
+Register sandbox backends dynamically with a reverse proxy:
+
+```python
+from boxlite import SimpleBox
+import asyncio
+import subprocess
+
+async def register_with_nginx(port, container_id):
+    """Register a new backend with Nginx"""
+    config = f"server 127.0.0.1:{port};"
+
+    # Update nginx config (simplified example)
+    subprocess.run([
+        "nginx", "-s", "reload"
+    ])
+
+async def main():
+    boxes = []
+
+    # Create multiple sandbox instances
+    for i in range(3):
+        box = SimpleBox(
+            image="python:3.11-slim",
+            network=True,
+            ports=[(8080 + i, 8000, "tcp")]
+        )
+        boxes.append(box)
+        await register_with_nginx(8080 + i, box.id)
+
+asyncio.run(main())
+```
+
+### Traefik Integration
+
+Use Traefik for service discovery with BoxLite:
+
+```yaml
+# docker-compose.yml
+services:
+  traefik:
+    image: traefik:v2.10
+    ports:
+      - "80:80"
+      - "8080:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+
+  boxlite:
+    image: boxlite/runtime
+    network_mode: host
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.boxlite.rule=PathPrefix(`/api`)"
+      - "traefik.http.services.boxlite.loadbalancer.server.port=8000"
+```
+
+## Port Forwarding with TLS Termination
+
+Implement TLS termination at the host level:
+
+```python
+from boxlite import SimpleBox
+import asyncio
+
+async def main():
+    async with SimpleBox(
+        image="nginx:latest",
+        network=True,
+        ports=[
+            (80, 80, "tcp"),    # HTTP redirect
+            (443, 443, "tcp"),  # HTTPS
+        ]
+    ) as box:
+        # Configure SSL certificates inside sandbox
+        await box.exec("nginx", "-s", "reload")
+
+        # TLS terminated at nginx
+        # Access at https://localhost:443
+        pass
+
+asyncio.run(main())
+```
+
+## Health Checks and Monitoring
+
+### Verify Port Forwarding
+
+Confirm port forwarding is working correctly:
+
+```python
+from boxlite import SimpleBox
+import asyncio
+import httpx
+import socket
+
+async def verify_port_forwarding(box, host_port, guest_port):
+    """Verify port forwarding is working"""
+    # Check if port is listening on host
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.settimeout(2)
+    result = sock.connect_ex(('localhost', host_port))
+    sock.close()
+
+    if result == 0:
+        print(f"Port {host_port} is open and forwarding")
+        return True
+    else:
+        print(f"Port {host_port} is not accessible")
+        return False
+
+async def main():
+    async with SimpleBox(
+        image="python:3.11-slim",
+        network=True,
+        ports=[(8080, 8000, "tcp")]
+    ) as box:
+        # Start test server
+        await box.exec("python", "-m", "http.server", "8000", background=True)
+        await asyncio.sleep(2)
+
+        # Verify forwarding
+        await verify_port_forwarding(box, 8080, 8000)
+
+asyncio.run(main())
+```
+
+### Automatic Health Monitoring
+
+Implement health checks for forwarded services:
+
+```python
+from boxlite import SimpleBox
+import asyncio
+import httpx
+
+async def health_monitor(box, port, interval=5):
+    """Monitor health of forwarded service"""
+    while True:
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    f"http://localhost:{port}",
+                    timeout=2.0
+                )
+                if response.status_code == 200:
+                    print(f"Service on port {port} is healthy")
+                else:
+                    print(f"Service returned: {response.status_code}")
+        except Exception as e:
+            print(f"Health check failed: {e}")
+
+        await asyncio.sleep(interval)
+
+async def main():
+    async with SimpleBox(
+        image="nginx:latest",
+        network=True,
+        ports=[(8080, 80, "tcp")]
+    ) as box:
+        # Run health monitor in background
+        monitor_task = asyncio.create_task(
+            health_monitor(box, 8080)
+        )
+
+        # Run for 30 seconds
+        await asyncio.sleep(30)
+        monitor_task.cancel()
+
+asyncio.run(main())
+```
+
+## Troubleshooting
+
+### Common Issues
+
+#### Port Already in Use
+
+**Symptom:** Error when creating box with port forwarding.
+
+**Solution:**
+
+```bash
+# Find what's using the port
+lsof -i :8080
+
+# Or use a different port
+ports=[(8081, 80, "tcp")]
+```
+
+#### Service Not Listening
+
+**Symptom:** Port is open but connection is refused.
+
+**Solution:**
+
+```python
+# Verify service is running inside sandbox
+result = await box.exec("ss", "-tlnp")
+print(result.stdout)
+
+# Check if service started successfully
+logs = await box.logs()
+print(logs)
+```
+
+#### Connection Timeout
+
+**Symptom:** Connection times out even though port is open.
+
+**Solution:**
+
+```python
+# Check firewall rules
+result = await box.exec("iptables", "-L")
+print(result.stdout)
+
+# Verify gvproxy is running
+import subprocess
+result = subprocess.run(["ps", "aux"], capture_output=True)
+print("gvproxy" in result.stdout.decode())
+```
+
+### Debug Mode
+
+Enable detailed logging for port forwarding issues:
+
+```python
+import logging
+
+# Enable debug logging
+logging.basicConfig(level=logging.DEBUG)
+
+# Set environment variable for BoxLite debug mode
+import os
+os.environ["BOXLITE_DEBUG"] = "1"
+
+# Now create box with port forwarding
+async with SimpleBox(
+    image="nginx:latest",
+    network=True,
+    ports=[(8080, 80, "tcp")]
+) as box:
+    pass
+```
+
+## Security Considerations
+
+### Port Range Restrictions
+
+Limit exposed ports to reduce attack surface:
+
+```python
+from boxlite import SimpleBox
+
+# Only expose necessary ports
+async with SimpleBox(
+    image="myapp:latest",
+    network=True,
+    ports=[
+        (80, 80, "tcp"),     # HTTP only
+        # No SSH, no database ports exposed
+    ]
+) as box:
+    pass
+```
+
+### Network Isolation
+
+Combine port forwarding with restricted network access:
+
+```python
+from boxlite import SimpleBox
+
+# Expose port but limit network access
+async with SimpleBox(
+    image="myapp:latest",
+    network=True,
+    ports=[(8080, 80, "tcp")],
+    allowed_ips=["10.0.0.0/8"]  # Only allow internal network
+) as box:
+    pass
+```
+
+## Best Practices
+
+1. **Use non-privileged ports**: Ports above 1024 don't require root
+2. **Implement health checks**: Verify services are responding correctly
+3. **Monitor resource usage**: Track connections and bandwidth
+4. **Close unused ports**: Only expose ports that are actively used
+5. **Use TLS for sensitive data**: Always encrypt traffic to forwarded services
+
+## See Also
+
+- [Network Overview](/networking/overview) - Network architecture and topology
+- [Private Connectivity](/networking/private-connectivity) - Private networking options
+- [Egress Control](/networking/egress-control) - Outbound traffic management
+- [Network Troubleshooting](/networking/troubleshooting) - Debugging network issues
+- [Architecture: Networking & Storage](/architecture/networking-storage) - Detailed networking architecture

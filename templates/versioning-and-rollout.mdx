@@ -1,0 +1,492 @@
+---
+title: "Versioning and Rollout"
+description: "Manage template versions, implement rollout strategies, and perform rollback when issues occur."
+---
+
+# Versioning and Rollout
+
+This document covers template versioning strategies, rollout mechanisms, and rollback procedures. Effective version management is essential for maintaining stable deployments and enabling rapid iteration.
+
+## Overview
+
+Template versioning enables you to track changes, manage releases, and respond to issues quickly. BoxLite supports multiple versioning strategies and rollout patterns suitable for different deployment scenarios.
+
+## Version Naming Conventions
+
+Choose a consistent versioning scheme for your templates:
+
+### Semantic Versioning
+
+The recommended approach for production templates:
+
+```python
+# Semantic versioning format: MAJOR.MINOR.PATCH
+template_versions = [
+    ("myapp:1.0.0", "Initial production release"),
+    ("myapp:1.0.1", "Bug fixes"),
+    ("myapp:1.1.0", "New feature (backward compatible)"),
+    ("myapp:2.0.0", "Breaking changes"),
+]
+
+# Create versioned templates
+for version, description in template_versions:
+    await box.create_template(
+        name=f"myapp:{version}",
+        description=description
+    )
+```
+
+### Version Number Rules
+
+| Component | Change Type | Example |
+|-----------|-------------|---------|
+| MAJOR | Breaking changes | 1.0.0 -> 2.0.0 |
+| MINOR | New features (compatible) | 1.0.0 -> 1.1.0 |
+| PATCH | Bug fixes | 1.0.0 -> 1.0.1 |
+
+### Alternative Naming Schemes
+
+```python
+# Date-based versioning
+("myapp:2026.04.19", "Release from April 19, 2026")
+
+# Codename versioning
+("myapp:stable", "Stable release")
+("myapp:beta", "Beta release")
+("myapp:nightly", "Nightly build")
+
+# Git-based versioning (using commit hash)
+("myapp:a1b2c3d", "Git commit a1b2c3d")
+```
+
+## Version Management
+
+### Creating New Versions
+
+```python
+# Create new version from existing template
+async with boxlite.SimpleBox(template="myapp:v1.0.0") as box:
+    # Update application
+    await box.exec("pip install --upgrade myapp")
+
+    # Create new version
+    await box.create_template(
+        name="myapp:v1.1.0",
+        description="Added new feature X"
+    )
+```
+
+### Listing Versions
+
+```python
+# List all versions of a template
+runtime = boxlite.Runtime()
+templates = await runtime.list_templates()
+
+# Filter by name prefix
+app_templates = [t for t in templates if t.name.startswith("myapp:")]
+
+for t in sorted(app_templates, key=lambda x: x.name):
+    print(f"{t.name}: {t.description}")
+    print(f"  Created: {t.created_at}")
+    print(f"  Size: {t.size_mb} MB")
+```
+
+### Tagging Versions
+
+```python
+# Tag a version as latest
+await runtime.tag_template("myapp:v1.1.0", "latest")
+
+# Tag for specific use case
+await runtime.tag_template("myapp:v1.0.0", "stable")
+await runtime.tag_template("myapp:v2.0.0-beta", "beta")
+
+# Use tagged version
+box = await runtime.create(template="myapp:latest")
+```
+
+## Rollout Strategies
+
+Choose the right rollout strategy based on your risk tolerance and requirements.
+
+### Blue-Green Deployment
+
+Deploy new version alongside existing version, then switch traffic:
+
+```python
+# Step 1: Keep old version running
+old_box = await runtime.create(
+    name="myapp-blue",
+    template="myapp:v1.0.0"
+)
+
+# Step 2: Deploy new version
+new_box = await runtime.create(
+    name="myapp-green",
+    template="myapp:v1.1.0"
+)
+
+# Step 3: Test new version
+result = await new_box.exec("python -m pytest")
+assert result.exit_code == 0
+
+# Step 4: Switch traffic (update DNS or load balancer)
+# ...
+
+# Step 5: Stop old version
+await old_box.destroy()
+```
+
+### Canary Deployment
+
+Gradually shift traffic to new version:
+
+```python
+async def canary_deploy(new_template, traffic_percent):
+    """Deploy new version to percentage of traffic."""
+
+    # Get total instances
+    all_boxes = await runtime.list_boxes()
+
+    # Calculate split
+    total = len(all_boxes)
+    new_count = int(total * traffic_percent / 100)
+
+    # Start new version instances
+    new_boxes = []
+    for i in range(new_count):
+        box = await runtime.create(template=new_template)
+        new_boxes.append(box)
+
+    # Keep old version for remaining traffic
+    return new_boxes
+
+# Deploy to 10% traffic
+await canary_deploy("myapp:v1.1.0", 10)
+
+# Monitor for issues
+await asyncio.sleep(3600)  # Monitor for 1 hour
+
+# Increase to 50%
+await canary_deploy("myapp:v1.1.0", 50)
+
+# Roll out to 100%
+await canary_deploy("myapp:v1.1.0", 100)
+```
+
+### Rolling Update
+
+Update instances one at a time:
+
+```python
+async def rolling_update(old_template, new_template):
+    """Update boxes one at a time."""
+
+    boxes = await runtime.list_boxes(template=old_template)
+
+    for box in boxes:
+        # Create replacement with new version
+        new_box = await runtime.create(
+            template=new_template,
+            name=f"{box.name}-new"
+        )
+
+        # Test new box
+        result = await new_box.exec("python -m pytest")
+        if result.exit_code != 0:
+            print(f"Test failed for {new_box.name}, rolling back!")
+            await new_box.destroy()
+            return False
+
+        # Replace old box
+        await box.destroy()
+
+        print(f"Updated {new_box.name}")
+
+    return True
+
+# Execute rolling update
+success = await rolling_update("myapp:v1.0.0", "myapp:v1.1.0")
+```
+
+### Feature Flags
+
+Use feature flags for granular control:
+
+```python
+# Template includes feature flags
+await box.exec("export FEATURE_NEW_UI=true")
+await box.exec("export FEATURE_EXPERIMENTAL=false")
+
+# Application reads feature flags
+# if os.getenv("FEATURE_NEW_UI") == "true":
+#     use_new_ui()
+```
+
+## Rollback Procedures
+
+When issues occur, rollback quickly to minimize impact.
+
+### Quick Rollback
+
+```python
+# Rollback to previous version
+async def rollback(box_name, previous_template):
+    """Rollback box to previous template."""
+
+    # Get current box
+    current = await runtime.get(box_name)
+
+    # Create new box from previous version
+    new_box = await runtime.create(
+        template=previous_template,
+        name=f"{box_name}-rollback"
+    )
+
+    # Verify it works
+    result = await new_box.exec("python -m pytest")
+    if result.exit_code != 0:
+        print("Rollback verification failed!")
+        await new_box.destroy()
+        return None
+
+    # Destroy current
+    await current.destroy()
+
+    return new_box
+
+# Execute rollback
+await rollback("myapp-production", "myapp:v1.0.0")
+```
+
+### Automated Rollback
+
+```python
+async def deploy_with_auto_rollback(template, health_check_url):
+    """Deploy with automatic rollback on failure."""
+
+    # Deploy new version
+    box = await runtime.create(template=template)
+
+    try:
+        # Wait for box to be ready
+        await asyncio.sleep(10)
+
+        # Run health check
+        result = await box.exec(f"curl -f {health_check_url}")
+
+        if result.exit_code != 0:
+            raise Exception("Health check failed")
+
+        print(f"Deployed {template} successfully")
+        return box
+
+    except Exception as e:
+        print(f"Deployment failed: {e}")
+        print("Rolling back...")
+
+        # Destroy failed deployment
+        await box.destroy()
+
+        # Recreate previous version
+        previous = await runtime.create(
+            template="myapp:previous",
+            name=box.name
+        )
+
+        return previous
+```
+
+### Snapshot-Based Rollback
+
+Use snapshots for stateful applications:
+
+```python
+# Before update, create snapshot
+box = await runtime.get("myapp-production")
+snapshot = await box.create_snapshot(
+    name="pre-update-snapshot",
+    description="Snapshot before v1.1.0 update"
+)
+
+# Update
+await box.update_template("myapp:v1.1.0")
+
+# If issues, restore snapshot
+await box.restore_snapshot(snapshot.id)
+```
+
+## Version Channel Strategy
+
+Manage multiple release channels:
+
+| Channel | Stability | Update Frequency | Use Case |
+|---------|-----------|------------------|----------|
+| stable | High | Monthly | Production |
+| beta | Medium | Weekly | Testing |
+| alpha | Low | Daily | Development |
+| nightly | None | On-commit | CI/CD |
+
+```python
+# Create channel-based templates
+# Stable (tested, production-ready)
+await runtime.tag_template("myapp:v1.0.0", "stable")
+
+# Beta (ready for testing)
+await runtime.tag_template("myapp:v1.1.0-beta", "beta")
+
+# Alpha (development)
+await runtime.tag_template("myapp:v2.0.0-alpha", "alpha")
+
+# Use channel in deployment
+production_box = await runtime.create(template="myapp:stable")
+test_box = await runtime.create(template="myapp:beta")
+dev_box = await runtime.create(template="myapp:alpha")
+```
+
+## Version Compatibility
+
+Understand compatibility between versions:
+
+### API Compatibility
+
+```python
+# Check API version requirements
+box = await runtime.get("myapp-production")
+
+# Get API version info
+api_version = box.get_api_version()
+print(f"API Version: {api_version.version}")
+print(f"Min Client: {api_version.min_client_version}")
+
+# Ensure compatibility
+if api_version.min_client_version > client_version:
+    print("Warning: Client version too old!")
+```
+
+### Runtime Compatibility
+
+```python
+# Verify runtime requirements
+template = await runtime.get_template("myapp:v2.0.0")
+
+print(f"Required Python: {template.requirements.python}")
+print(f"Required Memory: {template.requirements.memory_mb} MB")
+print(f"Required CPUs: {template.requirements.cpus}")
+```
+
+## Best Practices
+
+### Version Management
+
+```python
+# DO: Use semantic versioning
+# myapp:1.2.3
+
+# DO: Document changes in description
+await box.create_template(
+    name="myapp:v1.1.0",
+    description="Added support for OAuth2 authentication"
+)
+
+# DO: Keep previous version for quick rollback
+await runtime.tag_template("myapp:v1.0.0", "previous")
+
+# DON'T: Use "latest" in production without testing
+# BAD: box = await runtime.create(template="myapp:latest")
+
+# DO: Test new version before full rollout
+# Create test box, run tests, then deploy
+```
+
+### Rollout Best Practices
+
+```python
+# DO: Start with small percentage
+await canary_deploy("myapp:v1.1.0", 5)  # 5% first
+
+# DO: Monitor metrics during rollout
+# - Error rate
+# - Latency
+# - Resource usage
+
+# DO: Have rollback plan ready
+# - Know previous version
+# - Test rollback procedure
+# - Keep snapshots
+
+# DON'T: Deploy on Friday afternoon
+# Plan deployments during business hours
+```
+
+## CI/CD Integration
+
+Integrate versioning with CI/CD pipelines:
+
+```python
+# GitHub Actions example (conceptual)
+# .github/workflows/deploy.yml
+
+"""
+name: Deploy Template
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Build template
+        run: |
+          boxrun template build -t myapp:${{ github.ref_name }}
+
+      - name: Run tests
+        run: |
+          boxrun template test myapp:${{ github.ref_name }}
+
+      - name: Deploy to canary
+        run: |
+          boxrun deploy myapp:${{ github.ref_name }} --canary 10%
+
+      - name: Monitor
+        run: sleep 3600
+
+      - name: Full rollout
+        run: |
+          boxrun deploy myapp:${{ github.ref_name }} --full
+"""
+
+# Or use Python SDK in CI
+import boxlite
+import os
+
+async def deploy_in_ci():
+    version = os.getenv("GITHUB_REF_NAME")
+
+    # Build and test
+    box = await boxlite.SimpleBox(image="myapp-builder")
+    await box.exec(f"pip install -r requirements-{version}.txt")
+    await box.exec("python -m pytest")
+
+    # Create template
+    await box.create_template(f"myapp:{version}")
+
+    # Deploy
+    await canary_deploy(f"myapp:{version}", 10)
+```
+
+## Related Documentation
+
+- [Creating Custom Templates](/templates/create-template) - Template creation
+- [How Templates Work](/templates/how-it-works) - Template internals
+- [Debug Build Failures](/templates/debug-build-failures) - Troubleshooting
+
+<Warning>
+  Always test rollback procedures before deploying to production. Practice makes perfect - you don't want to discover issues during an actual incident.
+</Warning>

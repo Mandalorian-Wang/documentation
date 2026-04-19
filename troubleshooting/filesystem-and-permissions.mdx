@@ -1,0 +1,472 @@
+---
+title: "Filesystem and Permissions Troubleshooting"
+sidebarTitle: "Filesystem & Permissions"
+description: "Diagnose and resolve filesystem permission issues, path access errors, and file operation failures in BoxLite sandboxes."
+---
+
+This guide provides comprehensive troubleshooting for filesystem permission issues, path access errors, and file operation failures in BoxLite sandboxes.
+
+## Permission Denied Errors
+
+### Symptom
+
+File operations within a Box fail with permission errors:
+
+```
+Permission denied: /workspace/output.txt
+EACCES: permission denied, open '/workspace/data/config.yaml'
+Operation not permitted
+```
+
+### Common Causes
+
+| Cause | Description | Frequency |
+|-------|-------------|-----------|
+| Read-only filesystem | Box filesystem mounted read-only | Common |
+| Insufficient user permissions | Executing as non-root in guest | Common |
+| SELinux/AppArmor blocking | Security modules restricting access | Occasional |
+| Ownership mismatch | File owned by different UID | Occasional |
+
+### Diagnosis
+
+```python
+# Check current user in the box
+result = await box.exec("id")
+print(result.stdout)  # Should show: uid=1000(user) gid=1000(user)
+
+# Check filesystem mount status
+result = await box.exec("mount")
+print(result.stdout)  # Look for: /workspace type tmpfs (ro)
+
+# Check file permissions in guest
+result = await box.exec("ls -la /workspace/")
+print(result.stdout)
+```
+
+### Solution A — Fix Guest User Permissions
+
+If running as non-root, ensure you have appropriate permissions:
+
+```python
+from boxlite import Box
+
+# Create box with root user (most permissions)
+box = await runtime.create(
+    image="ubuntu:24.04",
+    user="root"  # Run as root for full permissions
+)
+
+# Or use sudo in commands
+result = await box.exec("sudo", "chmod", "755", "/workspace/target")
+```
+
+### Solution B — Remount Filesystem Read-Write
+
+If filesystem is read-only:
+
+```python
+# Remount as read-write
+result = await box.exec("sudo", "mount", "-o", "remount,rw", "/workspace")
+
+# Or mount with correct permissions
+result = await box.exec("sudo", "chmod", "755", "/workspace")
+result = await box.exec("sudo", "chown", "-R", "user:user", "/workspace")
+```
+
+### Solution C — Use Correct Copy Method
+
+For copy operations, ensure proper method usage:
+
+```python
+# Use copy_out with correct permissions
+await box.copy_out("/workspace/output.txt", "/host/path/output.txt")
+
+# After copy, fix permissions on host
+import os
+os.chmod("/host/path/output.txt", 0o644)
+```
+
+---
+
+## Path Not Found Errors
+
+### Symptom
+
+File operations fail with path-related errors:
+
+```
+No such file or directory: /workspace/data/input.csv
+Path does not exist: /workspace/logs
+ENOENT: no such file or directory
+```
+
+### Common Causes
+
+1. **Working directory mismatch**: Using relative paths incorrectly
+2. **Missing parent directories**: Creating files in non-existent paths
+3. **Case sensitivity**: Linux paths are case-sensitive
+4. **Symbolic links**: Broken symlinks or case issues
+
+### Diagnosis
+
+```python
+# Check if path exists
+result = await box.exec("test", "-e", "/workspace/data/input.csv", ";", "echo", "$?")
+# Returns 0 if exists, 1 if not
+
+# List directory contents
+result = await box.exec("ls", "-la", "/workspace/")
+
+# Check for symlinks
+result = await box.exec("ls", "-la", "/workspace/data")
+```
+
+### Solution — Create Required Directories
+
+```python
+import os
+
+# Ensure parent directories exist before copying
+await box.exec("mkdir", "-p", "/workspace/data/processed")
+await box.exec("mkdir", "-p", "/workspace/logs/archive")
+
+# Now perform file operations
+await box.copy_in("/host/data/input.csv", "/workspace/data/input.csv")
+```
+
+---
+
+## Disk Space Quota Errors
+
+### Symptom
+
+File operations fail with disk space errors:
+
+```
+No space left on device: /workspace/data/temp.bin
+ENOSPC: no space left on device
+Disk quota exceeded
+```
+
+### Diagnosis
+
+```python
+# Check disk usage in guest
+result = await box.exec("df", "-h", "/workspace")
+print(result.stdout)
+
+# Check inode usage
+result = await box.exec("df", "-i", "/workspace")
+print(result.stdout)
+
+# Find largest files
+result = await box.exec("du", "-ah", "/workspace", "|", "sort", "-rh", "|", "head", "-n", "10")
+```
+
+### Solution A — Clean Up Temporary Files
+
+```python
+# Remove temporary files
+await box.exec("rm", "-rf", "/workspace/tmp/*")
+await box.exec("rm", "-rf", "/workspace/.cache/*")
+
+# Clear package manager cache
+await box.exec("sudo", "apt-get", "clean")
+await box.exec("sudo", "pip", "cache", "purge")
+```
+
+### Solution B — Increase Disk Quota
+
+```python
+from boxlite import BoxOptions
+
+# Increase disk space for the box
+box = await runtime.create(
+    image="ubuntu:24.04",
+    advanced=BoxOptions(
+        disk_size_gb=20,  # Increase from default (8GB)
+    )
+)
+```
+
+### Solution C — Use Volume for Large Data
+
+For persistent large data storage:
+
+```python
+from boxlite import Volume
+
+# Create a volume for large data
+volume = await runtime.create_volume(
+    name="large-data",
+    size_gb=50
+)
+
+# Attach to box
+box = await runtime.create(
+    image="ubuntu:24.04",
+    volumes=[volume.mount("/data")]
+)
+
+# Use volume for large files
+await box.copy_in("/host/large-dataset/", "/data/dataset/")
+```
+
+---
+
+## File Lock/Concurrency Errors
+
+### Symptom
+
+Multiple concurrent file operations fail:
+
+```
+Text file busy: /workspace/script.py
+ETXTBSY: text file busy
+Resource temporarily unavailable
+```
+
+### Diagnosis
+
+```python
+# Check for open file handles
+result = await box.exec("lsof", "+D", "/workspace")
+
+# Check for running processes using files
+result = await box.exec("fuser", "-v", "/workspace/script.py")
+```
+
+### Solution — Wait for File Release
+
+```python
+import asyncio
+
+async def safe_copy_in(box, source, destination, retries=3):
+    """Safely copy file with retry logic for locked files."""
+    for attempt in range(retries):
+        try:
+            await box.copy_in(source, destination)
+            return True
+        except Exception as e:
+            if "Text file busy" in str(e) and attempt < retries - 1:
+                await asyncio.sleep(1 * (attempt + 1))  # Exponential backoff
+                continue
+            raise
+    return False
+
+# Usage
+await safe_copy_in(box, "/host/script.py", "/workspace/script.py")
+```
+
+---
+
+## Host Path Access Errors
+
+### Symptom
+
+Copy operations fail when accessing host paths:
+
+```
+Copy failed: path /host/invalid/path does not exist
+Host path not accessible: /root restricted
+Error: EACCES: permission denied
+```
+
+### Diagnosis
+
+```python
+import os
+
+# Check if host path exists
+host_path = "/host/invalid/path"
+print(f"Exists: {os.path.exists(host_path)}")
+print(f"Accessible: {os.access(host_path, os.R_OK)}")
+print(f"Writable: {os.access(host_path, os.W_OK)}")
+```
+
+### Solution A — Use Valid Host Paths
+
+```python
+import os
+
+# Always use absolute paths
+host_path = os.path.abspath("./data/input.csv")
+
+# Verify path exists before copy
+if os.path.exists(host_path):
+    await box.copy_in(host_path, "/workspace/input.csv")
+else:
+    raise FileNotFoundError(f"Host path does not exist: {host_path}")
+```
+
+### Solution B — Fix Host Permissions
+
+```bash
+# Make directory accessible
+chmod 755 /host/data
+
+# Fix ownership
+chown $USER:$USER /host/data
+
+# Or use a tmp directory with proper permissions
+import tempfile
+temp_dir = tempfile.mkdtemp()
+print(f"Using temp directory: {temp_dir}")
+```
+
+### Solution C — Use Box Paths Only
+
+```python
+# Copy between guest locations only
+await box.exec("cp", "/workspace/source.txt", "/workspace/destination.txt")
+
+# Then copy out to host
+await box.copy_out("/workspace/destination.txt", host_path)
+```
+
+---
+
+## Copy Operation Timeouts
+
+### Symptom
+
+Large file copy operations timeout:
+
+```
+Copy operation timed out after 300 seconds
+Operation cancelled: file too large
+TimeoutError: copy operation exceeded maximum duration
+```
+
+### Diagnosis
+
+```python
+# Check file size
+import os
+file_size = os.path.getsize("/host/large-file.zip")
+print(f"File size: {file_size / (1024*1024):.2f} MB")
+
+# Check network latency if remote
+result = await box.exec("ping", "-c", "3", "8.8.8.8")
+```
+
+### Solution — Use Chunked Transfer
+
+```python
+import asyncio
+import os
+
+async def copy_large_file(box, host_path, guest_path, chunk_size_mb=50):
+    """Copy large files in chunks to avoid timeouts."""
+    file_size = os.path.getsize(host_path)
+    chunk_size = chunk_size_mb * 1024 * 1024
+
+    with open(host_path, 'rb') as f:
+        offset = 0
+        while offset < file_size:
+            chunk = f.read(chunk_size)
+            # Write chunk to guest via base64
+            import base64
+            encoded = base64.b64encode(chunk).decode()
+            await box.exec(
+                "bash", "-c",
+                f"dd of={guest_path} bs=1M seek={offset // chunk_size} conv=notrunc <<< $(echo {encoded} | base64 -d)"
+            )
+            offset += len(chunk)
+            print(f"Copied {offset / file_size * 100:.1f}%")
+
+    return True
+
+# Usage
+await copy_large_file(box, "/host/large-file.zip", "/workspace/large-file.zip")
+```
+
+---
+
+## Cross-Platform Path Issues
+
+### Symptom
+
+Paths work on Linux but fail on Windows/macOS:
+
+```
+Invalid path: C:\Users\... (Windows paths not working)
+Posix paths not converted: /c/Users/... (Git Bash paths)
+```
+
+### Solution — Normalize Paths
+
+```python
+import os
+import platform
+
+def normalize_path(path):
+    """Normalize path for current platform."""
+    if platform.system() == "Windows":
+        # Convert Windows paths to POSIX for BoxLite
+        path = path.replace("\\", "/")
+        if len(path) >= 2 and path[1] == ":":
+            # C:\Users\... -> /c/Users/...
+            path = "/" + path[0].lower() + path[2:]
+    return path
+
+# Usage
+host_path = normalize_path("C:\\Users\\John\\data\\input.csv")
+await box.copy_in(host_path, "/workspace/input.csv")
+```
+
+---
+
+## Debug Checklist
+
+If you still have filesystem issues after trying the above solutions:
+
+### 1. Verify File Existence
+
+```python
+# On host
+import os
+print(os.path.exists("/host/path"))
+
+# In guest
+result = await box.exec("test", "-f", "/workspace/file.txt", ";", "echo", "$?")
+```
+
+### 2. Check Permissions
+
+```python
+# On host
+import stat
+import os
+st = os.stat("/host/path")
+print(f"Mode: {oct(st.st_mode)}")
+
+# In guest
+result = await box.exec("stat", "/workspace/file.txt")
+```
+
+### 3. Enable Verbose Logging
+
+```python
+import logging
+logging.basicConfig(level=logging.DEBUG)
+
+# Now run copy operations to see detailed logs
+await box.copy_in("source.txt", "destination.txt")
+```
+
+### 4. Run System Check
+
+```python
+import boxlite
+boxlite.system_check()
+```
+
+---
+
+## Related Documentation
+
+- [Filesystem Overview](/filesystem/overview) — File operation concepts
+- [Read & Write Files](/filesystem/read-write-files) — File operations guide
+- [Volume Management](/volumes/overview) — Persistent storage
+- [BoxRun Configuration](/boxrun/configuration) — Configuration reference

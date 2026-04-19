@@ -1,0 +1,501 @@
+---
+title: "MCP Gateway Pattern"
+description: "Implement decoupled code execution using Model Context Protocol (MCP) gateway for distributed AI applications"
+---
+
+Implement BoxLite as a Model Context Protocol (MCP) gateway to provide secure, decoupled code execution for distributed AI applications. This guide covers architecture patterns, implementation details, and best practices.
+
+## Overview
+
+The Model Context Protocol (MCP) is an open protocol that standardizes how AI applications connect to data sources and tools. By implementing BoxLite as an MCP gateway, you can:
+
+- Provide secure code execution as a network service
+- Decouple execution from the main application logic
+- Enable multiple AI clients to share execution resources
+- Build distributed AI applications with centralized code execution
+- Scale execution infrastructure independently from the AI layer
+
+## Architecture Pattern
+
+The MCP gateway pattern separates code execution into its own service:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                     AI Application                          │
+│                   (Claude, GPT, etc.)                       │
+└─────────────────────┬───────────────────────────────────────┘
+                      │ MCP Protocol
+                      ▼
+┌─────────────────────────────────────────────────────────────┐
+│                   MCP Gateway (BoxLite)                     │
+│  ┌─────────────────────────────────────────────────────┐   │
+│  │  - Protocol translation (MCP -> BoxLite)            │   │
+│  │  - Request routing                                  │   │
+│  │  - Resource management                              │   │
+│  │  - Authentication & Authorization                   │   │
+│  └─────────────────────────────────────────────────────┘   │
+└─────────────────────┬───────────────────────────────────────┘
+                      │
+                      ▼
+┌─────────────────────────────────────────────────────────────┐
+│                  BoxLite Sandbox Pool                       │
+│   ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐       │
+│   │ CodeBox │  │ CodeBox │  │ CodeBox │  │ CodeBox │       │
+│   └─────────┘  └─────────┘  └─────────┘  └─────────┘       │
+└─────────────────────────────────────────────────────────────┘
+```
+
+## MCP Server Implementation
+
+Here's how to implement BoxLite as an MCP server:
+
+```python title="mcp_server.py"
+import asyncio
+import json
+from typing import Any, Dict, List, Optional
+from dataclasses import dataclass
+from datetime import datetime
+import boxlite
+
+
+@dataclass
+class MCPTool:
+    """MCP Tool definition."""
+    name: str
+    description: str
+    input_schema: Dict[str, Any]
+
+
+@dataclass
+class MCPResource:
+    """MCP Resource definition."""
+    uri: str
+    name: str
+    description: str
+    mime_type: str
+
+
+class BoxLiteMCPServer:
+    """BoxLite MCP Server for secure code execution."""
+
+    def __init__(self, boxlite_url: str = "http://localhost:8080"):
+        self.boxlite_url = boxlite_url
+        self.tools = [
+            MCPTool(
+                name="execute_python",
+                description="Execute Python code in a secure sandbox. Use this to run calculations, data analysis, or any Python code.",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "code": {
+                            "type": "string",
+                            "description": "Python code to execute. Use print() to output results.",
+                        }
+                    },
+                    "required": ["code"],
+                },
+            ),
+            MCPTool(
+                name="execute_with_dependencies",
+                description="Execute Python code with pre-installed dependencies.",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "code": {"type": "string"},
+                        "packages": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "List of pip packages to install",
+                        },
+                    },
+                    "required": ["code"],
+                },
+            ),
+        ]
+        self.resources = [
+            MCPResource(
+                uri="boxlite://status",
+                name="server_status",
+                description="Get the current status of the BoxLite server",
+                mime_type="application/json",
+            ),
+        ]
+
+    async def handle_tool_call(self, tool_name: str, arguments: Dict[str, Any]) -> str:
+        """Handle MCP tool calls."""
+        if tool_name == "execute_python":
+            return await self._execute_python(arguments["code"])
+        elif tool_name == "execute_with_dependencies":
+            return await self._execute_with_deps(
+                arguments["code"], arguments.get("packages", [])
+            )
+        else:
+            return json.dumps({"error": f"Unknown tool: {tool_name}"})
+
+    async def _execute_python(self, code: str) -> str:
+        """Execute Python code in a BoxLite sandbox."""
+        async with boxlite.CodeBox() as codebox:
+            result = await codebox.run(code)
+            return result
+
+    async def _execute_with_deps(self, code: str, packages: List[str]) -> str:
+        """Execute Python code with pre-installed dependencies."""
+        async with boxlite.CodeBox() as codebox:
+            # Install packages if specified
+            if packages:
+                await codebox.run(f"pip install {' '.join(packages)} --quiet")
+
+            # Execute the code
+            result = await codebox.run(code)
+            return result
+
+    async def handle_resource_read(self, uri: str) -> str:
+        """Handle MCP resource reads."""
+        if uri == "boxlite://status":
+            return json.dumps({
+                "status": "ready",
+                "timestamp": datetime.now().isoformat(),
+                "available_tools": [t.name for t in self.tools],
+            })
+        return json.dumps({"error": f"Unknown resource: {uri}"})
+
+    async def list_tools(self) -> List[Dict[str, Any]]:
+        """List available tools."""
+        return [
+            {
+                "name": tool.name,
+                "description": tool.description,
+                "inputSchema": tool.input_schema,
+            }
+            for tool in self.tools
+        ]
+
+    async def list_resources(self) -> List[Dict[str, Any]]:
+        """List available resources."""
+        return [
+            {
+                "uri": resource.uri,
+                "name": resource.name,
+                "description": resource.description,
+                "mimeType": resource.mime_type,
+            }
+            for resource in self.resources
+        ]
+
+
+# Run the server
+async def main():
+    server = BoxLiteMCPServer()
+    print("BoxLite MCP Server started")
+    print(f"Available tools: {await server.list_tools()}")
+    print(f"Available resources: {await server.list_resources()}")
+
+    # Example tool call
+    result = await server.handle_tool_call(
+        "execute_python",
+        {"code": "print('Hello from BoxLite MCP Server!')"}
+    )
+    print(f"Tool result: {result}")
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+## MCP Client Implementation
+
+Here's how to connect an AI application to the BoxLite MCP gateway:
+
+```python title="mcp_client.py"
+import asyncio
+import json
+from typing import Any, Dict, List, Optional
+import boxlite
+
+
+class BoxLiteMCPClient:
+    """Client for connecting to BoxLite MCP Server."""
+
+    def __init__(self, server_url: str = "http://localhost:8080"):
+        self.server_url = server_url
+
+    async def list_tools(self) -> List[Dict[str, Any]]:
+        """List available tools from the MCP server."""
+        # In production, this would make an HTTP request to the server
+        return [
+            {
+                "name": "execute_python",
+                "description": "Execute Python code in a secure sandbox",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "code": {"type": "string", "description": "Python code to execute"}
+                    },
+                    "required": ["code"],
+                },
+            },
+            {
+                "name": "execute_with_dependencies",
+                "description": "Execute Python code with pre-installed dependencies",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "code": {"type": "string"},
+                        "packages": {"type": "array", "items": {"type": "string"}},
+                    },
+                    "required": ["code"],
+                },
+            },
+        ]
+
+    async def call_tool(self, tool_name: str, arguments: Dict[str, Any]) -> str:
+        """Call a tool on the MCP server."""
+        # In production, this would make an HTTP request to the server
+        async with boxlite.CodeBox() as codebox:
+            if tool_name == "execute_python":
+                return await codebox.run(arguments["code"])
+            elif tool_name == "execute_with_dependencies":
+                packages = arguments.get("packages", [])
+                if packages:
+                    await codebox.run(f"pip install {' '.join(packages)} --quiet")
+                return await codebox.run(arguments["code"])
+            else:
+                return json.dumps({"error": f"Unknown tool: {tool_name}"})
+
+    async def read_resource(self, uri: str) -> str:
+        """Read a resource from the MCP server."""
+        if uri == "boxlite://status":
+            return json.dumps({"status": "ready"})
+        return json.dumps({"error": f"Unknown resource: {uri}"})
+
+
+# Usage with an LLM
+async def main():
+    client = BoxLiteMCPClient()
+
+    # Get available tools
+    tools = await client.list_tools()
+    print(f"Available tools: {json.dumps(tools, indent=2)}")
+
+    # Call a tool
+    result = await client.call_tool(
+        "execute_python",
+        {"code": "import numpy as np; print(np.mean([1, 2, 3, 4, 5]))"}
+    )
+    print(f"Result: {result}")
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+## Distributed Architecture
+
+For production deployments, implement a distributed architecture:
+
+```python title="mcp_distributed.py"
+import asyncio
+import json
+from typing import Dict, List, Optional
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta
+import boxlite
+
+
+@dataclass
+class SandboxInstance:
+    """Represents a BoxLite sandbox instance."""
+    instance_id: str
+    codebox: boxlite.CodeBox
+    created_at: datetime = field(default_factory=datetime.now)
+    last_used: datetime = field(default_factory=datetime.now)
+    in_use: bool = False
+
+
+class BoxLiteGateway:
+    """MCP Gateway with pool management for distributed AI applications."""
+
+    def __init__(
+        self,
+        min_instances: int = 2,
+        max_instances: int = 10,
+        instance_ttl: int = 300,
+    ):
+        self.min_instances = min_instances
+        self.max_instances = max_instances
+        self.instance_ttl = instance_ttl
+        self.instances: Dict[str, SandboxInstance] = {}
+        self._lock = asyncio.Lock()
+
+    async def _create_instance(self) -> SandboxInstance:
+        """Create a new BoxLite instance."""
+        instance_id = f"box-{datetime.now().strftime('%Y%m%d%H%M%S')}-{len(self.instances)}"
+        codebox = boxlite.CodeBox()
+        await codebox.start()
+        return SandboxInstance(instance_id=instance_id, codebox=codebox)
+
+    async def _get_instance(self) -> SandboxInstance:
+        """Get an available instance from the pool."""
+        async with self._lock:
+            # Try to find an available instance
+            for instance in self.instances.values():
+                if not instance.in_use:
+                    instance.in_use = True
+                    instance.last_used = datetime.now()
+                    return instance
+
+            # Create new instance if under limit
+            if len(self.instances) < self.max_instances:
+                instance = await self._create_instance()
+                instance.in_use = True
+                self.instances[instance.instance_id] = instance
+                return instance
+
+            # Wait for an instance to become available
+            raise RuntimeError("No available instances")
+
+    async def _release_instance(self, instance: SandboxInstance):
+        """Release an instance back to the pool."""
+        async with self._lock:
+            instance.in_use = False
+            instance.last_used = datetime.now()
+
+    async def execute_code(
+        self,
+        code: str,
+        packages: Optional[List[str]] = None,
+        timeout: int = 30,
+    ) -> str:
+        """Execute code using the gateway."""
+        instance = await self._get_instance()
+        try:
+            # Install packages if specified
+            if packages:
+                await instance.codebox.run(
+                    f"pip install {' '.join(packages)} --quiet"
+                )
+
+            # Execute the code
+            return await instance.codebox.run(code, timeout=timeout)
+        finally:
+            await self._release_instance(instance)
+
+    async def cleanup(self):
+        """Clean up all instances."""
+        async with self._lock:
+            for instance in self.instances.values():
+                await instance.codebox.stop()
+            self.instances.clear()
+
+
+# Usage
+async def main():
+    gateway = BoxLiteGateway(min_instances=2, max_instances=5)
+
+    try:
+        # Execute multiple code requests concurrently
+        tasks = [
+            gateway.execute_code("print('Task 1:', 1+1)"),
+            gateway.execute_code("print('Task 2:', 2+2)"),
+            gateway.execute_code("print('Task 3:', 3+3)"),
+        ]
+
+        results = await asyncio.gather(*tasks)
+        for i, result in enumerate(results):
+            print(f"Result {i+1}: {result}")
+
+    finally:
+        await gateway.cleanup()
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+## Best Practices
+
+### 1. Implement Instance Pooling
+
+Use a pool of sandbox instances to handle concurrent requests efficiently:
+
+```python
+gateway = BoxLiteGateway(min_instances=2, max_instances=10)
+```
+
+### 2. Set Appropriate Timeouts
+
+Always set timeouts to prevent runaway code:
+
+```python
+result = await codebox.run(code, timeout=30)
+```
+
+### 3. Implement Health Checks
+
+Monitor instance health and replace unhealthy instances:
+
+```python
+async def health_check(instance: SandboxInstance) -> bool:
+    try:
+        await instance.codebox.run("print('health')", timeout=5)
+        return True
+    except:
+        return False
+```
+
+### 4. Use Resource Limits
+
+Configure CPU, memory, and disk limits for each instance:
+
+```python
+codebox = boxlite.CodeBox(
+    cpu_count=2,
+    memory_mb=512,
+    disk_mb=1024,
+)
+```
+
+### 5. Implement Rate Limiting
+
+Protect the gateway from abuse with rate limiting:
+
+```python
+class RateLimiter:
+    def __init__(self, max_requests: int = 100, window_seconds: int = 60):
+        self.max_requests = max_requests
+        self.window = timedelta(seconds=window_seconds)
+        self.requests: Dict[str, List[datetime]] = {}
+
+    async def check_limit(self, client_id: str) -> bool:
+        now = datetime.now()
+        if client_id not in self.requests:
+            self.requests[client_id] = []
+
+        # Remove old requests
+        self.requests[client_id] = [
+            t for t in self.requests[client_id]
+            if now - t < self.window
+        ]
+
+        if len(self.requests[client_id]) >= self.max_requests:
+            return False
+
+        self.requests[client_id].append(now)
+        return True
+```
+
+## Production Considerations
+
+For production MCP gateway deployments:
+
+1. **Horizontal scaling**: Deploy multiple gateway instances behind a load balancer
+2. **Monitoring**: Add metrics for request latency, error rates, and instance utilization
+3. **Authentication**: Implement API key or token-based authentication
+4. **Logging**: Add comprehensive request/response logging
+5. **Circuit breaking**: Implement circuit breaker pattern for failed instances
+
+## Next Steps
+
+- [AI Agent Integration Guide](/guides/ai-agent-integration) — Production patterns
+- [Networking Guide](/networking/private-connectivity) — Private connectivity options
+- [Security Guide](/security/overview) — Security best practices

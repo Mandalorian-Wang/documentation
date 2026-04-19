@@ -1,0 +1,601 @@
+---
+title: "Startup and Image Pull Troubleshooting"
+sidebarTitle: "Startup & Pulls"
+description: "Detailed troubleshooting for BoxLite startup issues and container image pull problems."
+---
+
+This guide provides detailed troubleshooting steps for box startup failures and image pull issues.
+
+## Box Won't Start — Ubuntu 24.04 AppArmor Issue
+
+### Symptom
+
+Box creation fails with one of the following errors:
+
+```
+Timeout waiting for guest ready (30s)
+VM subprocess exited before guest became ready
+Box only starts with sudo
+```
+
+### Affected Systems
+
+- Ubuntu 24.04 LTS (Noble Numbat)
+- Works on Ubuntu 25.04+ or when running with sudo
+
+### Root Cause
+
+Ubuntu 24.04 ships with AppArmor configured to restrict unprivileged user namespaces, but does not include the required `bwrap-userns-restrict` profile. This prevents bubblewrap (bwrap) from creating user namespaces, which is required for the BoxLite jailer to function.
+
+### Diagnosis
+
+Run these commands to confirm the issue:
+
+```bash
+# Check for AppArmor denials in kernel messages
+dmesg | grep -i apparmor | tail -20
+
+# Check if bwrap profile exists
+sudo aa-status | grep bwrap
+
+# Check sysctl setting
+sysctl kernel.apparmor_restrict_unprivileged_userns
+# Expected output: kernel.apparmor_restrict_unprivileged_userns = 1
+```
+
+If you see AppArmor denial messages in dmesg, this confirms the issue.
+
+### Solution A — Install AppArmor Profile (Recommended)
+
+Create and install the required AppArmor profile:
+
+```bash
+sudo tee /etc/apparmor.d/bwrap-userns-restrict << 'PROFILE'
+abi <abi/4.0>,
+
+include <tunables/global>
+
+profile bwrap /usr/bin/bwrap flags=(attach_disconnected,mediate_deleted) {
+  allow capability,
+  allow file rwlkm /{**,},
+  allow network,
+  allow unix,
+  allow ptrace,
+  allow signal,
+  allow mqueue,
+  allow io_uring,
+  allow userns,
+  allow mount,
+  allow umount,
+  allow pivot_root,
+  allow dbus,
+  include if exists <local/bwrap-userns-restrict>
+}
+
+profile unpriv_bwrap flags=(attach_disconnected,mediate_deleted) {
+  allow file rwlkm /{**,},
+  allow network,
+  allow unix,
+  allow ptrace,
+  allow signal,
+  allow mqueue,
+  allow io_uring,
+  allow userns,
+  allow mount,
+  allow umount,
+  allow pivot_root,
+  allow dbus,
+  audit deny capability,
+  include if exists <local/unpriv_bwrap>
+}
+PROFILE
+
+# Load the profile
+sudo apparmor_parser -r /etc/apparmor.d/bwrap-userns-restrict
+
+# Verify it's loaded
+sudo aa-status | grep bwrap
+```
+
+### Solution B — Disable User Namespace Restriction (Less Secure)
+
+If installing the AppArmor profile doesn't work, you can disable the restriction system-wide:
+
+```bash
+# Temporarily disable (resets on reboot)
+sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
+# Persist across reboots
+echo "kernel.apparmor_restrict_unprivileged_userns=0" | \
+  sudo tee /etc/sysctl.d/99-boxlite-userns.conf
+
+# Verify the setting
+sysctl kernel.apparmor_restrict_unprivileged_userns
+# Should output: kernel.apparmor_restrict_unprivileged_userns = 0
+```
+
+<Warning>
+  Solution B reduces system security. Only use this as a fallback if Solution A doesn't work.
+</Warning>
+
+### Solution C — Disable Jailer (Development Only)
+
+For development environments, you can disable the jailer entirely:
+
+```python
+from boxlite import SecurityOptions
+
+# Create box without jailer
+box = await runtime.create(
+    image="ubuntu:24.04",
+    advanced=boxlite.AdvancedBoxOptions(
+        security=SecurityOptions(jailer_enabled=False),
+    )
+)
+```
+
+<Warning>
+  Disabling the jailer removes security isolation. Never use this in production.
+</Warning>
+
+---
+
+## KVM Not Available (Linux)
+
+### Symptom
+
+Box creation fails with errors indicating KVM is not accessible:
+
+```
+Failed to start VM: KVM not available
+open /dev/kvm: No such file or directory
+```
+
+### Causes
+
+1. KVM kernel module not loaded
+2. User not in the `kvm` group
+3. CPU doesn't support hardware virtualization (VT-x/AMD-V)
+4. Virtualization disabled in BIOS/UEFI
+
+### Diagnosis
+
+Run these diagnostic commands:
+
+```bash
+# Check if KVM device exists
+ls -l /dev/kvm
+
+# Check CPU virtualization support
+grep -E 'vmx|svm' /proc/cpuinfo
+
+# Verify KVM kernel modules are loaded
+lsmod | grep kvm
+
+# Check user groups
+groups $USER | grep kvm
+```
+
+### Solution — Load KVM Module and Configure Access
+
+**Step 1: Load KVM module**
+
+```bash
+# For Intel CPUs
+sudo modprobe kvm
+sudo modprobe kvm_intel
+
+# For AMD CPUs
+sudo modprobe kvm
+sudo modprobe kvm_amd
+
+# Verify modules are loaded
+lsmod | grep kvm
+```
+
+**Step 2: Add user to kvm group**
+
+```bash
+sudo usermod -aG kvm $USER
+
+# Verify group membership
+groups $USER
+# You should see: user : user group kvm
+```
+
+<Note>
+  You must log out and log back in for group changes to take effect.
+</Note>
+
+**Step 3: Verify KVM access**
+
+```bash
+# After logout/login, verify access
+ls -l /dev/kvm
+# Should show: crw-rw---- 1 root kvm /dev/kvm
+```
+
+### Solution — Enable Virtualization in BIOS
+
+If your CPU supports virtualization but it's not detected:
+
+1. **Restart your computer**
+2. **Enter BIOS/UEFI setup** (usually by pressing F2, F12, Del, or Escape during boot)
+3. **Find CPU Virtualization settings** (may be under "Advanced", "CPU Configuration", or "Security")
+4. **Enable Intel VT-x** or **AMD-V**
+5. **Save and exit** (F10 typically)
+
+### CPU Not Supported
+
+If your CPU doesn't support hardware virtualization (no vmx/svm in /proc/cpuinfo):
+
+- **BoxLite cannot run on that machine**
+- Consider alternatives:
+  - Use a cloud-based sandbox (AWS, GCP, Azure)
+  - Use a different machine with virtualization support
+  - Use a remote BoxRun server
+
+---
+
+## Image Pull Failures
+
+### Symptom
+
+Box creation fails with image-related errors:
+
+```
+Failed to pull image: connection refused
+Failed to pull image: image not found
+Failed to resolve image name: invalid reference format
+```
+
+### Common Causes and Solutions
+
+#### Cause 1: Network Connectivity Issues
+
+**Diagnosis:**
+
+```bash
+# Test basic network connectivity
+ping -c 3 8.8.8.8
+
+# Test DNS resolution
+nslookup registry-1.docker.io
+
+# Test registry connectivity
+curl -I https://registry-1.docker.io/v2/
+```
+
+**Solution:**
+
+```bash
+# Check firewall rules
+sudo iptables -L
+
+# Check if proxy is required
+echo $HTTP_PROXY
+echo $HTTPS_PROXY
+
+# For corporate networks, configure Docker proxy
+mkdir -p ~/.docker
+sudo tee ~/.docker/config.json << 'EOF'
+{
+  "proxies": {
+    "default": {
+      "httpProxy": "http://proxy.example.com:8080",
+      "httpsProxy": "http://proxy.example.com:8080",
+      "noProxy": "localhost,127.0.0.1"
+    }
+  }
+}
+EOF
+```
+
+#### Cause 2: Invalid Image Name
+
+**Diagnosis:**
+
+```bash
+# Try pulling with Docker directly
+docker pull <image>
+```
+
+**Common mistakes:**
+
+| Wrong | Correct |
+|-------|---------|
+| `ubuntu/24.04` | `ubuntu:24.04` |
+| `python/latest` | `python:latest` or `python:3.11` |
+| `docker.io/python` | `python` or `docker.io/library/python` |
+
+**Solution:**
+
+```bash
+# Use correct image name format
+box = await runtime.create(
+    image="ubuntu:24.04"  # Not "ubuntu/24.04"
+)
+```
+
+#### Cause 3: Authentication Required for Private Images
+
+**Diagnosis:**
+
+```bash
+# Check if image is private
+docker inspect <image> --format='{{.Config}}' 2>&1 | grep -q "not found" && echo "Private"
+
+# Try pulling without auth
+docker pull <private-image>
+```
+
+**Solution:**
+
+```bash
+# Login to Docker Hub
+docker login
+
+# Or login to private registry
+docker login registry.example.com
+
+# For BoxLite, use registry configuration
+# See: /guides/image-registry-configuration
+```
+
+#### Cause 4: Image Not Found / Tag Doesn't Exist
+
+**Diagnosis:**
+
+```bash
+# List available tags for an image
+curl -s "https://registry.hub.docker.com/v2/repositories/ubuntu/tags/" | python -m json.tool
+
+# Or use Docker Hub API
+curl -s https://hub.docker.com/v2/repositories/library/ubuntu/tags | python -m json.tool
+```
+
+**Solution:**
+
+```bash
+# Use an existing tag
+box = await runtime.create(
+    image="ubuntu:24.04"  # Check Docker Hub for available tags
+)
+
+# Or use a specific digest
+box = await runtime.create(
+    image="ubuntu@sha256:abc123..."
+)
+```
+
+#### Cause 5: Corrupted Image Cache
+
+**Diagnosis:**
+
+```bash
+# Check image cache directory
+ls -la ~/.boxlite/images/
+
+# Check for partial downloads
+ls ~/.boxlite/images/*.tmp 2>/dev/null
+```
+
+**Solution:**
+
+```bash
+# Clear the image cache
+rm -rf ~/.boxlite/images/*
+
+# Also clear any temporary files
+rm -f ~/.boxlite/images/*.tmp
+
+# Restart BoxLite and try again
+boxrun gc
+```
+
+#### Cause 6: Registry Unreachable
+
+**Diagnosis:**
+
+```bash
+# Test specific registry
+curl -I https://registry-1.docker.io/v2/
+curl -I https://ghcr.io/v2/
+curl -I https://quay.io/v2/
+```
+
+**Solution:**
+
+```bash
+# Use an alternative registry
+box = await runtime.create(
+    image="ghcr.io/username/image:tag"  # GitHub Container Registry
+)
+
+# Or use a mirror
+# Configure in BoxLite config file
+# See: /guides/image-registry-configuration
+```
+
+---
+
+## Hypervisor.framework Not Available (macOS)
+
+### Symptom
+
+BoxLite fails to start boxes on macOS with errors like:
+
+```
+Failed to initialize hypervisor: Hypervisor.framework not available
+VM creation failed: Apple Silicon required
+```
+
+### Requirements
+
+BoxLite on macOS requires:
+
+- **macOS 12.0+** (Monterey or later)
+- **Apple Silicon** (M1, M2, M3, or M4)
+- **Hypervisor.framework** access
+
+### Diagnosis
+
+```bash
+# Check macOS version
+sw_vers
+# Output should show: ProductVersion: 12.0 or later
+
+# Check architecture
+uname -m
+# Output should show: arm64 (not x86_64)
+
+# Check if Hypervisor.framework is available
+# (This is a programmatic check, not CLI)
+```
+
+### Solution — For Apple Silicon Macs
+
+If you have an Apple Silicon Mac but still seeing errors:
+
+1. **Grant Full Disk Access to Terminal:**
+   - Go to System Settings > Privacy & Security > Full Disk Access
+   - Add your terminal application
+
+2. **Check for conflicting software:**
+   ```bash
+   # Check if Parallels or VMware is running
+   ps aux | grep -E 'Parallels|VMware'
+
+   # These may conflict with Hypervisor.framework
+   ```
+
+3. **Update macOS:**
+   ```bash
+   # Check for updates
+   sudo softwareupdate -l
+   ```
+
+### Solution — For Intel Macs
+
+**BoxLite is not supported on Intel Macs.** The Hypervisor.framework is only available on Apple Silicon.
+
+**Alternatives:**
+
+1. **Use a Linux VM:**
+   ```bash
+   # Install UTM or Parallels
+   # Create a Linux VM with nested virtualization
+   ```
+
+2. **Use cloud-based sandbox:**
+   - Deploy BoxRun to a Linux server
+   - Use cloud sandboxes (AWS, GCP, Azure)
+
+3. **Use a remote BoxRun server:**
+   - Connect to a remote BoxRun instance
+   - See: /boxrun/production-deployment-overview
+
+---
+
+## General Debug Checklist
+
+If your box still won't start after trying the above solutions:
+
+### 1. Verify System Requirements
+
+```bash
+# Check BoxLite version
+python -c "import boxlite; print(boxlite.__version__)"
+
+# Check available disk space
+df -h ~/.boxlite
+# Should have at least 1 GB free
+
+# Check available memory
+free -h
+# Should have at least 2 GB available
+```
+
+### 2. Enable Debug Logging
+
+```bash
+# Run with debug output
+RUST_LOG=debug python your_script.py 2>&1 | tee debug.log
+```
+
+### 3. Check BoxLite Logs
+
+```bash
+# View BoxLite logs
+tail -f ~/.boxlite/logs/boxlite.log
+
+# Or check system logs
+log show --predicate 'subsystem == "com.boxlite.ai"' --last 5m
+```
+
+### 4. Run System Check
+
+```bash
+# Run BoxLite system check
+python -c "import boxlite; boxlite.system_check()"
+```
+
+### 5. Clean Up and Retry
+
+```bash
+# Remove stuck boxes
+boxrun rm $(boxrun ls -q)
+
+# Clean up unused resources
+boxrun gc
+
+# Clear image cache (if having pull issues)
+rm -rf ~/.boxlite/images/*
+
+# Restart BoxLite
+pkill -f boxlite
+```
+
+---
+
+## Getting Help
+
+If you've tried all these solutions and still have issues:
+
+1. **Enable debug logging** and capture full output:
+   ```bash
+   RUST_LOG=debug python your_script.py 2>&1 | tee debug.log
+   ```
+
+2. **Gather system information:**
+   ```bash
+   # BoxLite version
+   python -c "import boxlite; print(boxlite.__version__)"
+
+   # Platform
+   uname -a
+
+   # Python version
+   python --version
+
+   # Kernel (Linux)
+   uname -r
+
+   # macOS version
+   sw_vers
+   ```
+
+3. **Search existing issues:**
+   - [GitHub Issues](https://github.com/boxlite-ai/boxlite/issues)
+   - [GitHub Discussions](https://github.com/boxlite-ai/boxlite/discussions)
+
+4. **Ask on Discord:** [Join our community](https://go.boxlite.ai/discord)
+
+---
+
+## Related Documentation
+
+- [Troubleshooting Overview](/troubleshooting/index) — General troubleshooting guide
+- [BoxRun Configuration](/boxrun/configuration) — Configuration file reference
+- [Architecture: Components](/architecture/components) — System components
+- [macOS Sandbox Debugging](/guides/macos-sandbox-debugging) — macOS-specific guide

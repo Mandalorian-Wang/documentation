@@ -1,0 +1,234 @@
+---
+title: "Resource Model"
+description: "Understanding CPU, memory, disk, and TTL in BoxLite"
+sidebarTitle: "Resource Model"
+---
+
+BoxLite provides fine-grained control over compute resources allocated to each sandbox. This guide explains the resource model, limits, lifecycle, and how to configure resources for optimal performance.
+
+## Overview
+
+Each BoxLite sandbox runs in an isolated virtual machine with dedicated resources:
+
+- **CPU**: Virtual CPU cores allocated from the host
+- **Memory**: Dedicated RAM in MiB
+- **Disk**: Either ephemeral (temporary) or persistent (backed by QCOW2)
+- **TTL**: Time-to-live controls for automatic cleanup
+
+## Resource Limits
+
+### CPU
+
+| Setting | Default | Range | Description |
+|---------|---------|-------|-------------|
+| `cpus` | 1 | 1 to host CPU count | Number of virtual CPU cores |
+
+CPU allocation uses hardware virtualization (KVM on Linux, Hypervisor.framework on macOS). Each vCPU maps directly to a physical host core.
+
+```python
+from boxlite import SimpleBox
+
+# Allocate 2 CPU cores
+async with SimpleBox(image="python:slim", cpus=2) as box:
+    result = await box.exec("nproc")  # Should output: 2
+```
+
+### Memory
+
+| Setting | Default | Range | Description |
+|---------|---------|-------|-------------|
+| `memory_mib` | 2048 | 128 - 65536 | Memory in MiB (MiB = 1024^2 bytes) |
+
+Memory is allocated as dedicated RAM to the VM. The guest OS sees exactly this amount of memory.
+
+```python
+# Allocate 4 GB of memory
+async with SimpleBox(image="python:slim", memory_mib=4096) as box:
+    result = await box.exec("free", "-m")
+    print(result.stdout)
+```
+
+### Disk
+
+| Setting | Default | Range | Description |
+|---------|---------|-------|-------------|
+| `disk_size_gb` | None (ephemeral) | 1 - 1000 | Disk size in GB |
+
+There are two disk modes:
+
+1. **Ephemeral (default)**: Disk is discarded when the box is removed
+2. **Persistent**: Disk persists across box restarts (backed by QCOW2)
+
+```python
+from boxlite import BoxOptions
+
+# Ephemeral box (default)
+options = BoxOptions(image="python:slim")
+
+# Persistent box with 20 GB disk
+options = BoxOptions(
+    image="python:slim",
+    disk_size_gb=20
+)
+```
+
+### Resource Comparison Table
+
+| Resource | Default | Minimum | Maximum | Unit |
+|----------|---------|---------|---------|------|
+| CPU | 1 | 1 | Host cores | cores |
+| Memory | 2048 | 128 | 65536 | MiB |
+| Disk | ephemeral | 1 | 1000 | GB |
+
+## TTL and Lifecycle
+
+### Box Lifecycle States
+
+```
+Created -> Starting -> Running -> Stopping -> Stopped
+                                    |
+                                    v
+                                (can restart)
+```
+
+| State | Description |
+|-------|-------------|
+| Created | Box configured, VM not started |
+| Starting | VM initializing |
+| Running | Ready for commands |
+| Stopping | Graceful shutdown |
+| Stopped | VM terminated, can restart |
+
+### Auto-Removal
+
+By default, boxes are automatically removed when stopped (`auto_remove=True`). Set `auto_remove=False` to keep the box for reuse:
+
+```python
+from boxlite import SimpleBox
+
+# Box persists after stop() - can be restarted
+async with SimpleBox(image="python:slim", auto_remove=False) as box:
+    await box.exec("echo", "hello")
+
+# Box is stopped but still exists
+box.info()  # Returns BoxInfo with status="stopped"
+
+# Restart the box
+box.start()
+await box.exec("echo", "world")
+```
+
+### Runtime Shutdown Timeout
+
+When shutting down the runtime, you can configure a timeout for graceful shutdown:
+
+```python
+from boxlite import Boxlite
+
+runtime = Boxlite.default()
+
+# Gracefully stop all boxes (10 second timeout)
+await runtime.shutdown(timeout=10)
+
+# Or infinite timeout (wait forever)
+await runtime.shutdown(timeout=-1)
+```
+
+## Execution Timeouts
+
+Individual command executions can have timeouts:
+
+```python
+import asyncio
+
+async with boxlite.CodeBox() as codebox:
+    # Set timeout for single run
+    try:
+        result = await codebox.run("while True: pass", timeout=5)
+    except asyncio.TimeoutError:
+        print("Execution timed out!")
+```
+
+## Best Practices
+
+### Right-Sizing Resources
+
+Choose resources based on your workload:
+
+| Workload | CPU | Memory | Disk |
+|----------|-----|--------|------|
+| Simple commands | 1 | 512 MiB | Ephemeral |
+| Python code execution | 1-2 | 1024-2048 MiB | Ephemeral |
+| Data analysis | 2-4 | 4096-8192 MiB | 20-50 GB |
+| Browser automation | 2 | 2048 MiB | Ephemeral |
+| Desktop automation | 2-4 | 2048-4096 MiB | 10-20 GB |
+
+### Avoiding Resource Exhaustion
+
+1. **Set appropriate limits**: Don't allocate more than needed
+2. **Use ephemeral disks**: For temporary workloads
+3. **Implement execution timeouts**: Prevent runaway commands
+4. **Monitor usage**: Use `box.metrics()` to track CPU and memory
+
+```python
+# Monitor resource usage
+async with SimpleBox(image="python:slim", cpus=2, memory_mib=2048) as box:
+    await box.exec("python", "-c", "sum(range(1000000))")
+
+    metrics = await box.metrics()
+    print(f"CPU: {metrics.cpu_percent():.1f}%")
+    print(f"Memory: {metrics.memory_used_mib} MiB")
+```
+
+## Configuration Examples
+
+### Minimal Box
+
+```python
+SimpleBox(image="alpine:latest")
+# Uses: 1 CPU, 2048 MiB, ephemeral disk
+```
+
+### Development Environment
+
+```python
+SimpleBox(
+    image="python:3.11-slim",
+    cpus=2,
+    memory_mib=4096,
+    disk_size_gb=20,
+    auto_remove=False
+)
+```
+
+### CI/CD Runner
+
+```python
+BoxOptions(
+    image="ubuntu:22.04",
+    cpus=4,
+    memory_mib=8192,
+    disk_size_gb=50,
+    auto_remove=True
+)
+```
+
+### Persistent Data Analysis Box
+
+```python
+BoxOptions(
+    image="python:3.11",
+    cpus=8,
+    memory_mib=16384,
+    disk_size_gb=100,
+    auto_remove=False
+)
+```
+
+## See Also
+
+- [Core Concepts](/core-concepts) - Concept map and box type chooser
+- [Box Types](/core-concepts#box-types) - Pick the right box before tuning resources
+- [Limits and Quotas](/reference/limits-quotas) - System-wide limits
+- [Error Handling](/tutorials/error-handling) - Timeout handling patterns
+- [Snapshots & Checkpoints](/tutorials/snapshots-checkpoint-rollback) - Persistent disk snapshots

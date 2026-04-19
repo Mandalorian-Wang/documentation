@@ -1,0 +1,201 @@
+---
+title: "Volumes Overview"
+sidebarTitle: "Overview"
+description: "Understanding volume types in BoxLite - virtiofs vs QCOW2 disk images."
+---
+
+BoxLite supports two primary volume types for persistent storage: virtiofs (host directory mounts) and QCOW2 disk images. Understanding when to use each type is essential for building robust applications.
+
+## Overview
+
+Volume types in BoxLite serve different purposes:
+
+- **virtiofs**: High-performance host directory sharing
+- **QCOW2**: Persistent block storage with snapshot support
+
+## Volume Type Comparison
+
+| Feature | virtiofs | QCOW2 Disk |
+|---------|----------|------------|
+| **Type** | File system mount | Block device |
+| **Performance** | High (FUSE-based) | Moderate |
+| **Persistence** | Host-managed | Image file |
+| **Data Location** | Host filesystem | QCOW2 image file |
+| **Snapshots** | Via host filesystem | Native QCOW2 snapshots |
+| **Sharing** | Multiple Boxes can share same path | Clones are independent |
+| **Isolation** | Shared with host | Fully isolated |
+| **Use Case** | Development, file sharing | Databases, build caches |
+
+## virtiofs
+
+virtiofs provides high-performance host directory mounting into the Box. It's the recommended choice when you need:
+
+- **File sharing**: Share files between host and Box in real-time
+- **Development workflows**: Edit files on host, run in Box
+- **Large datasets**: Access large data directories without copying
+- **Build artifacts**: Share compiled outputs with host
+
+### How virtiofs Works
+
+```
+Host System                           Box (Guest)
+┌─────────────┐                     ┌─────────────┐
+│ /host/data/ │◄───────────────────▶│ /mnt/data/  │
+│             │    (virtiofs)       │             │
+│ Changes     │◄───────────────────▶│ Changes     │
+│ immediately │                     │ visible     │
+└─────────────┘                     └─────────────┘
+```
+
+### Performance Characteristics
+
+- Near-native file system performance
+- Low latency for file operations
+- No data copying (shared memory)
+- Suitable for I/O-intensive workloads
+
+### Use Cases
+
+```python
+# Development workflow - edit on host, run in Box
+async with boxlite.SimpleBox(
+    image="python:slim",
+    volumes=[("/home/user/project", "/workspace/project", "rw")]
+) as box:
+    # Files changed on host are immediately visible
+    result = await box.exec("python", "/workspace/project/main.py")
+```
+
+## QCOW2 Disk Images
+
+QCOW2 (QEMU Copy-On-Write v2) provides persistent block storage as disk images. Use QCOW2 when you need:
+
+- **Data persistence**: Data survives Box restarts
+- **Isolation**: Fully independent from host
+- **Snapshots**: Point-in-time backups
+- **Portability**: Easy to move, backup, clone
+
+### QCOW2 Features
+
+- **Thin provisioning**: Space allocated on write, not upfront
+- **Snapshot support**: Create point-in-time backups
+- **Copy-on-write**: Multiple Boxes can share base images
+- **Compression**: Optional compression for unused space
+
+### How QCOW2 Works
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                    QCOW2 Image File                      │
+│  ┌─────────────────────────────────────────────────────┐│
+│  │ Copy-on-Write Layer (per Box)                       ││
+│  │   - Writes go here                                  ││
+│  │   - Changes isolated from base                      ││
+│  └─────────────────────────────────────────────────────┘│
+│  ┌─────────────────────────────────────────────────────┐│
+│  │ Base Image (shared across Boxes)                    ││
+│  │   - Read-only                                       ││
+│  │   - Common base layers                              ││
+│  └─────────────────────────────────────────────────────┘│
+└─────────────────────────────────────────────────────────┘
+```
+
+### Use Cases
+
+```python
+# Persistent database storage
+async with boxlite.SimpleBox(
+    image="python:slim",
+    disk_size_gb=50
+) as box:
+    # Data persists after Box restarts
+    await box.exec("python", "-c", "import sqlite3; ...")
+```
+
+## Choosing Between virtiofs and QCOW2
+
+### Use virtiofs when:
+
+- You need real-time file sharing with host
+- Working on development workflows
+- Accessing large existing datasets on host
+- Building and testing code locally
+
+### Use QCOW2 when:
+
+- Data must persist across Box restarts
+- You need snapshot/backup capabilities
+- Complete isolation from host is required
+- Storing databases or sensitive data
+
+### Hybrid Approach
+
+You can use both simultaneously:
+
+```python
+async with boxlite.SimpleBox(
+    image="python:slim",
+    disk_size_gb=20,  # QCOW2 for persistent data
+    volumes=[  # virtiofs for sharing
+        ("./shared", "/workspace/shared", "rw"),
+    ]
+) as box:
+    # /workspace/shared - shared with host (virtiofs)
+    # /data - persistent (QCOW2)
+    pass
+```
+
+## Storage Locations
+
+### QCOW2 Images
+
+QCOW2 disk images are stored in:
+
+```
+~/.boxlite/boxes/<box-id>/disk.qcow2
+```
+
+### virtiofs Mounts
+
+Host directories are mounted directly - no separate storage.
+
+## Volume Options
+
+### Volume Mount Tuple Format
+
+```python
+volumes = [
+    (host_path, guest_path, mode),  # Tuple format
+    # or
+    {"host_path": "/host/dir", "guest_path": "/guest/dir", "mode": "rw"}  # Dict format
+]
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `host_path` | `str` | Path on host filesystem |
+| `guest_path` | `str` | Mount point in Box |
+| `mode` | `str` | `"rw"` (read-write) or `"ro"` (read-only) |
+
+### Disk Size
+
+```python
+# Create Box with 20GB persistent disk
+async with boxlite.SimpleBox(
+    image="python:slim",
+    disk_size_gb=20
+) as box:
+    # All data in /data persists across restarts
+    pass
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Create & Manage Volumes" icon="plus" href="/volumes/create-and-manage">
+    Create and manage volumes with Python SDK and CLI.
+  </Card>
+  <Card title="Filesystem Operations" icon="folder" href="/filesystem/overview">
+    File operations in Boxes.
+  </Card>
+</CardGroup>

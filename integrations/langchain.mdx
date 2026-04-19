@@ -1,0 +1,387 @@
+---
+title: "LangChain Integration"
+description: "Integrate BoxLite with LangChain for secure code execution in AI agents"
+---
+
+Integrate BoxLite with LangChain to add secure code execution capabilities to LangChain agents. This guide covers tool creation, agent configuration, and best practices for production deployments.
+
+## Overview
+
+LangChain provides a powerful framework for building AI agents with tool calling capabilities. By integrating BoxLite as a LangChain tool, you can give any LangChain agent the ability to:
+
+- Execute Python code for calculations and data processing
+- Run scripts with access to the full Python standard library
+- Process files and data with full filesystem access within the sandbox
+- Build stateful sessions with cached dependencies
+
+## Tool Definition
+
+Create a BoxLite tool using LangChain's `BaseTool` class or the `@tool` decorator:
+
+```python
+from langchain.tools import BaseTool
+from pydantic import BaseModel, Field
+import boxlite
+import asyncio
+
+
+class ExecuteCodeInput(BaseModel):
+    """Input schema for the code execution tool."""
+    code: str = Field(description="Python code to execute. Use print() to output results.")
+
+
+class BoxLiteCodeTool(BaseTool):
+    """Execute Python code in a secure BoxLite sandbox."""
+    name: str = "execute_python"
+    description: str = "Execute Python code in a secure sandbox. Use this to run calculations, data analysis, or any Python code. The code's stdout is returned."
+    args_schema: type[BaseModel] = ExecuteCodeInput
+
+    def _run(self, code: str) -> str:
+        """Synchronous code execution."""
+        import threading
+        result = []
+
+        def run_async():
+            asyncio.run(self._async_run(code, result))
+
+        thread = threading.Thread(target=run_async)
+        thread.start()
+        thread.join()
+
+        return result[0] if result else "No output"
+
+    async def _async_run(self, code: str, result_container: list) -> None:
+        """Asynchronous code execution."""
+        async with boxlite.CodeBox() as codebox:
+            output = await codebox.run(code)
+            result_container.append(output)
+
+    async def _arun(self, code: str) -> str:
+        """Asynchronous tool execution."""
+        async with boxlite.CodeBox() as codebox:
+            return await codebox.run(code)
+```
+
+## Using with LangChain Agents
+
+Here's how to integrate BoxLite with different LangChain agent types:
+
+### ReAct Agent
+
+The ReAct (Reasoning + Acting) agent pattern works well with BoxLite:
+
+```python title="langchain_react_agent.py"
+from langchain import hub
+from langchain.agents import AgentExecutor, create_react_agent
+from langchain_openai import ChatOpenAI
+import boxlite
+import asyncio
+
+
+# Define the tool
+class BoxLiteTool:
+    """BoxLite code execution tool for LangChain."""
+
+    name = "execute_python"
+    description = "Execute Python code in a secure sandbox. Use this to run calculations, data analysis, or any Python code."
+
+    async def arun(self, code: str) -> str:
+        """Asynchronous execution."""
+        async with boxlite.CodeBox() as codebox:
+            return await codebox.run(code)
+
+    def run(self, code: str) -> str:
+        """Synchronous execution."""
+        return asyncio.run(self.arun(code))
+
+
+# Create the tool
+boxlite_tool = BoxLiteTool()
+
+# Get the prompt template
+prompt = hub.pull("hwchase17/react-chat-databricks")
+
+# Create the agent
+llm = ChatOpenAI(model="gpt-4o", temperature=0)
+agent = create_react_agent(llm, [boxlite_tool], prompt)
+
+# Create the executor
+agent_executor = AgentExecutor(
+    agent=agent,
+    tools=[boxlite_tool],
+    verbose=True,
+    max_iterations=10,
+)
+
+# Run the agent
+result = agent_executor.invoke({
+    "input": "What's the square root of 144 multiplied by 7?"
+})
+
+print(result["output"])
+```
+
+### OpenAI Functions Agent
+
+For agents that use OpenAI's function calling format:
+
+```python title="langchain_functions_agent.py"
+from langchain.agents import AgentExecutor, create_openai_functions_agent
+from langchain_openai import ChatOpenAI
+from langchain.tools import Tool
+import boxlite
+import asyncio
+
+
+# Create the BoxLite tool
+async def execute_code(code: str) -> str:
+    """Execute Python code in BoxLite sandbox."""
+    async with boxlite.CodeBox() as codebox:
+        return await codebox.run(code)
+
+
+# Wrap as LangChain Tool
+boxlite_tool = Tool(
+    name="execute_python",
+    func=lambda code: asyncio.run(execute_code(code)),
+    description="Execute Python code in a secure sandbox. Use this to run calculations, data analysis, or any Python code. The code's stdout is returned.",
+)
+
+# Create the agent
+llm = ChatOpenAI(model="gpt-4o", temperature=0)
+prompt = hub.pull("hwchase17/openai-functions-agent")
+agent = create_openai_functions_agent(llm, [boxlite_tool], prompt)
+
+# Create executor
+agent_executor = AgentExecutor(agent=agent, tools=[boxlite_tool], verbose=True)
+
+# Run
+result = agent_executor.invoke({
+    "input": "Calculate the compound interest on 10000 at 5% for 10 years"
+})
+
+print(result["output"])
+```
+
+## Using with LCEL (LangChain Expression Language)
+
+For more flexible integrations using LangChain Expression Language:
+
+```python title="langchain_lcel.py"
+from langchain_core.tools import tool
+from langchain_openai import ChatOpenAI
+from langchain_core.runnables import chain
+import boxlite
+import asyncio
+
+
+@tool
+def execute_python(code: str) -> str:
+    """
+    Execute Python code in a secure sandbox.
+
+    Args:
+        code: Python code to execute. Use print() to output results.
+
+    Returns:
+        The stdout from the executed code.
+    """
+    async def _run():
+        async with boxlite.CodeBox() as codebox:
+            return await codebox.run(code)
+
+    return asyncio.run(_run())
+
+
+# Use in a chain
+llm = ChatOpenAI(model="gpt-4o", temperature=0)
+
+@chain
+def code_agent(question: str):
+    """Agent that can execute code to answer questions."""
+    # This is a simplified example
+    response = llm.invoke(question)
+    return response.content
+
+
+# Bind tools to the model
+llm_with_tools = llm.bind_tools([execute_python])
+
+# Use in a chain
+chain = question | llm_with_tools
+```
+
+## Tool Calling with Conversation Agents
+
+For conversational agents that maintain context:
+
+```python title="langchain_conversation_agent.py"
+from langchain.agents import AgentExecutor, create_openai_functions_agent
+from langchain.agents.agent_toolkits.conversational_retrieval.base import create_conversational_retrieval_agent
+from langchain_openai import ChatOpenAI
+from langchain.tools import Tool
+import boxlite
+import asyncio
+
+
+# Define the tool
+async def run_code(code: str) -> str:
+    """Execute Python code in a secure sandbox."""
+    async with boxlite.CodeBox() as codebox:
+        return await codebox.run(code)
+
+
+def sync_run_code(code: str) -> str:
+    """Synchronous wrapper for the code execution tool."""
+    return asyncio.run(run_code(code))
+
+
+# Create the LangChain tool
+boxlite_tool = Tool(
+    name="execute_python",
+    func=sync_run_code,
+    description="Execute Python code in a secure sandbox. Use this for calculations, data analysis, or any Python code.",
+)
+
+# Create the agent
+llm = ChatOpenAI(model="gpt-4o", temperature=0)
+prompt_template = """You are a helpful assistant. You have access to a code execution tool.
+When you need to compute something, use the execute_python tool.
+Always use print() to output results."""
+
+# Create conversational agent
+agent_executor = AgentExecutor.from_agent_and_tools(
+    agent=create_openai_functions_agent(llm, [boxlite_tool], prompt_template),
+    tools=[boxlite_tool],
+    verbose=True,
+)
+
+# Run with conversation history
+result = agent_executor.invoke({
+    "input": "What's 25 * 48?",
+    "chat_history": [],
+})
+
+print(result["output"])
+```
+
+## Stateful Sessions
+
+BoxLite maintains state between calls, enabling powerful patterns:
+
+```python title="langchain_stateful.py"
+import boxlite
+import asyncio
+
+
+async def main():
+    """Example showing stateful execution with LangChain."""
+    async with boxlite.CodeBox() as codebox:
+        # First call: install a package
+        result1 = await codebox.run("pip install numpy")
+        print(f"Install: {result1}")
+
+        # Second call: use the installed package (persists!)
+        result2 = await codebox.run("""
+import numpy as np
+arr = np.array([1, 2, 3, 4, 5])
+print(f'Mean: {np.mean(arr)}')
+print(f'Std: {np.std(arr)}')
+""")
+        print(f"Usage: {result2}")
+
+        # Third call: more complex analysis
+        result3 = await codebox.run("""
+import numpy as np
+data = np.random.rand(100)
+print(f'Max: {np.max(data):.4f}')
+print(f'Min: {np.min(data):.4f}')
+""")
+        print(f"Analysis: {result3}")
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+<Note>
+  Each `run()` call executes in a fresh Python process, so in-memory variables do not persist. Only pip-installed packages and files written to disk remain available across calls.
+</Note>
+
+## Best Practices
+
+### 1. Use Async Execution
+
+Always prefer async execution for better performance:
+
+```python
+async with boxlite.CodeBox() as codebox:
+    result = await codebox.run(code)
+```
+
+### 2. Set Timeouts
+
+Prevent runaway code with timeouts:
+
+```python
+result = await codebox.run(code, timeout=30)
+```
+
+### 3. Handle Errors Gracefully
+
+Wrap execution in error handling:
+
+```python
+try:
+    result = await codebox.run(code, timeout=30)
+except Exception as e:
+    result = f"Error: {str(e)}"
+```
+
+### 4. Pre-install Dependencies
+
+Install packages once at session start:
+
+```python
+async with boxlite.CodeBox() as codebox:
+    # Install once
+    await codebox.run("pip install pandas numpy")
+
+    # Use in subsequent calls
+    result = await codebox.run("import pandas as pd; ...")
+```
+
+### 5. Use Appropriate Box Types
+
+Choose the right box type for your use case:
+
+- **CodeBox**: Full Python stdlib + pip support
+- **SimpleBox**: Minimal environment for simple scripts
+- **BrowserBox**: Browser automation capabilities
+
+## Production Considerations
+
+For production LangChain deployments:
+
+1. **Resource limits**: Configure CPU, memory, and disk limits
+2. **Tool caching**: Cache tool definitions to reduce overhead
+3. **Error handling**: Implement robust error handling for failed executions
+4. **Logging**: Add logging for debugging and monitoring
+5. **Rate limiting**: Implement rate limiting to prevent abuse
+
+```python
+async with boxlite.CodeBox(
+    cpu_count=2,
+    memory_mb=512,
+    disk_mb=1024,
+    timeout=60,
+    networking=False,
+) as codebox:
+    # Production code here
+```
+
+## Next Steps
+
+- [OpenAI Agents SDK Integration](/integrations/openai-agents) — Build structured agents
+- [Vercel AI SDK Integration](/integrations/vercel-ai-sdk) — Stream AI responses
+- [AI Agent Integration Guide](/guides/ai-agent-integration) — Production patterns

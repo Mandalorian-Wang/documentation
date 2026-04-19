@@ -1,0 +1,539 @@
+---
+title: "Stateful Workspace Patterns"
+description: "Build persistent development environments with BoxLite"
+---
+
+Stateful workspaces maintain data and configuration across sandbox sessions. This tutorial covers patterns for building persistent development environments, managing data effectively, and handling sessions in BoxLite.
+
+## Understanding Stateful vs Stateless
+
+**Stateless boxes** are created fresh for each task and discarded afterward. They're perfect for:
+- Running isolated commands
+- Executing untrusted code
+- One-off computations
+
+**Stateful boxes** persist data and configuration across sessions. They're ideal for:
+- Development environments that need setup time
+- Data-intensive workloads with large datasets
+- Long-running sessions with accumulated state
+
+## Prerequisites
+
+<Tabs>
+  <Tab title="Python">
+    ```bash
+    python3 -m pip install boxlite
+    ```
+  </Tab>
+  <Tab title="Node.js">
+    ```bash
+    npm install @boxlite-ai/boxlite
+    ```
+  </Tab>
+</Tabs>
+
+## Persistent Box Pattern
+
+Create a box that persists between uses:
+
+<Tabs>
+  <Tab title="Python">
+    ```python title="persistent_box.py"
+    import asyncio
+    import boxlite
+
+
+    async def persistent_box_example():
+        """Use a persistent box across multiple sessions."""
+        # Create box with auto_remove=False to persist
+        box = boxlite.SimpleBox(
+            image="python:3.12-slim",
+            auto_remove=False,
+            name="dev-workspace"
+        )
+
+        try:
+            # First session: set up environment
+            await box.start()
+            await box.exec("pip", "install", "numpy pandas")
+            await box.exec("mkdir", "-p", "/workspace/data")
+
+            # Add some data
+            await box.exec("python", "-c", "open('/workspace/data/test.csv', 'w').write('a,b\\n1,2')")
+
+            # Shutdown but don't remove
+            await box.shutdown()
+            print("Session 1 complete, box stopped but persists")
+
+            # Second session: box retains all state
+            await box.start()
+
+            # Verify data still exists
+            result = await box.exec("cat", "/workspace/data/test.csv")
+            print("Data from session 1:")
+            print(result.stdout)
+
+            # New work in session 2
+            await box.exec("python", "-c", "open('/workspace/data/result.txt', 'w').write('processed')")
+
+            await box.shutdown()
+            print("Session 2 complete")
+
+            # Third session: continue from session 2 state
+            await box.start()
+            result = await box.exec("ls", "/workspace/data/")
+            print("Files in session 3:")
+            print(result.stdout)
+
+        finally:
+            # Clean up when done
+            await box.remove()
+
+
+    if __name__ == "__main__":
+        asyncio.run(persistent_box_example())
+    ```
+  </Tab>
+  <Tab title="Node.js">
+    ```javascript title="persistent_box.js"
+    import { SimpleBox } from '@boxlite-ai/boxlite';
+
+    async function persistentBoxExample() {
+      const box = new SimpleBox({
+        image: 'python:3.12-slim',
+        autoRemove: false,
+        name: 'dev-workspace'
+      });
+
+      try {
+        // First session: set up environment
+        await box.start();
+        await box.exec('pip', 'install', 'numpy pandas');
+        await box.exec('mkdir', '-p', '/workspace/data');
+
+        // Add some data
+        await box.exec('python', '-c', "open('/workspace/data/test.csv', 'w').write('a,b\\n1,2')");
+
+        // Shutdown but don't remove
+        await box.shutdown();
+        console.log('Session 1 complete, box stopped but persists');
+
+        // Second session: box retains all state
+        await box.start();
+
+        // Verify data still exists
+        const result = await box.exec('cat', '/workspace/data/test.csv');
+        console.log('Data from session 1:');
+        console.log(result.stdout);
+
+        await box.shutdown();
+        console.log('Session 2 complete');
+
+        // Clean up when done
+        await box.remove();
+      } finally {
+        await box.stop();
+      }
+    }
+
+    persistentBoxExample();
+    ```
+  </Tab>
+</Tabs>
+
+## Reuse Existing Box
+
+Reconnect to a previously created box by name:
+
+<Tabs>
+  <Tab title="Python">
+    ```python title="reuse_box.py"
+    import asyncio
+    import boxlite
+
+
+    async def reuse_existing_box():
+        """Reconnect to an existing persistent box."""
+        # Try to reuse existing box
+        box = boxlite.SimpleBox(
+            image="python:3.12-slim",
+            reuse_existing=True,  # Connect to existing box with same name
+            name="shared-workspace"
+        )
+
+        try:
+            await box.start()
+
+            # Check current state
+            result = await box.exec("hostname")
+            print(f"Connected to: {result.stdout}")
+
+            # Continue working...
+            result = await box.exec("pip", "list")
+            print("Installed packages:")
+            print(result.stdout)
+
+        except boxlite.BoxNotFoundError:
+            print("No existing box found, creating new one")
+            # Handle case where box doesn't exist yet
+
+        finally:
+            await box.shutdown()
+
+
+    if __name__ == "__main__":
+        asyncio.run(reuse_existing_box())
+    ```
+  </Tab>
+</Tabs>
+
+## Volume-Based Persistence
+
+For large datasets or when you need host access to files, use volumes:
+
+<Tabs>
+  <Tab title="Python">
+    ```python title="volume_persistence.py"
+    import asyncio
+    import boxlite
+
+
+    async def volume_persistence():
+        """Use volumes for persistent data storage."""
+        async with boxlite.SimpleBox(
+            image="python:3.12-slim",
+            volumes=[
+                # (host_path, guest_path, read_only)
+                ("/host/data/project", "/workspace/data", False),
+                ("/host/config", "/workspace/config", True),
+            ]
+        ) as box:
+            # Data written to /workspace/data persists on host
+            await box.exec("python", "-c", "
+                import pandas as pd
+                df = pd.DataFrame({'a': [1,2,3], 'b': [4,5,6]})
+                df.to_csv('/workspace/data/dataset.csv', index=False)
+                print('Data written')
+            ")
+
+            # Verify data on host
+            import os
+            print(f"Files in host directory: {os.listdir('/host/data/project')}")
+
+            # Next box can reuse the same volume
+            async with boxlite.SimpleBox(
+                image="python:3.12-slim",
+                volumes=[
+                    ("/host/data/project", "/workspace/data", False),
+                ]
+            ) as box2:
+                result = await box2.exec("head", "/workspace/data/dataset.csv")
+                print("Data from previous box:")
+                print(result.stdout)
+
+
+    if __name__ == "__main__":
+        asyncio.run(volume_persistence())
+    ```
+  </Tab>
+</Tabs>
+
+## Session Management Patterns
+
+### Named Sessions
+
+Organize multiple workspaces:
+
+<Tabs>
+  <Tab title="Python">
+    ```python title="named_sessions.py"
+    import asyncio
+    import boxlite
+
+
+    async def create_named_sessions():
+        """Create multiple isolated development environments."""
+        projects = ["frontend", "backend", "ml-pipeline"]
+
+        for project_name in projects:
+            # Each project gets its own persistent workspace
+            box = boxlite.SimpleBox(
+                image="python:3.12-slim",
+                auto_remove=False,
+                name=f"project-{project_name}"
+            )
+
+            try:
+                await box.start()
+
+                # Project-specific setup
+                if project_name == "frontend":
+                    await box.exec("npm", "init", "-y")
+                elif project_name == "backend":
+                    await box.exec("pip", "install", "fastapi")
+                elif project_name == "ml-pipeline":
+                    await box.exec("pip", "install", "scikit-learn pandas")
+
+                await box.shutdown()
+                print(f"Setup complete for {project_name}")
+
+            finally:
+                # Keep boxes running for later use
+                pass
+
+        # Later, reconnect to any project
+        frontend_box = boxlite.SimpleBox(
+            image="python:3.12-slim",
+            reuse_existing=True,
+            name="project-frontend"
+        )
+        await frontend_box.start()
+        result = await frontend_box.exec("ls", "-la")
+        print("Frontend project files:")
+        print(result.stdout)
+
+
+    if __name__ == "__main__":
+        asyncio.run(create_named_sessions())
+    ```
+  </Tab>
+</Tabs>
+
+### Session Pool
+
+Maintain a pool of pre-warmed boxes:
+
+<Tabs>
+  <Tab title="Python">
+    ```python title="session_pool.py"
+    import asyncio
+    import boxlite
+    from collections import deque
+
+
+    class BoxPool:
+        """A pool of pre-warmed persistent boxes."""
+
+        def __init__(self, image: str, pool_size: int = 3):
+            self.image = image
+            self.pool_size = pool_size
+            self.available = deque()
+            self.in_use = set()
+
+        async def initialize(self):
+            """Create initial pool of boxes."""
+            print(f"Initializing pool with {self.pool_size} boxes...")
+            for i in range(self.pool_size):
+                box = boxlite.SimpleBox(
+                    image=self.image,
+                    auto_remove=False,
+                    name=f"pool-box-{i}"
+                )
+                await box.start()
+                self.available.append(box)
+            print("Pool initialized")
+
+        async def acquire(self):
+            """Get a box from the pool."""
+            if not self.available:
+                # Wait or create new box
+                await asyncio.sleep(0.1)
+
+            box = self.available.popleft()
+            self.in_use.add(box)
+            return box
+
+        async def release(self, box):
+            """Return box to the pool."""
+            self.in_use.discard(box)
+            self.available.append(box)
+
+        async def cleanup(self):
+            """Clean up all boxes in the pool."""
+            all_boxes = list(self.available) + list(self.in_use)
+            for box in all_boxes:
+                await box.remove()
+
+
+    async def pool_example():
+        """Use a box pool for efficient resource utilization."""
+        pool = BoxPool("python:3.12-slim", pool_size=2)
+        await pool.initialize()
+
+        try:
+            # Acquire boxes from pool
+            box1 = await pool.acquire()
+            result = await box1.exec("echo", "Box 1")
+            print(result.stdout)
+
+            box2 = await pool.acquire()
+            result = await box2.exec("echo", "Box 2")
+            print(result.stdout)
+
+            # Return boxes to pool
+            await pool.release(box1)
+            await pool.release(box2)
+
+            # Reuse boxes from pool
+            box3 = await pool.acquire()
+            result = await box3.exec("echo", "Box 3 (reused)")
+            print(result.stdout)
+
+        finally:
+            await pool.cleanup()
+
+
+    if __name__ == "__main__":
+        asyncio.run(pool_example())
+    ```
+  </Tab>
+</Tabs>
+
+## Data Management
+
+### Checkpoint and Resume
+
+Save progress for long-running operations:
+
+<Tabs>
+  <Tab title="Python">
+    ```python title="checkpoint_resume.py"
+    import asyncio
+    import boxlite
+
+
+    async def checkpoint_and_resume():
+        """Save and restore progress for long operations."""
+        # Simulate processing that takes multiple sessions
+        state_file = "/workspace/progress.json"
+
+        # Check for existing progress
+        box = boxlite.SimpleBox(
+            image="python:3.12-slim",
+            auto_remove=False,
+            name="long-running-task"
+        )
+
+        try:
+            await box.start()
+
+            # Load previous progress if exists
+            result = await box.exec("test", "-f", state_file, "&&", "cat", state_file)
+            current_progress = 0
+
+            if result.exit_code == 0 and result.stdout.strip():
+                current_progress = int(result.stdout.strip())
+                print(f"Resuming from progress: {current_progress}")
+            else:
+                print("Starting fresh")
+
+            # Process in chunks
+            total_chunks = 10
+
+            for chunk in range(current_progress, total_chunks):
+                # Simulate work
+                await box.exec("python", "-c", f"print('Processing chunk {chunk + 1}/{total_chunks}')")
+
+                # Save progress
+                await box.exec("python", "-c", f"open('{state_file}', 'w').write('{chunk + 1}')")
+                current_progress = chunk + 1
+                print(f"Progress saved: {current_progress}/{total_chunks}")
+
+                # Checkpoint (save state)
+                await box.shutdown()
+
+                # Resume in next session
+                box = boxlite.SimpleBox(
+                    image="python:3.12-slim",
+                    reuse_existing=True,
+                    name="long-running-task"
+                )
+                await box.start()
+
+            print("All chunks processed!")
+
+        finally:
+            await box.remove()
+
+
+    if __name__ == "__main__":
+        asyncio.run(checkpoint_and_resume())
+    ```
+  </Tab>
+</Tabs>
+
+### Data Sharing Between Boxes
+
+Share data via a common volume:
+
+<Tabs>
+  <Tab title="Python">
+    ```python title="data_sharing.py"
+    import asyncio
+    import boxlite
+
+
+    async def share_data_between_boxes():
+        """Share data between multiple boxes using shared volume."""
+        shared_volume = "/workspace/shared"
+
+        # Producer: writes data to shared volume
+        async with boxlite.SimpleBox(
+            image="python:3.12-slim",
+            volumes=[("/host/shared-data", shared_volume, False)],
+            name="producer"
+        ) as producer:
+            await producer.exec("python", "-c", f"
+                import json
+                data = {{'items': [1, 2, 3, 4, 5]}}
+                with open('{shared_volume}/output.json', 'w') as f:
+                    json.dump(data, f)
+            ")
+            print("Producer wrote data")
+
+        # Consumer: reads from shared volume
+        async with boxlite.SimpleBox(
+            image="python:3.12-slim",
+            volumes=[("/host/shared-data", shared_volume, True)],
+            name="consumer"
+        ) as consumer:
+            result = await consumer.exec("cat", f"{shared_volume}/output.json")
+            print(f"Consumer read data: {result.stdout}")
+
+
+    if __name__ == "__main__":
+        asyncio.run(share_data_between_boxes())
+    ```
+  </Tab>
+</Tabs>
+
+## Best Practices
+
+1. **Use meaningful names** - Name boxes after their purpose for easy identification
+
+2. **Set up auto_remove strategically** - Keep `auto_remove=False` for development, use `True` for production
+
+3. **Clean up when done** - Always remove persistent boxes when no longer needed to free resources
+
+4. **Use volumes for large data** - Don't store large datasets inside boxes; use volume mounts instead
+
+5. **Implement health checks** - Monitor box health with periodic heartbeat checks
+
+6. **Handle reconnection gracefully** - Check if box exists before attempting to reuse
+
+## Related Topics
+
+<CardGroup cols={2}>
+  <Card title="Snapshots, Checkpoints, and Rollback" icon="camera" href="/tutorials/snapshots-checkpoint-rollback">
+    Learn about VM snapshots and rollback.
+  </Card>
+  <Card title="Box Lifecycle" icon="refresh" href="/core-concepts/lifecycle">
+    Understand box states and transitions.
+  </Card>
+  <Card title="Volumes" icon="hard-drive" href="/volumes/overview">
+    Persistent storage with volumes.
+  </Card>
+  <Card title="Cost Control" icon="credit-card" href="/guides/cost-control-best-practices">
+    Optimize costs for persistent boxes.
+  </Card>
+</CardGroup>

@@ -1,0 +1,283 @@
+---
+title: "Database and Backup"
+description: "SQLite database configuration, backup strategies, and recovery procedures for BoxRun."
+---
+
+BoxRun stores all state in a lightweight SQLite database. This document covers database configuration, backup strategies, and recovery procedures for production deployments.
+
+## Overview
+
+BoxRun uses SQLite for state management because it provides:
+- Zero-configuration deployment
+- ACID compliance for reliable state
+- Low resource overhead
+- No external dependencies
+
+## Database Location
+
+The database is stored at:
+
+```text
+~/.boxrun/boxrun.db
+```
+
+This location can be customized via environment variable:
+
+```bash
+export BOXRUN_DB=/custom/path/boxrun.db
+```
+
+## Database Schema
+
+The database contains the following tables:
+
+### boxes
+
+Stores Box metadata and lifecycle state:
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | TEXT | Unique Box identifier (UUID) |
+| name | TEXT | User-friendly Box name |
+| image | TEXT | OCI image reference |
+| state | TEXT | Current state (creating/running/stopped/error) |
+| cpu | INTEGER | CPU cores allocated |
+| memory_mb | INTEGER | Memory in MB |
+| disk_gb | INTEGER | Disk size in GB |
+| created_at | INTEGER | Unix timestamp |
+| started_at | INTEGER | Unix timestamp when started |
+| stopped_at | INTEGER | Unix timestamp when stopped |
+
+### execs
+
+Tracks command execution history:
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | TEXT | Unique execution identifier |
+| box_id | TEXT | Parent Box ID |
+| command | TEXT | Command that was executed |
+| exit_code | INTEGER | Process exit code |
+| started_at | INTEGER | Unix timestamp |
+| finished_at | INTEGER | Unix timestamp |
+
+### events
+
+Event log for audit and debugging:
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | INTEGER | Auto-increment event ID |
+| timestamp | INTEGER | Unix timestamp |
+| event_type | TEXT | Event type (box_created/exec_started/etc) |
+| box_id | TEXT | Related Box ID |
+| payload | TEXT | JSON-encoded event data |
+
+## Backup Strategy
+
+### Manual Backup
+
+For production deployments, perform backups while the service is stopped to ensure data consistency:
+
+```bash
+#!/bin/bash
+# /usr/local/bin/boxrun-backup.sh
+
+set -e
+
+# Configuration
+BACKUP_DIR="/var/backups/boxrun"
+BOXRUN_DIR="${HOME}/.boxrun"
+RETENTION_DAYS=7
+
+# Create backup directory
+mkdir -p "$BACKUP_DIR"
+
+# Stop BoxRun service (optional for consistent backup)
+echo "Stopping BoxRun service..."
+sudo systemctl stop boxrun || true
+
+# Backup database
+echo "Backing up database..."
+cp "$BOXRUN_DIR/boxrun.db" "$BACKUP_DIR/boxrun-$(date +%Y%m%d).db"
+
+# Backup runtime directory (includes kernel, shim, and cached images)
+echo "Backing up runtime..."
+tar -czf "$BACKUP_DIR/runtime-$(date +%Y%m%d).tar.gz" -C "$BOXRUN_DIR" runtime
+
+# Restart BoxRun service
+echo "Starting BoxRun service..."
+sudo systemctl start boxrun || boxrun serve &
+
+# Cleanup old backups
+echo "Cleaning up old backups..."
+find "$BACKUP_DIR" -name "boxrun-*.db" -mtime +$RETENTION_DAYS -delete
+find "$BACKUP_DIR" -name "runtime-*.tar.gz" -mtime +$RETENTION_DAYS -delete
+
+echo "Backup completed successfully"
+```
+
+### Automated Backup with cron
+
+Schedule daily backups:
+
+```bash
+# Add to crontab (crontab -e)
+# Run daily at 2 AM
+0 2 * * * /usr/local/bin/boxrun-backup.sh >> /var/log/boxrun-backup.log 2>&1
+```
+
+### Incremental Backup (Optional)
+
+For larger deployments, consider using SQLite's backup API or a tool like `sqlite3` with `.backup`:
+
+```bash
+# Create incremental backup
+sqlite3 ~/.boxrun/boxrun.db ".backup /path/to/backup.db"
+```
+
+## Restore Procedures
+
+### Full Restore
+
+To restore from a backup:
+
+```bash
+#!/bin/bash
+# /usr/local/bin/boxrun-restore.sh
+
+set -e
+
+BACKUP_FILE="$1"
+RUNTIME_BACKUP="$2"
+
+if [ -z "$BACKUP_FILE" ]; then
+    echo "Usage: $0 <database-backup> [runtime-backup]"
+    exit 1
+fi
+
+# Stop BoxRun service
+echo "Stopping BoxRun service..."
+sudo systemctl stop boxrun || pkill -f "boxrun serve" || true
+
+# Restore database
+echo "Restoring database..."
+cp "$BACKUP_FILE" ~/.boxrun/boxrun.db
+
+# Restore runtime if provided
+if [ -n "$RUNTIME_BACKUP" ]; then
+    echo "Restoring runtime..."
+    tar -xzf "$RUNTIME_BACKUP" -C ~/.boxrun/
+fi
+
+# Fix permissions
+chmod 600 ~/.boxrun/boxrun.db
+chmod 700 ~/.boxrun/runtime
+
+# Start BoxRun service
+echo "Starting BoxRun service..."
+sudo systemctl start boxrun || boxrun serve &
+
+# Verify restore
+echo "Verifying restore..."
+boxrun list
+curl -s http://localhost:9090/v1/info
+
+echo "Restore completed successfully"
+```
+
+### Selective Restore (Database Only)
+
+If only the database is corrupted:
+
+```bash
+# Stop the service
+sudo systemctl stop boxrun
+
+# Restore database from backup
+cp /var/backups/boxrun/boxrun-20240415.db ~/.boxrun/boxrun.db
+
+# Fix permissions
+chmod 600 ~/.boxrun/boxrun.db
+
+# Restart service
+sudo systemctl start boxrun
+```
+
+## Backup Verification
+
+Always verify backup integrity after creation:
+
+```bash
+# Check database integrity
+sqlite3 ~/.boxrun/boxrun.db "PRAGMA integrity_check;"
+
+# Verify backup is readable
+sqlite3 /var/backups/boxrun/boxrun-20240415.db "SELECT COUNT(*) FROM boxes;"
+
+# List backup contents
+tar -tzf /var/backups/boxrun/runtime-20240415.tar.gz | head -20
+```
+
+## Off-Site Backup
+
+For disaster recovery, copy backups to off-site storage:
+
+```bash
+# Copy to remote storage (example with scp)
+scp /var/backups/boxrun/boxrun-$(date +%Y%m%d).db backup-server:/backups/boxrun/
+scp /var/backups/boxrun/runtime-$(date +%Y%m%d).tar.gz backup-server:/backups/boxrun/
+```
+
+Or use cloud storage:
+
+```bash
+# AWS S3 example
+aws s3 cp /var/backups/boxrun/boxrun-$(date +%Y%m%d).db s3://your-bucket/boxrun/
+aws s3 cp /var/backups/boxrun/runtime-$(date +%Y%m%d).tar.gz s3://your-bucket/boxrun/
+```
+
+## Disaster Recovery Checklist
+
+In case of complete system failure:
+
+1. **Recover BoxRun binary**
+   - Reinstall from original source
+
+2. **Restore database**
+   - Copy latest database backup to `~/.boxrun/boxrun.db`
+
+3. **Restore runtime** (if needed)
+   - Extract runtime backup to `~/.boxrun/runtime/`
+
+4. **Verify state**
+   ```bash
+   boxrun list
+   curl http://localhost:9090/v1/info
+   ```
+
+5. **Start boxes**
+   ```bash
+   boxrun start <box-name>
+   ```
+
+## Monitoring
+
+Add backup monitoring to your observability stack:
+
+```bash
+# Check latest backup age
+find /var/backups/boxrun -name "boxrun-*.db" -mtime +1 -exec echo "WARNING: Backup missing" \;
+```
+
+## Performance Considerations
+
+- SQLite works best with databases under 10GB
+- For high-throughput scenarios, consider periodic `VACUUM` to reclaim space:
+  ```bash
+  sqlite3 ~/.boxrun/boxrun.db "VACUUM;"
+  ```
+
+<Info>
+  Always test restore procedures in a non-production environment before relying on backups.
+</Info>

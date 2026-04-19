@@ -1,0 +1,350 @@
+---
+title: "Authentication and Access Control"
+description: "Production authentication strategies for BoxRun."
+sidebarTitle: "Auth & Access"
+---
+
+This guide covers authentication and access control strategies for production BoxRun deployments. Currently, BoxRun focuses on network-level access control since built-in API authentication is not yet available.
+
+## Current Auth Support
+
+BoxRun currently provides the following security features:
+
+| Feature | Status | Description |
+|---------|--------|-------------|
+| Network-level access | Available | Bind to localhost, firewall rules |
+| TLS termination | Available | Via reverse proxy |
+| API key authentication | Not available | Use external auth layer |
+| OAuth/OIDC | Not available | Use external auth layer |
+| Role-based access | Not available | Use external auth layer |
+
+<Warning>
+  BoxRun does not currently have built-in API key or token authentication. All production deployments should use network-level access control and authentication at the reverse proxy layer.
+</Warning>
+
+## Network-Level Access Control
+
+The primary security mechanism for BoxRun is network-level access control. Restrict access to the BoxRun port so only authorized clients can reach the service.
+
+### Bind Address Configuration
+
+Configure BoxRun to listen on localhost only:
+
+```bash
+# TCP mode - bind to localhost (default)
+boxrun serve --host 127.0.0.1 --port 9090
+
+# Or via environment variables
+export BOXRUN_HOST=127.0.0.1
+export BOXRUN_PORT=9090
+boxrun serve
+```
+
+This ensures BoxRun only accepts connections from the local machine. All external access must go through a reverse proxy that handles authentication.
+
+### Firewall Rules
+
+Restrict access to the BoxRun port using firewall rules.
+
+#### UFW (Ubuntu/Debian)
+
+```bash
+# Allow access only from specific IP ranges
+sudo ufw allow from 10.0.0.0/24 to any port 9090
+sudo ufw allow from 192.168.1.0/24 to any port 9090
+
+# Deny all other access
+sudo ufw deny 9090
+
+# Enable the firewall
+sudo ufw enable
+
+# Check status
+sudo ufw status
+```
+
+#### firewalld (RHEL/CentOS)
+
+```bash
+# Allow specific sources
+sudo firewall-cmd --permanent --add-rich-rule='rule family="ipv4" source address="10.0.0.0/24" port port="9090" accept'
+sudo firewall-cmd --permanent --add-rich-rule='rule family="ipv4" source address="192.168.1.0/24" port port="9090" accept'
+
+# Reload firewall
+sudo firewall-cmd --reload
+
+# Check rules
+sudo firewall-cmd --list-all
+```
+
+#### iptables
+
+```bash
+# Allow from specific sources
+sudo iptables -A INPUT -p tcp -s 10.0.0.0/24 --dport 9090 -j ACCEPT
+sudo iptables -A INPUT -p tcp -s 192.168.1.0/24 --dport 9090 -j ACCEPT
+
+# Drop all other access
+sudo iptables -A INPUT -p tcp --dport 9090 -j DROP
+
+# Save rules (Debian/Ubuntu)
+sudo apt-get install iptables-persistent
+sudo netfilter-persistent save
+
+# Save rules (RHEL/CentOS)
+sudo service iptables save
+```
+
+### Verify Bind Address
+
+Check that BoxRun is listening on the correct address:
+
+```bash
+# Check listening ports
+ss -tlnp | grep 9090
+# or
+netstat -tlnp | grep 9090
+
+# Should show: 127.0.0.1:9090 or 127.0.0.1:9090 :*:*
+```
+
+## External Authentication Layer
+
+Since BoxRun lacks built-in authentication, use your reverse proxy or an external auth layer.
+
+### Nginx with Basic Auth
+
+Use Nginx's `auth_basic` module for simple password authentication:
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name api.boxlite.example.com;
+
+    ssl_certificate /etc/nginx/ssl/api.boxlite.example.com.crt;
+    ssl_certificate_key /etc/nginx/ssl/api.boxlite.example.com.key;
+
+    # Enable authentication
+    auth_basic "BoxRun API";
+    auth_basic_user_file /etc/nginx/.htpasswd;
+
+    location / {
+        proxy_pass http://127.0.0.1:9090;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+    }
+}
+```
+
+Generate the password file:
+
+```bash
+# Install Apache utilities (Debian/Ubuntu)
+sudo apt-get install apache2-utils
+
+# Generate password file
+htpasswd -c /etc/nginx/.htpasswd username
+
+# Add additional users
+htpasswd /etc/nginx/.htpasswd anotheruser
+```
+
+### Nginx with JWT Validation
+
+For more complex authentication, validate JWT tokens at the proxy:
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name api.boxlite.example.com;
+
+    ssl_certificate /etc/nginx/ssl/api.boxlite.example.com.crt;
+    ssl_certificate_key /etc/nginx/ssl/api.boxlite.example.com.key;
+
+    # Validate JWT Bearer token
+    location / {
+        # Extract token from Authorization header
+        set $token $http_authorization;
+
+        # Validate with lua or jwt module
+        # (requires nginx-lua-module or nginx-jwt-module)
+
+        proxy_pass http://127.0.0.1:9090;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+    }
+}
+```
+
+### Caddy with Basic Auth
+
+```caddy
+api.boxlite.example.com {
+    basicauth {
+        username JDJhJGEwYzRiMDM5MzM2ODRiYTU1NGY2YjQxNmE5ZTI1ZTM3MzFkMmQ4OTBkMjM5ZjVkZDE4ZjlmNGE=
+    }
+
+    reverse_proxy localhost:9090
+}
+```
+
+## API Key Simulation
+
+While BoxRun does not have native API key support, you can simulate it using Nginx:
+
+```nginx
+map $http_authorization $valid_key {
+    default "";
+    "Bearer my-secret-api-key-12345" "ok";
+}
+
+server {
+    listen 443 ssl;
+    server_name api.boxlite.example.com;
+
+    ssl_certificate /etc/nginx/ssl/api.boxlite.example.com.crt;
+    ssl_certificate_key /etc/nginx/ssl/api.boxlite.example.com.key;
+
+    location / {
+        # Reject requests without valid API key
+        if ($valid_key != "ok") {
+            return 401 '{"code": "UNAUTHORIZED", "message": "Invalid or missing API key"}';
+        }
+
+        proxy_pass http://127.0.0.1:9090;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+    }
+}
+```
+
+Client usage:
+
+```bash
+export BOXRUN_API_KEY="my-secret-api-key-12345"
+curl -H "Authorization: Bearer $BOXRUN_API_KEY" \
+     https://api.boxlite.example.com/v1/boxes
+```
+
+## Best Practices
+
+### Security Checklist
+
+1. **Always use TLS in production**
+   - Terminate TLS at reverse proxy
+   - Never expose BoxRun directly to the internet
+
+2. **Restrict bind address**
+   - Use `127.0.0.1` for BoxRun
+   - Never bind to `0.0.0.0` in production
+
+3. **Use firewall rules**
+   - Allow only specific IP ranges
+   - Deny all other access by default
+
+4. **Implement authentication at proxy layer**
+   - Basic auth for simple cases
+   - JWT/OAuth for complex cases
+
+5. **Rotate credentials regularly**
+   - Rotate API keys (if using simulation)
+   - Rotate SSL certificates
+
+### API Key Rotation
+
+When using API key authentication via Nginx, implement a rotation strategy:
+
+#### Rotation Process
+
+```bash
+#!/bin/bash
+# rotate-api-key.sh
+
+# 1. Generate new key
+NEW_KEY=$(openssl rand -hex 32)
+
+# 2. Update Nginx config with new key
+sed -i "s/Bearer.*/Bearer $NEW_KEY/" /etc/nginx/conf.d/boxrun-auth.conf
+
+# 3. Test configuration
+nginx -t
+
+# 4. Reload Nginx
+nginx -s reload
+
+# 5. Notify clients of new key (via secure channel)
+echo "API key rotated. New key: $NEW_KEY" | mail -s "API Key Update" admin@company.com
+```
+
+#### Automated Rotation Schedule
+
+```bash
+# Add to crontab (crontab -e)
+# Rotate keys every 30 days
+0 2 1 * * /usr/local/bin/rotate-api-key.sh >> /var/log/api-key-rotation.log 2>&1
+```
+
+<Note>
+  Coordinate key rotation with all API clients to avoid service interruption.
+</Note>
+
+6. **Monitor access logs**
+   - Review proxy logs for suspicious activity
+   - Set up alerts for failed authentication attempts
+
+### Production Architecture
+
+```
+                        ┌─────────────────────┐
+                        │   Internet          │
+                        └──────────┬──────────┘
+                                   │
+                                   ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    Firewall                                 │
+│  - Allow 443 only                                           │
+│  - Drop all other inbound                                   │
+└──────────────────────────┬──────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────┐
+│  Reverse Proxy (Nginx/Caddy)                                │
+│  - TLS termination                                          │
+│  - Authentication (basic/JWT)                               │
+│  - Access logs                                              │
+└──────────────────────────┬──────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────┐
+│  BoxRun Server                                              │
+│  - Bind: 127.0.0.1:9090                                     │
+│  - No authentication (handled by proxy)                    │
+└─────────────────────────────────────────────────────────────┘
+```
+
+## Future Authentication Features
+
+Planned authentication features for future BoxRun releases:
+
+- Built-in API key management
+- OAuth 2.0 / OIDC integration
+- Role-based access control (RBAC)
+- Audit logging with authentication context
+- Rate limiting per API key
+
+## Related Documentation
+
+<CardGroup cols={2}>
+  <Card title="Reverse Proxy" icon="server" href="/boxrun/deploy-reverse-proxy">
+    Configure nginx or Caddy in front of BoxRun.
+  </Card>
+  <Card title="systemd Deployment" icon="linux" href="/boxrun/deploy-systemd-linux">
+    Deploy BoxRun as a systemd service on Linux.
+  </Card>
+  <Card title="Production Overview" icon="cloud" href="/boxrun/production-deployment-overview">
+    Full production architecture overview.
+  </Card>
+  <Card title="Security Architecture" icon="shield" href="/architecture/security">
+    Detailed security architecture.
+  </Card>
+</CardGroup>

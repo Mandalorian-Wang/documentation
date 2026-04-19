@@ -1,13 +1,37 @@
 ---
 title: "CLI Reference"
 sidebarTitle: "CLI reference"
-description: "BoxRun CLI commands for managing boxes, executing commands, transferring files, and interactive terminal sessions."
-icon: "terminal"
+description: "Canonical BoxRun CLI reference for supported commands, flags, and lifecycle workflows."
 ---
 
-BoxRun provides a single `boxrun` command with subcommands for managing boxes, executing commands, transferring files, and more.
+This is the canonical BoxRun CLI reference.
+
+Use this page as the single source of truth for `boxrun` commands. Older links to `/reference/cli` now exist only as a compatibility page and point back here.
 
 `BOX` arguments accept either a box ID (`box_abc123`) or a name (`dev`).
+
+## Command Summary
+
+The following top-level commands are available in the local `boxrun` binary:
+
+| Command | Purpose |
+|---------|---------|
+| `serve` | Start the BoxRun server |
+| `create` | Create a new box |
+| `ls` | List boxes |
+| `stop` | Stop a running box |
+| `start` | Start a stopped box |
+| `rm` | Remove a box |
+| `exec` | Execute a command in a box |
+| `attach` | Attach an interactive terminal to a box |
+| `shell` | Create a box and attach immediately |
+| `cp` | Copy files between host and box |
+| `run` | Run a command in an ephemeral box |
+| `gc` | Remove old stopped boxes |
+| `images` | List recommended images and aliases |
+| `completion` | Generate shell completions |
+| `upgrade` | Self-update to the latest release |
+| `uninstall` | Remove `boxrun` from the system |
 
 ## Server
 
@@ -193,13 +217,13 @@ BoxRun provides built-in aliases for common images so you can use short names:
 
 | Alias | Image | Description |
 |-------|-------|-------------|
-| `default` | `ubuntu:24.04` | General purpose (used when no image is specified) |
+| `default` | `ubuntu:24.04` | Ubuntu 24.04 (general purpose, recommended) |
 | `ubuntu` | `ubuntu:24.04` | Ubuntu 24.04 LTS |
 | `python` | `python:3.12-slim` | Python 3.12 pre-installed |
 | `node` | `node:22-slim` | Node.js 22 LTS pre-installed |
 | `golang` | `golang:1.22` | Go 1.22 pre-installed |
 | `rust` | `rust:1.77-slim` | Rust 1.77 pre-installed |
-| `alpine` | `alpine:3.20` | Lightweight Linux (5 MB) |
+| `alpine` | `alpine:3.20` | Lightweight Linux (5MB) |
 
 ```bash
 # These are equivalent
@@ -225,3 +249,28 @@ eval "$(boxrun completion bash)"
 # Fish
 boxrun completion fish | source
 ```
+
+The CLI also accepts `elvish` and `powershell` as completion targets:
+
+```bash
+boxrun completion powershell
+boxrun completion elvish
+```
+
+## Maintenance
+
+### Upgrade
+
+```bash
+boxrun upgrade
+```
+
+Update the local `boxrun` installation to the latest release.
+
+### Uninstall
+
+```bash
+boxrun uninstall
+```
+
+Remove the local `boxrun` installation from the system.

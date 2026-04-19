@@ -1,0 +1,396 @@
+---
+title: "OpenAI Agents SDK Integration"
+description: "Integrate BoxLite with OpenAI Agents SDK for building structured AI agents with secure code execution"
+---
+
+Integrate BoxLite with the OpenAI Agents SDK to build structured AI agents with secure code execution capabilities. This guide covers agent configuration, tool definitions, and best practices.
+
+## Overview
+
+The OpenAI Agents SDK provides a framework for building AI agents with structured workflows, built-in memory, and tool calling capabilities. By integrating BoxLite, you can give agents the ability to:
+
+- Execute Python code for complex calculations and data processing
+- Run scripts with full Python standard library access
+- Process files and data with persistent state between calls
+- Build multi-step workflows with code execution as a tool
+
+## Tool Definition
+
+Create a code execution tool for the OpenAI Agents SDK:
+
+```python
+from openai import AsyncOpenAI
+from agents import Agent, Runner, function_tool
+import boxlite
+import asyncio
+
+
+@function_tool
+async def execute_python(code: str) -> str:
+    """
+    Execute Python code in a secure BoxLite sandbox.
+
+    Args:
+        code: Python code to execute. Use print() to output results.
+
+    Returns:
+        The stdout from the executed code.
+    """
+    async with boxlite.CodeBox() as codebox:
+        return await codebox.run(code)
+```
+
+## Basic Agent Configuration
+
+Here's a complete implementation:
+
+```python title="openai_agents_basic.py"
+import asyncio
+from openai import AsyncOpenAI
+from agents import Agent, Runner
+from agents.models import FunctionTool
+import boxlite
+
+
+@FunctionTool()
+async def execute_python(code: str) -> str:
+    """Execute Python code in a secure sandbox."""
+    async with boxlite.CodeBox() as codebox:
+        return await codebox.run(code)
+
+
+async def main():
+    """Run an OpenAI agent with BoxLite code execution."""
+    client = AsyncOpenAI()
+
+    # Create the agent with the BoxLite tool
+    agent = Agent(
+        name="CodeAgent",
+        instructions="You are a helpful assistant that can execute Python code to answer questions. When you need to compute something, use the execute_python tool. Always print() your results.",
+        tools=[execute_python],
+        model="gpt-4o",
+    )
+
+    # Run the agent
+    result = await Runner.run(
+        agent,
+        input="What's the 50th Fibonacci number?",
+    )
+
+    print(f"Final output: {result.final_output}")
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+## Multi-step Agent Workflow
+
+For more complex workflows with multiple tool calls:
+
+```python title="openai_agents_workflow.py"
+import asyncio
+from openai import AsyncOpenAI
+from agents import Agent, Runner
+from agents.models import FunctionTool
+import boxlite
+
+
+@FunctionTool()
+async def execute_python(code: str) -> str:
+    """Execute Python code in a secure sandbox."""
+    async with boxlite.CodeBox() as codebox:
+        return await codebox.run(code)
+
+
+@FunctionTool()
+async def analyze_data(code: str) -> str:
+    """Execute Python code for data analysis with numpy and pandas."""
+    async with boxlite.CodeBox() as codebox:
+        # Pre-install data analysis libraries
+        await codebox.run("pip install numpy pandas matplotlib --quiet")
+        return await codebox.run(code)
+
+
+async def main():
+    """Run a data analysis agent."""
+    agent = Agent(
+        name="DataAnalysisAgent",
+        instructions="""You are a data analysis assistant.
+Available tools:
+- execute_python: For general Python code execution
+- analyze_data: For data analysis with numpy/pandas
+
+When analyzing data, first explore the data structure, then perform the requested analysis.
+Always print() your results and create visualizations when appropriate.""",
+        tools=[execute_python, analyze_data],
+        model="gpt-4o",
+    )
+
+    # Run analysis
+    result = await Runner.run(
+        agent,
+        input="""Analyze this dataset:
+[23, 45, 67, 89, 12, 34, 56, 78, 90, 11, 22, 33, 44, 55, 66]
+
+Calculate:
+1. Mean and standard deviation
+2. Median and quartiles
+3. Identify outliers""",
+    )
+
+    print(result.final_output)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+## Stateful Sessions
+
+BoxLite maintains state between calls, enabling powerful agent workflows:
+
+```python title="openai_agents_stateful.py"
+import asyncio
+from agents import Agent, Runner
+from agents.models import FunctionTool
+import boxlite
+
+
+# Create a persistent code box for the session
+codebox = None
+
+
+@FunctionTool()
+async def execute_python(code: str) -> str:
+    """Execute Python code in a persistent sandbox."""
+    global codebox
+
+    if codebox is None:
+        codebox = boxlite.CodeBox()
+        await codebox.start()
+
+    try:
+        return await codebox.run(code)
+    except Exception as e:
+        return f"Error: {str(e)}"
+
+
+async def cleanup():
+    """Clean up the code box."""
+    global codebox
+    if codebox:
+        await codebox.stop()
+
+
+async def main():
+    """Example showing stateful execution."""
+    agent = Agent(
+        name="StatefulAgent",
+        instructions="You can execute Python code. Install packages once and reuse them across calls.",
+        tools=[execute_python],
+        model="gpt-4o",
+    )
+
+    # First interaction: install packages
+    result1 = await Runner.run(
+        agent,
+        input="Install numpy and pandas packages using pip install",
+    )
+    print(f"Install result: {result1.final_output}")
+
+    # Second interaction: use installed packages (they persist!)
+    result2 = await Runner.run(
+        agent,
+        input="Create a numpy array with values 1-10 and calculate the mean",
+    )
+    print(f"Analysis result: {result2.final_output}")
+
+    # Third interaction: more analysis
+    result3 = await Runner.run(
+        agent,
+        input="Generate 5 random numbers and show their sum",
+    )
+    print(f"Random result: {result3.final_output}")
+
+    await cleanup()
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+## Using with Custom Tools
+
+Create custom tools that wrap BoxLite functionality:
+
+```python title="openai_agents_custom.py"
+import asyncio
+from typing import Literal
+from pydantic import BaseModel, Field
+from agents import Agent, Runner
+from agents.models import FunctionTool
+import boxlite
+
+
+# Define input schema for type safety
+class CodeExecutionInput(BaseModel):
+    """Input for code execution tool."""
+    code: str = Field(description="Python code to execute")
+    timeout: int = Field(default=30, description="Timeout in seconds")
+
+
+class DataAnalysisInput(BaseModel):
+    """Input for data analysis tool."""
+    data: list[float] = Field(description="List of numeric data")
+    analysis_type: Literal["stats", "regression", "clustering"] = Field(
+        description="Type of analysis to perform"
+    )
+
+
+@FunctionTool()
+async def execute_python(input: CodeExecutionInput) -> str:
+    """Execute Python code in a secure sandbox."""
+    async with boxlite.CodeBox() as codebox:
+        return await codebox.run(input.code, timeout=input.timeout)
+
+
+@FunctionTool()
+async def analyze_data(input: DataAnalysisInput) -> str:
+    """Perform data analysis using numpy and pandas."""
+    analysis_code = f"""
+import numpy as np
+
+data = {input.data}
+
+if "{input.analysis_type}" == "stats":
+    print(f"Count: {{len(data)}}")
+    print(f"Mean: {{np.mean(data):.4f}}")
+    print(f"Std: {{np.std(data):.4f}}")
+    print(f"Min: {{np.min(data):.4f}}")
+    print(f"Max: {{np.max(data):.4f}}")
+
+elif "{input.analysis_type}" == "regression":
+    x = np.arange(len(data))
+    coeffs = np.polyfit(x, data, 1)
+    print(f"Slope: {{coeffs[0]:.4f}}")
+    print(f"Intercept: {{coeffs[1]:.4f}}")
+
+elif "{input.analysis_type}" == "clustering":
+    import numpy as np
+    # Simple binning approach
+    mean = np.mean(data)
+    above = [x for x in data if x > mean]
+    below = [x for x in data if x <= mean]
+    print(f"Cluster above mean: {{above}}")
+    print(f"Cluster below mean: {{below}}")
+"""
+
+    async with boxlite.CodeBox() as codebox:
+        # Install dependencies
+        await codebox.run("pip install numpy pandas --quiet")
+        return await codebox.run(analysis_code)
+
+
+async def main():
+    """Run agent with custom tools."""
+    agent = Agent(
+        name="AnalysisAgent",
+        instructions="You are a data analysis assistant. Use the appropriate tool to analyze data.",
+        tools=[execute_python, analyze_data],
+        model="gpt-4o",
+    )
+
+    result = await Runner.run(
+        agent,
+        input="Perform a statistical analysis on [12, 45, 67, 23, 89, 34, 56, 78, 90, 11]",
+    )
+
+    print(result.final_output)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+## Best Practices
+
+### 1. Use Context Managers
+
+Always use context managers for clean resource management:
+
+```python
+async with boxlite.CodeBox() as codebox:
+    result = await codebox.run(code)
+```
+
+### 2. Set Appropriate Timeouts
+
+Prevent runaway code:
+
+```python
+result = await codebox.run(code, timeout=30)
+```
+
+### 3. Pre-install Dependencies
+
+Install packages once at session start for better performance:
+
+```python
+async with boxlite.CodeBox() as codebox:
+    await codebox.run("pip install numpy pandas")
+    # Subsequent calls will have access to these packages
+```
+
+### 4. Handle Errors Gracefully
+
+Implement error handling for robust agents:
+
+```python
+@FunctionTool()
+async def execute_python(code: str) -> str:
+    try:
+        async with boxlite.CodeBox() as codebox:
+            return await codebox.run(code, timeout=30)
+    except asyncio.TimeoutError:
+        return "Error: Code execution timed out"
+    except Exception as e:
+        return f"Error: {str(e)}"
+```
+
+### 5. Use Type-Safe Input Schemas
+
+Leverage Pydantic models for type safety:
+
+```python
+class CodeInput(BaseModel):
+    code: str = Field(description="Python code to execute")
+    timeout: int = Field(default=30, description="Timeout in seconds")
+```
+
+## Production Considerations
+
+For production OpenAI Agents SDK deployments:
+
+1. **Resource limits**: Configure CPU, memory, and disk limits
+2. **Tool caching**: Cache tool definitions for efficiency
+3. **Error handling**: Implement robust error handling
+4. **Logging**: Add logging for debugging
+5. **State management**: Handle session state appropriately
+
+```python
+async with boxlite.CodeBox(
+    cpu_count=2,
+    memory_mb=512,
+    disk_mb=1024,
+    timeout=60,
+    networking=False,
+) as codebox:
+    # Production code here
+```
+
+## Next Steps
+
+- [Vercel AI SDK Integration](/integrations/vercel-ai-sdk) — Stream AI responses
+- [MCP Gateway Pattern](/integrations/mcp-gateway-pattern) — Use BoxLite as MCP gateway
+- [AI Agent Integration Guide](/guides/ai-agent-integration) — Production patterns

@@ -1,0 +1,322 @@
+---
+title: "Read and Write Files"
+sidebarTitle: "Read & Write"
+description: "Copy files in and out of Boxes using copy_in and copy_out APIs."
+---
+
+BoxLite provides `copy_in()` and `copy_out()` methods for transferring files between the host and the Box. This guide covers the complete API and usage patterns.
+
+## Overview
+
+The `copy_in()` and `copy_out()` methods provide reliable file transfer using tar-based archive operations. They support:
+
+- Single file transfers
+- Directory transfers
+- Symlink handling
+- Overwrite control
+
+## Copy In (Host to Box)
+
+### Basic Usage
+
+```python
+import boxlite
+
+async with boxlite.SimpleBox(image="python:slim") as box:
+    # Copy a single file from host to Box
+    await box.copy_in("./local-config.json", "/workspace/config.json")
+
+    # Copy a directory
+    await box.copy_in("./src/", "/workspace/src/")
+
+    # Verify the copy
+    result = await box.exec("ls", "-la", "/workspace/")
+    print(result.stdout)
+```
+
+### Method Signature
+
+```python
+async def copy_in(
+    self,
+    host_path: str,
+    container_dest: str,
+    *,
+    overwrite: bool = True,
+    follow_symlinks: bool = False,
+    include_parent: bool = True,
+) -> None:
+```
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `host_path` | `str` | Required | Path to file/directory on host |
+| `container_dest` | `str` | Required | Destination path in container |
+| `overwrite` | `bool` | `True` | Whether to overwrite existing files |
+| `follow_symlinks` | `bool` | `False` | Whether to follow symbolic links |
+| `include_parent` | `bool` | `True` | Include parent directory in archive |
+
+### Copy In Examples
+
+```python
+# Copy with explicit options
+await box.copy_in(
+    "./data/",
+    "/workspace/data/",
+    overwrite=True,
+    follow_symlinks=False,
+    include_parent=True
+)
+
+# Copy without overwriting (useful for idempotent setups)
+await box.copy_in(
+    "./config/",
+    "/workspace/config/",
+    overwrite=False  # Fails if files exist
+)
+
+# Copy preserving symlinks
+await box.copy_in(
+    "./project/",
+    "/workspace/project/",
+    follow_symlinks=True  # Follow symlinks during copy
+)
+```
+
+## Copy Out (Box to Host)
+
+### Basic Usage
+
+```python
+import boxlite
+
+async with boxlite.SimpleBox(image="python:slim") as box:
+    # Create a file inside the Box
+    await box.exec("bash", "-c", "echo 'Hello from Box' > /workspace/output.txt")
+
+    # Copy file from Box to host
+    await box.copy_out("/workspace/output.txt", "./local-output.txt")
+
+    # Verify
+    with open("./local-output.txt") as f:
+        print(f.read())  # "Hello from Box\n"
+```
+
+### Method Signature
+
+```python
+async def copy_out(
+    self,
+    container_src: str,
+    host_dest: str,
+    *,
+    overwrite: bool = True,
+    follow_symlinks: bool = False,
+    include_parent: bool = True,
+) -> None:
+```
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `container_src` | `str` | Required | Source path in container |
+| `host_dest` | `str` | Required | Destination path on host |
+| `overwrite` | `bool` | `True` | Whether to overwrite existing files |
+| `follow_symlinks` | `bool` | `False` | Whether to follow symbolic links |
+| `include_parent` | `bool` | `True` | Include parent directory in archive |
+
+### Copy Out Examples
+
+```python
+# Copy a single file
+await box.copy_out("/workspace/result.csv", "./output/result.csv")
+
+# Copy entire directory
+await box.copy_out("/workspace/output/", "./local-backup/")
+
+# Copy without overwriting
+await box.copy_out(
+    "/workspace/artifacts/",
+    "./backup/",
+    overwrite=False
+)
+```
+
+## Working with Different File Types
+
+### Binary Files
+
+```python
+# Copy binary files (works automatically)
+await box.copy_in("./model.bin", "/workspace/model.bin")
+await box.copy_out("/workspace/output.bin", "./result.bin")
+```
+
+### Hidden Files
+
+```python
+# Copy hidden files (files starting with .)
+await box.copy_in("./.env", "/workspace/.env")
+await box.copy_in("./.config/", "/workspace/.config/")
+```
+
+### Large Files
+
+```python
+import asyncio
+
+async def copy_large_file(box, src, dest, chunk_size=1024*1024):
+    """Copy large files with progress tracking."""
+    # For very large files, consider using exec with streaming
+    # This is a synchronous wrapper
+    await box.copy_out(src, dest)
+    print(f"Copied {src} to {dest}")
+
+async with boxlite.SimpleBox(image="python:slim") as box:
+    await copy_large_file(
+        box,
+        "/workspace/large-dataset.csv",
+        "./output/dataset.csv"
+    )
+```
+
+## Permission Handling
+
+### Checking File Permissions
+
+```python
+# Check if file exists
+result = await box.exec("test", "-f", "/workspace/file.txt")
+if result.exit_code == 0:
+    print("File exists")
+
+# Check permissions
+result = await box.exec("stat", "-c", "%a", "/workspace/file.txt")
+print(f"Permissions: {result.stdout}")  # e.g., "644"
+```
+
+### Modifying Permissions
+
+```python
+# Change file permissions
+await box.exec("chmod", "644", "/workspace/file.txt")
+
+# Change ownership
+await box.exec("chown", "-R", "1000:1000", "/workspace/")
+
+# Make executable
+await box.exec("chmod", "+x", "/workspace/script.sh")
+```
+
+## Error Handling
+
+### Common Errors
+
+```python
+import boxlite
+
+async def safe_copy_in(box, host_path, container_dest):
+    """Copy with error handling."""
+    try:
+        # Check if source exists
+        import os
+        if not os.path.exists(host_path):
+            raise FileNotFoundError(f"Host path does not exist: {host_path}")
+
+        await box.copy_in(host_path, container_dest)
+        print(f"Successfully copied {host_path} to {container_dest}")
+
+    except boxlite.BoxNotStartedError:
+        print("Error: Box not started. Use 'async with' context manager.")
+    except Exception as e:
+        print(f"Copy failed: {e}")
+        raise
+
+async with boxlite.SimpleBox(image="python:slim") as box:
+    await safe_copy_in(box, "./config.json", "/workspace/config.json")
+```
+
+### Handling tmpfs Limitations
+
+<Note>
+  copy_in extracts files into the container rootfs layer. Destinations that are tmpfs mounts inside the guest (e.g., /tmp, /dev/shm) will silently fail. This is the same limitation as `docker cp`.
+</Note>
+
+```python
+# Workaround: use exec with tar to copy to tmpfs
+import tarfile
+import io
+
+async def copy_to_tmpfs(box, host_path, container_dest):
+    """Copy file to tmpfs mount using tar streaming."""
+    # Read file into tar archive
+    tar_buffer = io.BytesIO()
+    with tarfile.open(fileobj=tar_buffer, mode='w') as tar:
+        tar.add(host_path, arcname=os.path.basename(host_path))
+    tar_buffer.seek(0)
+
+    # Execute tar to extract
+    execution = await box.exec(
+        "tar", "xf", "-", "-C", container_dest
+    )
+    stdin = execution.stdin()
+    await stdin.send_input(tar_buffer.read())
+    await stdin.close()
+    result = await execution.wait()
+
+    if result.exit_code != 0:
+        raise RuntimeError(f"Copy failed: {result.stderr}")
+```
+
+## Complete Example
+
+```python
+import boxlite
+import os
+import tempfile
+
+async def main():
+    # Create a temporary directory for output
+    with tempfile.TemporaryDirectory() as tmpdir:
+        async with boxlite.SimpleBox(image="python:slim") as box:
+            # 1. Copy project files into Box
+            await box.copy_in("./my-project/", "/workspace/project/")
+
+            # 2. Run some processing
+            result = await box.exec(
+                "python", "-c",
+                """
+import json
+data = {'result': 'processed', 'values': [1, 2, 3]}
+with open('/workspace/output.json', 'w') as f:
+    json.dump(data, f)
+print('Processing complete')
+"""
+            )
+            print(result.stdout)
+
+            # 3. Copy output files back to host
+            output_path = os.path.join(tmpdir, "result.json")
+            await box.copy_out("/workspace/output.json", output_path)
+
+            # 4. Verify
+            with open(output_path) as f:
+                print(f"Output: {f.read()}")
+
+if __name__ == "__main__":
+    import asyncio
+    asyncio.run(main())
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Upload Files" icon="upload" href="/filesystem/upload-files">
+    Detailed guide for uploading files to Boxes.
+  </Card>
+  <Card title="Download Files" icon="download" href="/filesystem/download-files">
+    Detailed guide for downloading files from Boxes.
+  </Card>
+  <Card title="Volume Management" icon="database" href="/volumes/overview">
+    Create and manage persistent volumes.
+  </Card>
+</CardGroup>

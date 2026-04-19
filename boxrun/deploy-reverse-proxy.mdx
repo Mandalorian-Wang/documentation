@@ -1,0 +1,407 @@
+---
+title: "Reverse Proxy Configuration"
+description: "Deploy BoxRun behind reverse proxy for TLS termination and load balancing."
+sidebarTitle: "Reverse Proxy"
+---
+
+This guide covers deploying BoxRun behind reverse proxies (Nginx, Caddy) for production environments. A reverse proxy provides TLS termination, load balancing, and centralized access control.
+
+## Overview
+
+BoxRun can run in two modes accessible via reverse proxy:
+
+| Mode | Default Address | Use Case |
+|------|-----------------|----------|
+| TCP | `127.0.0.1:9090` | Simple proxy setups |
+| Unix Socket | `~/.boxrun/boxrun.sock` | Higher performance, local only |
+
+The reverse proxy handles external traffic while BoxRun listens only on localhost for security.
+
+## Nginx Configuration
+
+Nginx requires careful configuration for HTTP/1.1, SSE, and WebSocket proxying.
+
+### Basic REST API Proxy
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name api.boxlite.example.com;
+
+    # SSL configuration (adjust paths to your certificates)
+    ssl_certificate /etc/nginx/ssl/api.boxlite.example.com.crt;
+    ssl_certificate_key /etc/nginx/ssl/api.boxlite.example.com.key;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
+
+    # REST API proxy
+    location / {
+        proxy_pass http://127.0.0.1:9090;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # Timeouts for long-running operations
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 60s;
+    }
+}
+```
+
+### SSE Streaming Proxy
+
+Server-Sent Events require specific headers to prevent buffering and maintain connections:
+
+```nginx
+location /v1/ {
+    proxy_pass http://127.0.0.1:9090;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+
+    # SSE-specific headers
+    proxy_set_header Accept "text/event-stream";
+    proxy_set_header Cache-Control "no-cache";
+    proxy_set_header Connection "keep-alive";
+
+    # Disable buffering for streaming
+    proxy_buffering off;
+    proxy_cache off;
+
+    # Extended timeouts for long-running streams
+    proxy_connect_timeout 3600s;
+    proxy_send_timeout 3600s;
+    proxy_read_timeout 3600s;
+}
+```
+
+### WebSocket Proxy (Interactive Terminal)
+
+WebSocket connections require upgrade headers:
+
+```nginx
+location /v1/boxes/ {
+    proxy_pass http://127.0.0.1:9090;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+
+    # WebSocket upgrade headers
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+
+    # WebSocket timeouts (interactive sessions can be long)
+    proxy_connect_timeout 3600s;
+    proxy_send_timeout 3600s;
+    proxy_read_timeout 3600s;
+
+    # Disable buffering for interactive sessions
+    proxy_buffering off;
+}
+```
+
+### Complete Configuration
+
+Combining all endpoints into a single server block:
+
+```nginx
+upstream boxrun_backend {
+    server 127.0.0.1:9090;
+}
+
+server {
+    listen 443 ssl;
+    server_name api.boxlite.example.com;
+
+    ssl_certificate /etc/nginx/ssl/api.boxlite.example.com.crt;
+    ssl_certificate_key /etc/nginx/ssl/api.boxlite.example.com.key;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
+
+    # Health check endpoint
+    location /v1/health {
+        proxy_pass http://boxrun_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+    }
+
+    # SSE endpoints - streaming
+    location ~ ^/v1/boxes/[^/]+/exec/[^/]+/events$ {
+        proxy_pass http://boxrun_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Accept "text/event-stream";
+        proxy_set_header Cache-Control "no-cache";
+        proxy_set_header Connection "keep-alive";
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_connect_timeout 3600s;
+        proxy_send_timeout 3600s;
+        proxy_read_timeout 3600s;
+    }
+
+    # WebSocket endpoints - interactive terminal
+    location ~ ^/v1/boxes/[^/]+/attach {
+        proxy_pass http://boxrun_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_buffering off;
+        proxy_connect_timeout 3600s;
+        proxy_send_timeout 3600s;
+        proxy_read_timeout 3600s;
+    }
+
+    # Default REST API
+    location / {
+        proxy_pass http://boxrun_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 60s;
+    }
+}
+```
+
+## Caddy Configuration
+
+Caddy provides automatic HTTPS and simpler configuration:
+
+### Basic Configuration
+
+```caddy
+api.boxlite.example.com {
+    reverse_proxy localhost:9090
+}
+```
+
+### With Custom TLS and Timeouts
+
+```caddy
+api.boxlite.example.com {
+    tls {
+        min_version tls1.2
+    }
+
+    reverse_proxy localhost:9090 {
+        # Health check
+        health_uri /v1/health
+        health_interval 10s
+        health_timeout 5s
+
+        # Transport timeouts
+        transport http {
+            dial_timeout 60s
+            tls_timeout 10s
+        }
+    }
+}
+```
+
+### SSE and WebSocket Support
+
+Caddy handles upgrades automatically:
+
+```caddy
+api.boxlite.example.com {
+    reverse_proxy localhost:9090 {
+        # Extended timeouts for SSE and WebSocket
+        transport http {
+            dial_timeout 60s
+            tls_timeout 10s
+        }
+    }
+}
+```
+
+Caddy automatically detects WebSocket connections and sets appropriate headers.
+
+## TLS Termination
+
+### Security Benefits
+
+TLS termination at the reverse proxy provides:
+
+1. **Encryption** — All client traffic encrypted in transit
+2. **Certificate management** — Centralized certificate handling
+3. **Protocol control** — Enforce TLS versions and ciphers
+4. **Header injection** — Add security headers (HSTS, etc.)
+
+### BoxRun Configuration
+
+BoxRun should bind to localhost only when behind a reverse proxy:
+
+```bash
+# TCP mode - bind to localhost
+boxrun serve --host 127.0.0.1 --port 9090
+
+# Or via environment variable
+export BOXRUN_HOST=127.0.0.1
+export BOXRUN_PORT=9090
+boxrun serve
+```
+
+<Warning>
+  Never bind BoxRun to `0.0.0.0` in production without additional authentication. Use localhost binding with reverse proxy for security.
+</Warning>
+
+### Additional Security Headers
+
+Add security headers via Nginx:
+
+```nginx
+add_header X-Frame-Options "SAMEORIGIN" always;
+add_header X-Content-Type-Options "nosniff" always;
+add_header X-XSS-Protection "1; mode=block" always;
+# Enable after testing
+# add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+```
+
+## Load Balancing
+
+### Multiple BoxRun Instances
+
+BoxRun instances are stateless at the API level but maintain separate databases:
+
+```
+┌─────────────┐
+│   Clients   │
+└──────┬──────┘
+       │
+       ▼
+┌─────────────┐
+│ Load Balancer│
+└──────┬──────┘
+       │
+   ┌───┴───┐
+   ▼       ▼
+┌─────┐ ┌─────┐
+│BoxRun│ │BoxRun│
+│ :9090│ │ :9091│
+└─────┘ └─────┘
+```
+
+### Limitations
+
+<Warning>
+  Each BoxRun instance has its own SQLite database. BoxRun does not support shared state or clustering. Design your load balancer to route clients to consistent instances or use sticky sessions.
+</Warning>
+
+Considerations:
+- **Sticky sessions** — Some operations may benefit from same-instance routing
+- **Separate databases** — Each instance maintains its own box/execution state
+- **Image cache** — Each instance maintains separate OCI image cache
+
+### Nginx Load Balancing Example
+
+```nginx
+upstream boxrun_cluster {
+    server 127.0.0.1:9090;
+    server 127.0.0.1:9091;
+    # Add more instances as needed
+
+    # Health check
+    keepalive 32;
+}
+
+server {
+    listen 443 ssl;
+    server_name api.boxlite.example.com;
+
+    ssl_certificate /etc/nginx/ssl/api.boxlite.example.com.crt;
+    ssl_certificate_key /etc/nginx/ssl/api.boxlite.example.com.key;
+
+    location / {
+        proxy_pass http://boxrun_cluster;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # Retry failed requests on another instance
+        proxy_next_upstream error timeout http_502;
+        proxy_next_upstream_tries 3;
+        proxy_next_upstream_timeout 10s;
+    }
+}
+```
+
+## Health Checks
+
+Configure load balancer health checks using the BoxRun health endpoint:
+
+```bash
+curl http://127.0.0.1:9090/v1/health
+# {"status": "ok"}
+```
+
+### Nginx Health Check
+
+```nginx
+server {
+    # ... SSL config ...
+
+    # Passive health check
+    location /v1/health {
+        proxy_pass http://127.0.0.1:9090;
+        proxy_connect_timeout 5s;
+        proxy_read_timeout 5s;
+    }
+}
+```
+
+## Testing the Configuration
+
+### Verify REST API
+
+```bash
+curl -k https://api.boxlite.example.com/v1/info
+# {"max_cpu": 8, "max_memory_mb": 16384}
+```
+
+### Verify SSE Endpoint
+
+```bash
+# Create a box and exec, then test SSE
+curl -k -N https://api.boxlite.example.com/v1/boxes/{box_id}/exec/{exec_id}/events
+```
+
+### Verify WebSocket
+
+```bash
+# Test WebSocket connection
+wss://api.boxlite.example.com/v1/boxes/{box_id}/attach?shell=/bin/bash
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="systemd Deployment" icon="linux" href="/boxrun/deploy-systemd-linux">
+    Deploy BoxRun as a systemd service on Linux.
+  </Card>
+  <Card title="Auth & Access Control" icon="lock" href="/boxrun/auth-and-access-control">
+    Implement authentication and authorization.
+  </Card>
+  <Card title="Production Overview" icon="cloud" href="/boxrun/production-deployment-overview">
+    Full production architecture overview.
+  </Card>
+</CardGroup>

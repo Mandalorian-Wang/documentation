@@ -5,7 +5,7 @@
 ## Getting Started
 
 - [Introduction](/index.mdx): BoxLite overview, features, and quick start
-- [Installation](/getting-started/index.mdx): Install BoxLite for Python, Node.js, Rust, or C
+- [Installation](/getting-started/install): Install BoxLite for Python, Node.js, Rust, or C
 - [Python Quick Start](/getting-started/quickstart-python.mdx): Get started with BoxLite in Python
 - [Node.js Quick Start](/getting-started/quickstart-nodejs.mdx): Get started with BoxLite in Node.js
 - [Rust Quick Start](/getting-started/quickstart-rust.mdx): Get started with BoxLite in Rust

@@ -1,0 +1,80 @@
+---
+title: "Choose BoxLite or BoxRun"
+description: "Decide between embedding the BoxLite SDK directly or using BoxRun for sandbox management."
+sidebarTitle: "SDK vs BoxRun"
+---
+
+When you start with BoxLite, the first product decision is simple: should your application own the boxes directly, or do you need a separate management surface around them?
+
+This page defines the boundary without assuming a particular language, package manager, or deployment style.
+
+## Quick comparison
+
+| | BoxLite SDK | BoxRun |
+|---|---|---|
+| **What it is** | An embeddable runtime that your app calls directly | A management layer with its own operational surface |
+| **Primary control point** | Your application code | BoxRun CLI, API, and service workflows |
+| **Best fit** | Application-owned sandbox logic | Shared, remote, or service-style box operations |
+| **Docs path** | Start with a language quickstart | Start with the BoxRun tab |
+| **Mental model** | Sandbox as a library concern | Sandbox as a managed system concern |
+
+## When to use the BoxLite SDK
+
+Choose the BoxLite SDK when sandboxing should be part of your application runtime and the lifecycle of the box belongs inside your own program logic.
+
+### Ideal for
+
+- **AI agents** that execute generated code inside the application workflow.
+- **Embedded tools** such as automation tools, CI helpers, and developer utilities.
+- **Application-owned workflows** where box lifecycle should stay inside the runtime that created it.
+- **Custom orchestration** where you want fine-grained control over creation, execution, and cleanup.
+
+## When to use BoxRun
+
+Choose BoxRun when you need to manage boxes through a separate product surface, especially for shared, remote, or operationally managed environments.
+
+### Ideal for
+
+- **Development environments** that should survive machine restarts and be managed as named workspaces.
+- **Multi-user platforms** that need a separate operational boundary around boxes.
+- **Operations workflows** driven by CLI, API, or deployment automation.
+- **Remote workflows** where boxes run on one machine and are controlled from another.
+
+## Decision guide
+
+<AccordionGroup>
+  <Accordion title="Do you want your application code to own box lifecycle directly?">
+    If yes, start with the BoxLite SDK path.
+  </Accordion>
+  <Accordion title="Do you need a separate operational surface for managing boxes?">
+    If yes, move to BoxRun.
+  </Accordion>
+  <Accordion title="Are you onboarding one application team instead of operating a shared sandbox service?">
+    If yes, BoxLite SDK is usually the simpler first step.
+  </Accordion>
+  <Accordion title="Do you need remote or shared management workflows from day one?">
+    If yes, BoxRun is the better fit.
+  </Accordion>
+</AccordionGroup>
+
+## Summary
+
+| Choose | When |
+|---|---|
+| **BoxLite SDK** | Embed sandboxing into your app and keep box lifecycle inside application code |
+| **BoxRun** | Manage boxes through a separate CLI, API, and operations path |
+
+<CardGroup cols={2}>
+  <Card title="Node.js quickstart" icon="node-js" href="/getting-started/quickstart-nodejs">
+    Start with the shortest BoxLite SDK path in this docs workspace.
+  </Card>
+  <Card title="Other BoxLite quickstarts" icon="book" href="/getting-started/install">
+    Choose Python, Rust, or C if that is the runtime you actually need.
+  </Card>
+  <Card title="BoxRun docs" icon="server" href="/boxrun/index">
+    Switch to the BoxRun tab if you need the management path instead of the embeddable runtime path.
+  </Card>
+  <Card title="Core concepts" icon="lightbulb" href="/core-concepts">
+    Continue into BoxLite concepts once the product path is clear.
+  </Card>
+</CardGroup>

@@ -1,0 +1,365 @@
+---
+title: "OCI Images"
+sidebarTitle: "Images"
+description: "Understand OCI container images in BoxLite, including image sources, caching, image types by box, and best practices."
+---
+
+BoxLite uses standard OCI (Open Container Initiative) container images to define the environment inside each microVM. This guide covers how images work, image sources, and best practices.
+
+## Overview
+
+Every box requires an image that defines its environment:
+
+```python
+import boxlite
+
+# SimpleBox - you specify the image
+async with boxlite.SimpleBox(image="python:3.12-slim") as box:
+    result = await box.exec("python", "--version")
+
+# CodeBox - defaults to python:slim
+async with boxlite.CodeBox() as box:
+    result = await box.run("print('hello')")
+
+# BrowserBox - fixed Playwright image
+async with boxlite.BrowserBox() as box:
+    playwright = await box.playwright_endpoint()
+```
+
+## Image Sources
+
+### Docker Hub (Public)
+
+Most common source for public images:
+
+```python
+# Official images
+boxlite.SimpleBox(image="python:3.12-slim")
+boxlite.SimpleBox(image="node:20-slim")
+boxlite.SimpleBox(image="ubuntu:22.04")
+boxlite.SimpleBox(image="alpine:latest")
+
+# Community images
+boxlite.SimpleBox(image="nginx:latest")
+boxlite.SimpleBox(image="postgres:15")
+```
+
+### Private Registries
+
+Access authenticated private registries:
+
+```python
+import boxlite
+
+async def private_registry_example():
+    """Use images from private registry."""
+    async with boxlite.SimpleBox(
+        image="my-registry.example.com/my-image:latest"
+    ) as box:
+        result = await box.exec("echo", "private image")
+        print(result.stdout)
+```
+
+### OCI Distribution Support
+
+BoxLite supports the OCI Distribution Specification, compatible with:
+
+| Registry Type | Example | Support |
+|---------------|---------|---------|
+| Docker Hub | `docker.io/library/nginx` | Full |
+| GCR | `gcr.io/my-project/my-image` | Full |
+| ECR | `123456789.dkr.ecr.us-east-1.amazonaws.com/my-image` | Full |
+| ACR | `myregistry.azurecr.io/my-image` | Full |
+| GHCR | `ghcr.io/my-org/my-image` | Full |
+| Local OCI Layout | `/path/to/oci/layout` | Via `rootfs_path` |
+
+## Image Caching
+
+Images are cached locally after first pull. Subsequent boxes using the same image start faster.
+
+```python
+import boxlite
+
+async def image_caching_example():
+    """First use pulls, subsequent uses are cached."""
+    # First call - pulls image (slower)
+    async with boxlite.SimpleBox(image="python:3.12-slim") as box:
+        result = await box.exec("echo", "first use")
+        print(result.stdout)
+
+    # Second call - uses cached image (faster)
+    async with boxlite.SimpleBox(image="python:3.12-slim") as box:
+        result = await box.exec("echo", "cached")
+        print(result.stdout)
+```
+
+### Cache Location
+
+Images are stored in BoxLite's data directory:
+
+```bash
+# Default location
+~/.boxlite/images/
+
+# Verify cached images
+ls ~/.boxlite/images/
+```
+
+### Cache Invalidation
+
+Image cache can be cleared manually:
+
+```bash
+# Remove all cached images
+rm -rf ~/.boxlite/images/
+
+# Or via CLI (if available)
+boxlite image prune
+```
+
+## Image Types by Box Type
+
+| Box Type | Image Requirement | Changeable? | Default Image |
+|----------|------------------|-------------|---------------|
+| **SimpleBox** | Required | Yes | None (you choose) |
+| **CodeBox** | Required | Yes | `python:slim` |
+| **BrowserBox** | Fixed | No | `mcr.microsoft.com/playwright:v1.58.0-jammy` |
+| **ComputerBox** | Fixed | No | `lscr.io/linuxserver/webtop:ubuntu-xfce` |
+| **InteractiveBox** | Required | Yes | None (you choose) |
+
+### SimpleBox Images
+
+Flexible - use any OCI image:
+
+```python
+# Python environments
+boxlite.SimpleBox(image="python:3.12-slim")
+boxlite.SimpleBox(image="python:3.11-alpine")
+
+# Node.js environments
+boxlite.SimpleBox(image="node:20-slim")
+boxlite.SimpleBox(image="node:18-bullseye")
+
+# General purpose
+boxlite.SimpleBox(image="ubuntu:22.04")
+boxlite.SimpleBox(image="debian:bookworm-slim")
+boxlite.SimpleBox(image="alpine:3.19")
+```
+
+### CodeBox Images
+
+Must have Python installed:
+
+```python
+# Default - python:slim has Python pre-installed
+boxlite.CodeBox()
+
+# Custom Python image
+boxlite.CodeBox(image="python:3.11")
+```
+
+<Warning>
+CodeBox requires Python in the image. Using `alpine:latest` without Python will cause `run()` to fail. Use `python:slim` or similar images with Python pre-installed.
+</Warning>
+
+### BrowserBox Images
+
+Fixed Playwright image with browsers:
+
+```python
+# No image parameter - always uses Playwright
+box = boxlite.BrowserBox()
+print(box.info.image)  # mcr.microsoft.com/playwright:v1.58.0-jammy
+```
+
+The image includes:
+- Chromium, Firefox, WebKit browsers
+- Playwright test runner
+- Python and Node.js runtimes
+
+### ComputerBox Images
+
+Fixed webtop image with desktop environment:
+
+```python
+# No image parameter - always uses webtop
+box = boxlite.ComputerBox()
+print(box.info.image)  # lscr.io/linuxserver/webtop:ubuntu-xfce
+```
+
+The image includes:
+- XFCE desktop environment
+- TigerVNC server
+- Common desktop applications
+
+## Image Specification
+
+### Image Reference Format
+
+```
+registry.example.com/org/image:tag
+```
+
+Components:
+- **registry.example.com** - Registry host (defaults to Docker Hub if omitted)
+- **org** - Organization or namespace
+- **image** - Image name
+- **tag** - Version tag (defaults to `latest` if omitted)
+
+### Common Image Formats
+
+```python
+# Explicit Docker Hub
+boxlite.SimpleBox(image="docker.io/library/python:3.12-slim")
+
+# Implicit Docker Hub (common shorthand)
+boxlite.SimpleBox(image="python:3.12-slim")
+
+# Fully qualified
+boxlite.SimpleBox(image="registry.hub.docker.com/library/python:3.12-slim")
+
+# With digest (more precise)
+boxlite.SimpleBox(image="python:3.12-slim@sha256:abc123...")
+```
+
+## Image Best Practices
+
+### 1. Use Slim Images for Speed
+
+```python
+# Good - fast pull, fast boot
+boxlite.SimpleBox(image="python:3.12-slim")
+boxlite.SimpleBox(image="node:20-slim")
+boxlite.SimpleBox(image="alpine:3.19")
+
+# Larger images - slower pull and boot
+boxlite.SimpleBox(image="python:3.12")  # Full Python
+boxlite.SimpleBox(image="ubuntu:latest")  # Full Ubuntu
+```
+
+### 2. Pin Specific Versions
+
+```python
+# Good - specific version for reproducibility
+boxlite.SimpleBox(image="python:3.12.4-slim")
+
+# Avoid - latest can change unexpectedly
+boxlite.SimpleBox(image="python:latest")
+```
+
+### 3. Use Official Images When Possible
+
+```python
+# Good - official, well-maintained
+boxlite.SimpleBox(image="python:3.12-slim")
+boxlite.SimpleBox(image="node:20-slim")
+boxlite.SimpleBox(image="postgres:15")
+
+# Verify before using community images
+boxlite.SimpleBox(image="someuser/miscrool:latest")  # Use caution
+```
+
+### 4. Consider Security
+
+```python
+# Use images with known vulnerabilities scanned
+# Check CVE databases before production use
+boxlite.SimpleBox(image="python:3.12.4-slim")  # Slim has fewer CVEs
+```
+
+## Verifying Images
+
+### Check Image Availability
+
+```python
+import subprocess
+
+def verify_image(image: str) -> bool:
+    """Verify image exists and is accessible."""
+    result = subprocess.run(
+        ["docker", "manifest", "inspect", image],
+        capture_output=True
+    )
+    return result.returncode == 0
+
+# Test
+print(verify_image("python:3.12-slim"))  # True
+print(verify_image("nonexistent:image"))  # False
+```
+
+### List Local Cache
+
+```bash
+# Check cached images
+ls -la ~/.boxlite/images/
+
+# View image details
+docker images
+```
+
+## Image Loading from Local Source
+
+For air-gapped environments or custom images:
+
+```python
+import boxlite
+
+async def local_image_example():
+    """Use a local OCI image layout."""
+    async with boxlite.SimpleBox(
+        rootfs_path="/path/to/local/oci/layout"
+    ) as box:
+        result = await box.exec("echo", "local image")
+        print(result.stdout)
+```
+
+<Note>
+The `rootfs_path` parameter accepts an OCI Image Layout directory (as produced by `docker export` or `podman save`), which is useful for air-gapped environments or custom image distribution.
+</Note>
+
+## Troubleshooting
+
+### Image Pull Failures
+
+```python
+import boxlite
+
+async def handle_pull_failure():
+    """Handle image pull errors."""
+    try:
+        async with boxlite.SimpleBox(image="invalid:image") as box:
+            await box.exec("echo", "hello")
+    except boxlite.PackageNotFoundError:
+        print("Image not found - check image name and registry")
+    except boxlite.BoxliteError as e:
+        print(f"Pull failed: {e}")
+        # Check network, auth credentials
+```
+
+### Network Timeout
+
+```python
+# Use a mirror or cache for reliability
+async with boxlite.SimpleBox(
+    image="python:3.12-slim",
+    # Registry configuration if supported
+) as box:
+    await box.exec("echo", "timeout handling")
+```
+
+## Related Topics
+
+<CardGroup cols={2}>
+  <Card title="Core Concepts Overview" icon="lightbulb" href="/core-concepts">
+    Core concepts introduction.
+  </Card>
+  <Card title="Lifecycle" icon="refresh" href="/core-concepts/lifecycle">
+    Box lifecycle states and transitions.
+  </Card>
+  <Card title="Box Types" icon="box" href="/core-concepts#box-types">
+    SimpleBox, CodeBox, BrowserBox comparison.
+  </Card>
+  <Card title="Templates" icon="copy" href="/templates/overview">
+    Pre-configured environments.
+  </Card>
+</CardGroup>

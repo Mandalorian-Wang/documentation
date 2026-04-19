@@ -1,0 +1,262 @@
+---
+title: "Execution Timeout and Zombie Processes"
+sidebarTitle: "Timeouts & Zombies"
+description: "Handle execution timeouts and prevent zombie processes in BoxLite"
+---
+
+This guide covers how to configure execution timeouts and handle zombie processes in BoxLite.
+
+## Overview
+
+BoxLite supports per-execution timeouts that automatically terminate long-running commands. Additionally, proper execution handling prevents zombie processes from accumulating in your system.
+
+## Timeout Configuration
+
+### Per-Execution Timeout
+
+You can set a timeout for individual command executions using the `timeout` parameter:
+
+```python
+# Python SDK - SimpleBox
+async with SimpleBox(image="python:3.11-slim") as box:
+    # This will be killed after 5 seconds
+    result = await box.exec("sleep", "60", timeout=5)
+    # result.exit_code will be negative (killed by signal)
+```
+
+```python
+# Python SDK - Runtime API
+execution = await box.exec("python", ["-c", "import time; time.sleep(60)"], timeout=10)
+result = await execution.wait()
+```
+
+```javascript
+// Node.js SDK
+const result = await box.exec('sleep', ['60'], undefined, { timeoutSecs: 5 });
+```
+
+```c
+// C SDK
+boxlite_exec_options opts = { .timeout = 5.0 };
+boxlite_exec_result_t result = boxlite_execute_cmd(box, "sleep", "60", &opts);
+```
+
+### System-Wide Timeout Limit
+
+BoxRun enforces a maximum timeout limit (default: 3600 seconds / 1 hour):
+
+```yaml
+# boxrun.yaml
+server:
+  exec_timeout_max_seconds: 3600  # Maximum allowed timeout
+```
+
+```bash
+# CLI
+boxrun exec mybox --timeout 300 -- python script.py
+```
+
+## Implementing Timeouts
+
+### Using asyncio.wait_for (Python)
+
+```python
+import asyncio
+
+async def exec_with_timeout(box, cmd, *args, timeout=30):
+    """Execute command with explicit timeout handling."""
+    execution = await box.exec(cmd, *args)
+
+    try:
+        result = await asyncio.wait_for(execution.wait(), timeout=timeout)
+        return result
+    except asyncio.TimeoutError:
+        # Always kill the process on timeout
+        await execution.kill()
+        await execution.wait()  # Wait for cleanup
+        raise TimeoutError(f"Command '{cmd}' timed out after {timeout}s")
+```
+
+### Using Built-in Timeout Parameter
+
+```python
+# Using SimpleBox (recommended for most cases)
+async with SimpleBox(image="python:3.11-slim") as box:
+    # Built-in timeout handling
+    result = await box.exec("curl", "https://example.com", timeout=10)
+```
+
+### Timeout in Node.js
+
+```javascript
+async function execWithTimeout(box, cmd, args, timeoutMs) {
+  const execution = await box.exec(cmd, args);
+
+  try {
+    // BoxLite Node.js SDK handles timeout internally
+    const result = await box.exec(cmd, args, undefined, { timeoutSecs: Math.ceil(timeoutMs / 1000) });
+    return result;
+  } catch (error) {
+    if (error.message.includes('timeout')) {
+      await execution.kill();
+    }
+    throw error;
+  }
+}
+```
+
+## Zombie Process Prevention
+
+### Understanding Zombie Processes
+
+A zombie process occurs when a child process terminates but its parent hasn't read its exit status. In BoxLite, this can happen if:
+
+1. Execution is not properly waited on
+2. Process is killed without cleanup
+3. Parent process crashes before reading exit status
+
+### Proper Cleanup Pattern
+
+```python
+async def safe_exec(box, cmd, *args, timeout=30):
+    """Execute command with proper cleanup to prevent zombies."""
+    execution = await box.exec(cmd, *args)
+
+    try:
+        result = await asyncio.wait_for(execution.wait(), timeout=timeout)
+        return result
+    except asyncio.TimeoutError:
+        await execution.kill()
+        # Wait for the process to actually terminate
+        await execution.wait()
+        raise
+    finally:
+        # Ensure execution is fully cleaned up
+        # (wait() already does this, but being explicit helps)
+        try:
+            await execution.wait()
+        except Exception:
+            pass  # Already done
+```
+
+### Using Context Managers
+
+```python
+# SimpleBox automatically handles cleanup
+async with SimpleBox(image="python:3.11-slim") as box:
+    result = await box.exec("some-command")
+    # Box is automatically cleaned up, no zombies
+
+# For low-level API, ensure proper cleanup
+box = await runtime.create_box(image="python:3.11-slim")
+try:
+    execution = await box.exec("long-running-command")
+    result = await execution.wait()
+finally:
+    await box.close()  # Ensures all child processes are cleaned up
+```
+
+### Checking for Zombie Processes
+
+```bash
+# Check for zombie processes
+ps aux | grep Z
+
+# Or check boxlite processes
+ps aux | grep boxlite | grep -v grep
+```
+
+## Common Timeout Scenarios
+
+### Long-Running Database Operations
+
+```python
+async with SimpleBox(image="postgres:15") as box:
+    # Set reasonable timeout for DB operations
+    result = await box.exec(
+        "psql", "-c", "SELECT * FROM large_table",
+        timeout=60  # 1 minute for large queries
+    )
+```
+
+### Network Operations
+
+```python
+async with SimpleBox(image="python:3.11-slim") as box:
+    # Short timeout for network calls
+    result = await box.exec(
+        "curl", "-s", "https://slow-service.example.com",
+        timeout=10  # 10 seconds max
+    )
+```
+
+### Background Tasks
+
+```python
+async with SimpleBox(image="python:3.11-slim") as box:
+    # Start background task
+    execution = await box.exec(
+        "python", "-m", "http.server", "8000",
+        background=True
+    )
+
+    # Do other work
+    await asyncio.sleep(5)
+
+    # Terminate when done
+    await execution.kill()
+    await execution.wait()
+```
+
+## Debugging Timeout Issues
+
+### Enable Debug Logging
+
+```bash
+RUST_LOG=debug python your_script.py 2>&1 | tee debug.log
+```
+
+### Check Process State
+
+```python
+# Get box process information
+box_info = await box.info()
+print(f"PID: {box_info.pid}")
+print(f"State: {box_info.state}")
+
+# Check for stuck processes
+result = await box.exec("ps", "aux")
+print(result.stdout)
+```
+
+### Common Error Messages
+
+| Error Message | Cause | Solution |
+|---------------|-------|----------|
+| `TimeoutError` | Command took too long | Increase timeout or optimize command |
+| `Execution killed (signal 9)` | Force kill due to timeout | Check if command is hung |
+| `Zombie process` | Parent didn't wait | Ensure proper cleanup |
+
+## Best Practices
+
+1. **Always set timeouts** for commands that could hang
+2. **Kill on timeout** - always call `execution.kill()` when timeout occurs
+3. **Wait after kill** - call `await execution.wait()` to reap the process
+4. **Use SimpleBox** - it handles cleanup automatically
+5. **Monitor resource usage** - check for accumulated processes
+
+```python
+# Recommended pattern
+async with SimpleBox(image="python:3.11-slim") as box:
+    result = await box.exec(
+        "your-command",
+        timeout=30  # Always set a reasonable timeout
+    )
+```
+
+## Related Documentation
+
+- [Execution Reference](/reference/python/execution) - Full execution API
+- [Error Handling](/tutorials/error-handling) - Exception handling patterns
+- [Troubleshooting Index](/troubleshooting/index) - All troubleshooting guides
+- [AI Agent Integration](/guides/ai-agent-integration) - Production patterns with timeouts

@@ -1,0 +1,370 @@
+---
+title: "Egress Control"
+description: "Configure outbound network access control with allowlists and deny-all patterns."
+---
+
+Egress control enables administrators to restrict outbound network traffic from BoxLite sandboxes. This is essential for security-sensitive environments where you need to control what external services the sandbox can access, implement least-privilege networking, and comply with organizational security policies.
+
+## Understanding Egress Control
+
+Egress control in BoxLite operates at the network proxy level, filtering outbound connections based on configurable rules. By default, when networking is enabled, the sandbox has full outbound internet access via NAT. Egress control allows you to restrict this to specific domains, IP addresses, or CIDR ranges.
+
+### Why Use Egress Control
+
+Enterprise security requirements often demand strict control over outbound network traffic. Egress control helps you:
+
+- **Prevent data exfiltration**: Restrict what destinations can receive data from your sandboxes
+- **Implement zero-trust networking**: Only allow explicitly approved external services
+- **Meet compliance requirements**: Satisfy security audits that require network allowlists
+- **Reduce attack surface**: Limit the reach of compromised or misconfigured sandboxes
+- **Control costs**: Prevent unauthorized API calls that could generate unexpected charges
+
+## Configuration Options
+
+### Domain Allowlist
+
+The most common egress control pattern is allowing only specific domains:
+
+```python
+from boxlite import SimpleBox
+
+# Allow only specific domains for outbound connections
+async with SimpleBox(
+    image="python:3.11-slim",
+    network=True,
+    allowed_domains=["api.example.com", "cdn.example.com", "api.github.com"]
+) as box:
+    # Can only connect to allowed domains
+    result = await box.exec("curl", "-s", "https://api.example.com/data")
+    # Connection to other domains will be blocked
+```
+
+<Warning>
+If no domains are specified in the allowlist, all outbound traffic is permitted (default behavior). Always define explicit allowlists for security-critical environments.
+</Warning>
+
+### IP Address Allowlist
+
+For more granular control, specify IP addresses or CIDR ranges:
+
+```python
+from boxlite import SimpleBox
+
+# Allow specific IP ranges (CIDR notation)
+async with SimpleBox(
+    image="python:3.11-slim",
+    network=True,
+    allowed_ips=["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]
+) as box:
+    # Can only connect to internal network ranges
+    result = await box.exec("curl", "-s", "http://192.168.1.100:8080")
+```
+
+### Combined Domain and IP Allowlists
+
+Combine both domain and IP allowlists for flexible policy enforcement:
+
+```python
+from boxlite import SimpleBox
+
+# Combined allowlist for complex policies
+async with SimpleBox(
+    image="python:3.11-slim",
+    network=True,
+    allowed_domains=["api.stripe.com", "api.openai.com"],
+    allowed_ips=["13.107.42.0/24"]  # Azure IP range
+) as box:
+    # Domain and IP filtering applied together
+    pass
+```
+
+### Deny-All Mode
+
+For maximum security, enable deny-all mode which blocks all outbound traffic:
+
+```python
+from boxlite import SimpleBox
+
+# Deny all outbound connections
+async with SimpleBox(
+    image="python:3.11-slim",
+    network=True,
+    allowed_domains=[]  # Empty list = deny all
+) as box:
+    # No outbound connections allowed
+    # Useful for isolated processing workloads
+```
+
+## Technical Implementation
+
+### How Egress Control Works
+
+BoxLite's egress control is implemented at the network proxy layer using gvproxy's packet filtering capabilities:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                         Sandbox VM                              │
+│                                                                 │
+│   ┌──────────────┐                                              │
+│   │ Application │                                              │
+│   └──────┬───────┘                                              │
+│          │ TCP/UDP                                             │
+│          ▼                                                      │
+│   ┌──────────────────────────────────────────────────────────┐ │
+│   │              Egress Policy Engine                         │ │
+│   │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐       │ │
+│   │  │   Domain   │  │     IP      │  │   Deny All  │       │ │
+│   │  │ Allowlist  │  │ Allowlist   │  │    Mode     │       │ │
+│   │  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘       │ │
+│   └─────────┼───────────────┼───────────────┼───────────────┘ │
+│             │               │               │                 │
+│             ▼               ▼               ▼                 │
+│   ┌──────────────────────────────────────────────────────────┐ │
+│   │              gvproxy (Network Proxy)                      │ │
+│   │         Packet filtering and forwarding                  │ │
+│   └──────────────────────────┬───────────────────────────────┘ │
+│                              │ vsock                            │
+│                              ▼                                  │
+│                         Host Network                            │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Policy Evaluation Order
+
+When a connection is initiated from the sandbox:
+
+1. **Check deny-all mode**: If enabled, block immediately
+2. **Evaluate IP allowlist**: If IPs are specified, check destination IP against CIDR ranges
+3. **Evaluate domain allowlist**: If domains are specified, resolve domain and check against IPs
+4. **Allow or block**: Permit or deny the connection based on policy match
+
+## Use Cases
+
+### API Gateway Pattern
+
+Restrict sandbox to communicate only with approved API endpoints:
+
+```python
+from boxlite import SimpleBox
+
+async with SimpleBox(
+    image="my-api-client:latest",
+    network=True,
+    allowed_domains=[
+        "api.production.com",      # Primary API
+        "cdn.production.com",      # Static assets
+        "auth.production.com"      # Authentication
+    ]
+) as box:
+    # Client can only reach approved services
+    await box.exec("python", "client.py")
+```
+
+### Database Access Control
+
+Limit database connections to specific IP addresses:
+
+```python
+from boxlite import SimpleBox
+
+async with SimpleBox(
+    image="postgres-client:latest",
+    network=True,
+    allowed_ips=[
+        "10.0.1.0/24",     # Production DB subnet
+        "10.0.2.100/32"    # Specific DB server
+    ]
+) as box:
+    # Can only connect to allowed database servers
+    await box.exec("psql", "-h", "10.0.2.100", "-U", "app")
+```
+
+### Multi-Environment Policies
+
+Different policies for different environments:
+
+```python
+from boxlite import SimpleBox
+
+def create_box_for_env(environment: str) -> SimpleBox:
+    """Create boxes with environment-specific egress policies"""
+
+    policies = {
+        "development": {
+            "allowed_domains": ["*.dev.example.com", "api.stripe.com"],
+            "allowed_ips": ["10.0.0.0/8"]
+        },
+        "staging": {
+            "allowed_domains": ["*.staging.example.com"],
+            "allowed_ips": ["10.1.0.0/16"]
+        },
+        "production": {
+            "allowed_domains": ["api.example.com"],
+            "allowed_ips": ["10.2.0.0/24"]
+        }
+    }
+
+    policy = policies.get(environment, policies["development"])
+
+    return SimpleBox(
+        image="app:latest",
+        network=True,
+        **policy
+    )
+```
+
+## Best Practices
+
+### Security Recommendations
+
+1. **Use explicit allowlists**: Define exactly which domains/IPs are permitted rather than using blocklists
+2. **Start restrictive**: Begin with deny-all and incrementally add allowed destinations
+3. **Regular audit reviews**: Periodically review egress policies to remove unused permissions
+4. **Log all attempts**: Enable connection logging to detect policy violations
+5. **Use CIDR notation for IPs**: Use ranges rather than individual IPs for maintainability
+
+### Monitoring Egress Traffic
+
+Monitor egress traffic patterns to detect anomalies:
+
+```python
+from boxlite import SimpleBox
+
+async with SimpleBox(
+    image="python:3.11-slim",
+    network=True,
+    allowed_domains=["api.example.com"]
+) as box:
+    # Perform operations
+    await box.exec("curl", "-s", "https://api.example.com/data")
+
+    # Get network metrics
+    metrics = await box.network_metrics()
+    print(f"Bytes sent: {metrics.bytes_sent}")
+    print(f"Bytes received: {metrics.bytes_received}")
+
+    # Analyze connection patterns for anomalies
+```
+
+### Performance Considerations
+
+Egress control adds minimal latency as policy evaluation happens at the proxy level. However, domain allowlists require DNS resolution which may add slight overhead for the first connection to each domain.
+
+## Troubleshooting
+
+### Connection Blocked Unexpectedly
+
+**Symptom:** Outbound connection fails even though destination should be allowed.
+
+**Solution:**
+
+```python
+# Verify domain/IP is correctly configured
+async with SimpleBox(
+    image="python:3.11-slim",
+    network=True,
+    allowed_domains=["api.example.com"],
+    allowed_ips=["93.184.216.0/24"]  # Include IP range
+) as box:
+    # Test DNS resolution
+    result = await box.exec("nslookup", "api.example.com")
+    print(result.stdout)
+
+    # Test connection
+    result = await box.exec("curl", "-v", "https://api.example.com")
+```
+
+### DNS Resolution Issues
+
+**Symptom:** Domain allowlist not working, connections to allowed domains fail.
+
+**Solution:**
+
+```python
+# Verify DNS is working inside sandbox
+async with SimpleBox(
+    image="python:3.11-slim",
+    network=True,
+    allowed_domains=["api.example.com"]
+) as box:
+    # Check DNS configuration
+    result = await box.exec("cat", "/etc/resolv.conf")
+    print(result.stdout)
+
+    # Test DNS resolution
+    result = await box.exec("nslookup", "api.example.com")
+```
+
+### Policy Not Applied
+
+**Symptom:** Egress control appears to be ignored.
+
+**Solution:**
+
+```python
+# Enable debug logging to verify policy application
+import logging
+logging.basicConfig(level=logging.DEBUG)
+
+import os
+os.environ["BOXLITE_DEBUG"] = "1"
+
+async with SimpleBox(
+    image="python:3.11-slim",
+    network=True,
+    allowed_domains=["allowed.example.com"]
+) as box:
+    # Debug output should show policy enforcement
+    pass
+```
+
+## Integration with Enterprise Policies
+
+### Centralized Policy Management
+
+For enterprise environments, manage egress policies centrally:
+
+```python
+from boxlite import SimpleBox
+from typing import List, Dict
+
+class EnterpriseEgressPolicy:
+    """Centralized egress policy management"""
+
+    def __init__(self, policy_store: Dict):
+        self.policies = policy_store
+
+    def get_policy(self, team: str, environment: str) -> Dict:
+        """Retrieve policy for team/environment"""
+        return self.policies.get(f"{team}:{environment}", {})
+
+    def create_box(self, team: str, environment: str, **kwargs) -> SimpleBox:
+        """Create box with appropriate egress policy"""
+        policy = self.get_policy(team, environment)
+
+        return SimpleBox(
+            image=kwargs.get("image", "python:3.11-slim"),
+            network=True,
+            allowed_domains=policy.get("domains", []),
+            allowed_ips=policy.get("ips", [])
+        )
+
+# Usage
+policy_store = {
+    "data-team:production": {
+        "domains": ["api.bigquery.googleapis.com", "storage.googleapis.com"],
+        "ips": ["34.64.0.0/10"]
+    }
+}
+
+policy_mgr = EnterpriseEgressPolicy(policy_store)
+box = policy_mgr.create_box("data-team", "production")
+```
+
+## See Also
+
+- [Network Overview](/networking/overview) - Network architecture and topology
+- [Port Forwarding](/networking/port-forwarding) - Exposing services from sandbox
+- [Private Connectivity](/networking/private-connectivity) - Private networking options
+- [Network Troubleshooting](/networking/troubleshooting) - Debugging network issues
+- [Architecture: Networking & Storage](/architecture/networking-storage) - Detailed networking architecture

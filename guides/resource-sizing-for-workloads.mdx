@@ -1,0 +1,274 @@
+---
+title: "Resource Sizing for Workloads"
+description: "Learn how to configure CPU, memory, and disk resources for different workload types to optimize performance and cost."
+---
+
+# Overview
+
+This guide provides sizing recommendations for configuring CPU, memory, and disk resources for different workload types in BoxLite. Proper resource sizing is critical for achieving optimal performance while controlling costs.
+
+**Key parameters:**
+- `cpus`: Number of CPU cores (default: 1)
+- `memory_mib`: Memory in MiB (default: 512)
+- `disk_size_gb`: Disk size in GB (default: based on image)
+
+## Use Cases
+
+- AI agent code execution environments
+- Data processing pipelines
+- Web scraping and automation
+- Development workspaces
+- Batch processing jobs
+
+## Prerequisites
+
+- BoxLite SDK installed (`python3 -m pip install boxlite`)
+- Basic understanding of Python async programming
+
+## Detailed Content
+
+### Resource Configuration Basics
+
+BoxLite uses `BoxOptions` to configure sandbox resources:
+
+```python
+import boxlite
+
+# Minimum resources - lightweight tasks
+min_opts = boxlite.BoxOptions(
+    cpus=1,
+    memory_mib=512
+)
+
+# Standard resources - general workloads
+std_opts = boxlite.BoxOptions(
+    cpus=2,
+    memory_mib=4096
+)
+
+# High resources - compute-intensive tasks
+high_opts = boxlite.BoxOptions(
+    cpus=4,
+    memory_mib=16384
+)
+```
+
+### Sizing by Workload Type
+
+#### 1. Lightweight Scripts (CPU: 1, Memory: 512 MiB)
+
+Best for: Quick data processing, file transformations, simple API calls
+
+```python
+opts = boxlite.BoxOptions(
+    cpus=1,
+    memory_mib=512
+)
+
+async with boxlite.SimpleBox(opts) as box:
+    result = await box.exec("python", "script.py")
+```
+
+**Use cases:**
+- JSON/YAML parsing
+- Simple calculations
+- Light file operations
+- Quick API requests
+
+#### 2. AI Agent Code Execution (CPU: 2, Memory: 4096 MiB)
+
+Best for: Running LLM-generated code, code review agents, data analysis
+
+```python
+opts = boxlite.BoxOptions(
+    cpus=2,
+    memory_mib=4096
+)
+
+async with boxlite.CodeBox(opts) as box:
+    # Execute AI-generated code
+    result = await box.exec("python", "-c", "import pandas as pd; ...")
+    # Install packages as needed
+    await box.install_package("pandas")
+```
+
+**Use cases:**
+- Code execution from AI agents
+- Package installation and management
+- Data analysis with pandas/numpy
+- Machine learning inference
+
+#### 3. Data Processing Pipelines (CPU: 4, Memory: 16384 MiB)
+
+Best for: Large-scale data transformation, batch processing
+
+```python
+opts = boxlite.BoxOptions(
+    cpus=4,
+    memory_mib=16384,
+    disk_size_gb=50  # Larger disk for data files
+)
+
+async with boxlite.SimpleBox(opts) as box:
+    # Process large datasets
+    result = await box.exec("python", "process_large_data.py")
+```
+
+**Use cases:**
+- ETL pipelines
+- Log processing
+- Media transcoding
+- Large file operations
+
+#### 4. Browser Automation (CPU: 2-4, Memory: 4096-8192 MiB)
+
+Best for: Web scraping, visual testing, browser-based automation
+
+```python
+opts = boxlite.BrowserBoxOptions(
+    browser="chromium",
+    cpu=2,
+    memory=4096
+)
+
+async with boxlite.BrowserBox(opts) as browser:
+    endpoint = await browser.playwright_endpoint()
+    # Use Playwright for browser automation
+```
+
+**Use cases:**
+- Headless browser automation
+- Web scraping with JavaScript rendering
+- Visual regression testing
+- PDF generation from HTML
+
+### Memory Guidelines by Task Type
+
+| Task Type | Memory (MiB) | CPU Cores | Notes |
+|-----------|--------------|-----------|-------|
+| Simple script | 512 | 1 | Minimal overhead |
+| Package installation | 2048 | 1-2 | Need space for pip cache |
+| Data analysis | 4096 | 2 | pandas/numpy memory usage |
+| ML inference | 8192 | 2-4 | Model loading overhead |
+| Browser automation | 4096-8192 | 2-4 | Chromium memory footprint |
+
+### Disk Sizing Guidelines
+
+| Use Case | Disk Size (GB) | Notes |
+|----------|----------------|-------|
+| Simple execution | 2-5 | Default image size |
+| Package caching | 10-20 | Pre-install common packages |
+| Data processing | 20-50 | Space for input/output files |
+| Media files | 50+ | Video, images, audio processing |
+
+```python
+# Data processing with larger disk
+opts = boxlite.BoxOptions(
+    cpus=4,
+    memory_mib=16384,
+    disk_size_gb=50
+)
+```
+
+### Cost Optimization Tips
+
+1. **Right-size from the start**: Start with minimal resources and scale up only when needed
+2. **Match workload to tier**: Use lightweight configs for simple tasks, reserve high resources for compute-intensive jobs
+3. **Monitor actual usage**: Check memory metrics to avoid over-provisioning
+4. **Use auto-cleanup**: Set `auto_remove=True` for ephemeral workloads to avoid accumulated costs
+
+```python
+# Cost-optimized configuration for ephemeral tasks
+opts = boxlite.BoxOptions(
+    cpus=1,
+    memory_mib=512,
+    auto_remove=True  # Cleanup after execution
+)
+```
+
+## Common Mistakes
+
+### 1. Insufficient Memory for Package Installation
+
+**Problem:** Running `install_package` fails with OOM (Out of Memory) error.
+
+**Solution:** Increase memory to at least 2048 MiB when installing packages:
+
+```python
+# Always use at least 2GB memory for package installation
+opts = boxlite.BoxOptions(
+    cpus=2,
+    memory_mib=2048
+)
+```
+
+### 2. Disk Full During Data Processing
+
+**Problem:** "No space left on device" errors when processing large files.
+
+**Solution:** Pre-allocate sufficient disk space:
+
+```python
+opts = boxlite.BoxOptions(
+    cpus=4,
+    memory_mib=8192,
+    disk_size_gb=100  # Larger disk for data files
+)
+```
+
+### 3. Browser Crashes Due to Insufficient Memory
+
+**Problem:** Chromium crashes or hangs during browser automation.
+
+**Solution:** Allocate at least 4GB memory for browser workloads:
+
+```python
+opts = boxlite.BrowserBoxOptions(
+    browser="chromium",
+    cpu=2,
+    memory=4096  # Minimum for stable browser automation
+)
+```
+
+### 4. CPU Throttling on Compute-Intensive Tasks
+
+**Problem:** Slow execution for compute-heavy workloads like ML inference.
+
+**Solution:** Scale CPU cores appropriately:
+
+```python
+# ML inference needs more CPU cores
+opts = boxlite.BoxOptions(
+    cpus=4,  # Use 4+ cores for parallel computation
+    memory_mib=16384
+)
+```
+
+### 5. Default Resources Too Small for Production
+
+**Problem:** Timeouts or crashes in production due to default 512 MiB memory.
+
+**Solution:** Always specify resources explicitly for production workloads:
+
+```python
+# Production configuration - never use defaults
+opts = boxlite.BoxOptions(
+    cpus=2,
+    memory_mib=4096,  # Explicit, not default
+    disk_size_gb=20
+)
+```
+
+## Security Notes
+
+1. **Never expose sensitive data in sandbox**: Even with resource limits, sandboxes are not secure enclaves
+2. **Resource limits are not security boundaries**: A compromised sandbox with high resources still has full host access
+3. **Monitor for resource exhaustion**: Malicious code may attempt to consume all available resources
+4. **Use network controls**: Combine resource limits with network restrictions for defense in depth
+
+## Related Reading
+
+- [Performance Tuning Guide](/guides/performance-tuning)
+- [Cost Control Best Practices](/guides/cost-control-best-practices)
+- [BrowserBox Configuration](/reference/python/box-types#browserbox)
+- [Configuration Reference](/reference/index)

@@ -1,0 +1,330 @@
+---
+title: "Safe Web Scraper"
+description: "Build a secure web scraper using BoxLite for isolation"
+---
+
+This cookbook shows how to build a safe web scraper that executes in an isolated BoxLite environment, protecting your system from malicious websites.
+
+## Overview
+
+Web scraping can be risky - websites may contain:
+- Malicious JavaScript that attacks your system
+- Drive-by downloads
+- Tracking scripts
+- Exploit attempts
+
+BoxLite provides isolation to safely scrape untrusted content.
+
+## Architecture
+
+```
+Request -> BoxLite (isolated) -> Fetch & Parse -> Clean Data -> Output
+```
+
+## Implementation
+
+### Basic Web Scraper
+
+```python
+import asyncio
+from boxlite import SimpleBox
+
+class SafeScraper:
+    """Web scraper running in isolated BoxLite environment."""
+
+    def __init__(self, timeout: int = 30):
+        self.timeout = timeout
+
+    async def fetch(self, url: str, selector: str = None) -> dict:
+        """Fetch and parse a web page safely."""
+        async with SimpleBox(
+            image="python:3.11-slim",
+            network=True,
+            timeout=self.timeout,
+            auto_remove=True
+        ) as box:
+            # Install scraping tools
+            await box.exec("pip", "install", "-q", "requests", "beautifulsoup4")
+
+            # Build scraping script
+            script = self._build_script(url, selector)
+
+            # Execute in isolation
+            result = await box.exec("python", "-c", script)
+
+            if result.exit_code != 0:
+                raise RuntimeError(f"Scraping failed: {result.stderr}")
+
+            return self._parse_result(result.stdout)
+
+    def _build_script(self, url: str, selector: str = None) -> str:
+        """Build scraping Python script."""
+        script = f"""
+import requests
+from bs4 import BeautifulSoup
+import json
+import re
+
+try:
+    # Fetch page with minimal headers
+    headers = {{
+        'User-Agent': 'Mozilla/5.0 (compatible; SafeScraper/1.0)',
+        'Accept': 'text/html,application/xhtml+xml',
+    }}
+    response = requests.get('{url}', headers=headers, timeout=10)
+    response.raise_for_status()
+
+    soup = BeautifulSoup(response.text, 'html.parser')
+
+    # Extract basic info
+    result = {{
+        'url': '{url}',
+        'status': response.status_code,
+        'title': soup.title.string if soup.title else None,
+        'meta': {{}},
+    }}
+
+    # Extract meta tags
+    for meta in soup.find_all('meta'):
+        name = meta.get('name') or meta.get('property')
+        if name:
+            result['meta'][name] = meta.get('content', '')
+
+    # Extract links
+    result['links'] = [a.get('href') for a in soup.find_all('a', href=True)][:50]
+
+    # Extract text content (first 5000 chars)
+    text = soup.get_text(separator=' ', strip=True)
+    result['text'] = text[:5000]
+
+    # CSS selector extraction if provided
+    {self._selector_script(selector)}
+
+    print(json.dumps(result))
+except Exception as e:
+    print(json.dumps({{'error': str(e)}}))
+"""
+        return script
+
+    def _selector_script(self, selector: str = None) -> str:
+        if not selector:
+            return ""
+        return f"""
+    if '{selector}':
+        elements = soup.select('{selector}')
+        result['selected'] = [el.get_text(strip=True) for el in elements[:10]]
+"""
+
+    def _parse_result(self, output: str) -> dict:
+        """Parse JSON output from box."""
+        import json
+        try:
+            return json.loads(output)
+        except json.JSONDecodeError:
+            return {"error": "Failed to parse output", "raw": output}
+
+
+# Usage
+async def main():
+    scraper = SafeScraper(timeout=30)
+
+    try:
+        result = await scraper.fetch("https://example.com", "article p")
+        print(f"Title: {result.get('title')}")
+        print(f"Links: {len(result.get('links', []))}")
+    except Exception as e:
+        print(f"Error: {e}")
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+### Advanced: JavaScript-Enabled Scraper
+
+```python
+import asyncio
+from boxlite import SimpleBox
+
+class JavaScriptScraper:
+    """Scraper that handles JavaScript-rendered content."""
+
+    async def fetch_dynamic(self, url: str) -> dict:
+        """Fetch page with JavaScript rendering."""
+        async with SimpleBox(
+            image="python:3.11-slim",
+            network=True,
+            timeout=60,
+            auto_remove=True
+        ) as box:
+            # Install Playwright
+            await box.exec("pip", "install", "-q", "playwright")
+            await box.exec("playwright", "install", "chromium")
+
+            script = f"""
+import asyncio
+from playwright.async_api import async_playwright
+import json
+
+async def main():
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True)
+        page = await browser.new_page()
+
+        # Set realistic viewport
+        await page.set_viewport_size({{'width': 1280, 'height': 720}})
+
+        # Navigate and wait for network idle
+        await page.goto('{url}', wait_until='networkidle', timeout=30000)
+
+        # Extract content
+        result = {{
+            'url': page.url,
+            'title': await page.title(),
+            'html': await page.content(),
+            'links': await page.evaluate('''
+                Array.from(document.querySelectorAll("a[href]"))
+                    .map(a => a.href)
+                    .slice(0, 50)
+            '''),
+        }}
+
+        await browser.close()
+        print(json.dumps(result))
+
+asyncio.run(main())
+"""
+            result = await box.exec("python", "-c", script)
+
+            if result.exit_code != 0:
+                raise RuntimeError(f"Scraping failed: {result.stderr}")
+
+            import json
+            return json.loads(result.stdout)
+
+
+# Usage
+async def main():
+    scraper = JavaScriptScraper()
+
+    result = await scraper.fetch_dynamic("https://example.com")
+    print(f"Title: {result.get('title')}")
+    print(f"Links: {len(result.get('links', []))}")
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+### Rate-Limited Scraper
+
+```python
+import asyncio
+import time
+from boxlite import SimpleBox
+
+class RateLimitedScraper:
+    """Scraper with built-in rate limiting."""
+
+    def __init__(self, requests_per_second: float = 1.0):
+        self.min_interval = 1.0 / requests_per_second
+        self.last_request = 0
+
+    async def fetch(self, url: str) -> dict:
+        """Fetch with rate limiting."""
+        # Wait if needed
+        elapsed = time.time() - self.last_request
+        if elapsed < self.min_interval:
+            await asyncio.sleep(self.min_interval - elapsed)
+
+        self.last_request = time.time()
+
+        # Use SafeScraper
+        scraper = SafeScraper()
+        return await scraper.fetch(url)
+
+    async def fetch_multiple(self, urls: list) -> list:
+        """Fetch multiple URLs with rate limiting."""
+        tasks = [self.fetch(url) for url in urls]
+        return await asyncio.gather(*tasks, return_exceptions=True)
+
+
+# Usage
+async def main():
+    scraper = RateLimitedScraper(requests_per_second=2.0)
+
+    urls = [
+        "https://example.com/page1",
+        "https://example.com/page2",
+        "https://example.com/page3",
+    ]
+
+    results = await scraper.fetch_multiple(urls)
+
+    for url, result in zip(urls, results):
+        if isinstance(result, Exception):
+            print(f"{url}: Error - {result}")
+        else:
+            print(f"{url}: {result.get('title', 'No title')}")
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+## Security Best Practices
+
+1. **Isolate execution** - Always run in BoxLite
+2. **Set timeouts** - Prevent hanging on slow sites
+3. **Limit resources** - Prevent system overload
+4. **Clean output** - Sanitize scraped data before use
+
+```python
+# Secure configuration
+async with SimpleBox(
+    image="python:3.11-slim",
+    network=True,
+    timeout=30,
+    cpu=1,           # Limit CPU
+    memory_mb=512,  # Limit memory
+    auto_remove=True
+) as box:
+    # Scraping code here
+    pass
+```
+
+## Handling Common Issues
+
+### SSL Errors
+
+```python
+# Ignore SSL verification (use carefully)
+script = """
+import requests
+response = requests.get('{url}', verify=False)
+"""
+```
+
+### CAPTCHAs
+
+```python
+# Detect and handle
+script = """
+if 'captcha' in response.text.lower():
+    print('CAPTCHA detected')
+"""
+```
+
+### JavaScript Rendering
+
+```python
+# Use JavaScriptScraper for dynamic content
+scraper = JavaScriptScraper()
+result = await scraper.fetch_dynamic(url)
+```
+
+## Related Documentation
+
+- [AI Agent Integration](/guides/ai-agent-integration) - AI patterns with BoxLite
+- [Network Configuration](/troubleshooting/network-and-port-forwarding) - Network troubleshooting
+- [Error Handling](/tutorials/error-handling) - Error handling patterns

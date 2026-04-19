@@ -1,0 +1,381 @@
+---
+title: "Provisioning Dependencies"
+description: "Learn how to install pip packages, npm modules, and system dependencies in BoxLite templates for Python, Node.js, and other languages."
+---
+
+# Provisioning Dependencies
+
+This guide covers how to install and manage dependencies in BoxLite templates for various programming languages and runtimes. Understanding proper dependency installation is essential for creating efficient and reproducible templates.
+
+## Overview
+
+BoxLite templates can include dependencies from multiple ecosystems. This document explains how to install packages for Python, Node.js, Go, and other languages, as well as system-level dependencies.
+
+## Python Dependencies
+
+Python packages are installed using pip within the Box environment.
+
+### Basic Package Installation
+
+```python
+# Install packages during template creation
+async with boxlite.SimpleBox(image="python:3.11-slim") as box:
+    # Install common packages
+    await box.exec("pip install numpy pandas scikit-learn")
+
+    # Install with specific versions
+    await box.exec("pip install flask==2.3.0 requests>=2.28.0")
+
+    # Create template with dependencies
+    await box.create_template(
+        name="data-science:v1",
+        description="Data analysis environment"
+    )
+```
+
+### Using Requirements Files
+
+For complex dependencies, use requirements files:
+
+```bash
+# Create requirements.txt
+# numpy>=1.24.0
+# pandas>=2.0.0
+# scikit-learn>=1.3.0
+# matplotlib>=3.7.0
+```
+
+```python
+# Install from requirements file
+async with boxlite.SimpleBox(image="python:3.11-slim") as box:
+    # Copy requirements to box
+    await box.upload("requirements.txt", "/tmp/requirements.txt")
+
+    # Install all packages
+    await box.exec("pip install -r /tmp/requirements.txt")
+
+    # Create template
+    await box.create_template(name="data-science:v2")
+```
+
+### Python Virtual Environments
+
+Create isolated Python environments:
+
+```python
+# Create virtual environment in template
+await box.exec("python -m venv /opt/venv")
+await box.exec("source /opt/venv/bin/activate")
+
+# Install packages in venv
+await box.exec("/opt/venv/bin/pip install numpy pandas")
+
+# Make venv the default
+await box.exec("echo 'source /opt/venv/bin/activate' >> ~/.bashrc")
+```
+
+### Pre-installed Dependencies
+
+BoxLite provides some pre-installed packages for faster startup:
+
+```python
+# Check what's pre-installed
+result = await box.exec("pip list")
+print(result.output)
+```
+
+| Image | Pre-installed Packages |
+|-------|----------------------|
+| python:3.11-slim | pip, setuptools, wheel |
+| python:3.11 | + numpy (sometimes) |
+| python:3.11-jupyter | Jupyter, IPython |
+
+## Node.js Dependencies
+
+Node.js packages are installed using npm or yarn.
+
+### NPM Installation
+
+```python
+# Install npm packages
+async with boxlite.SimpleBox(image="node:20-alpine") as box:
+    # Install single package
+    await box.exec("npm install express")
+
+    # Install and save to package.json
+    await box.exec("npm install lodash --save")
+
+    # Install dev dependencies
+    await box.exec("npm install jest --save-dev")
+
+    # Install specific version
+    await box.exec("npm install react@18.2.0")
+
+    # Create template
+    await box.create_template(name="node-app:v1")
+```
+
+### Using package.json
+
+```bash
+# package.json
+{
+  "name": "my-app",
+  "version": "1.0.0",
+  "dependencies": {
+    "express": "^4.18.0",
+    "lodash": "^4.17.21"
+  },
+  "devDependencies": {
+    "jest": "^29.0.0"
+  }
+}
+```
+
+```python
+# Install from package.json
+await box.upload("package.json", "/app/package.json")
+await box.exec("cd /app && npm install")
+```
+
+### Yarn Support
+
+```python
+# Use yarn instead of npm
+await box.exec("npm install -g yarn")
+await box.exec("yarn install")
+```
+
+## System Dependencies
+
+Install system packages using the appropriate package manager.
+
+### Debian/Ubuntu (APT)
+
+```python
+async with boxlite.SimpleBox(image="ubuntu:24.04") as box:
+    # Update package lists
+    await box.exec("apt-get update")
+
+    # Install packages
+    await box.exec("apt-get install -y git curl wget build-essential")
+
+    # Clean up to reduce size
+    await box.exec("apt-get clean")
+    await box.exec("rm -rf /var/lib/apt/lists/*")
+
+    # Create template
+    await box.create_template(name="dev-tools:v1")
+```
+
+### Alpine (APK)
+
+```python
+async with boxlite.SimpleBox(image="alpine:3.18") as box:
+    # Install packages
+    await box.exec("apk add git curl bash")
+
+    # Create template
+    await box.create_template(name="alpine-dev:v1")
+```
+
+### RHEL/CentOS (YUM/DNF)
+
+```python
+async with boxlite.SimpleBox(image="rocky:9") as box:
+    # Install packages
+    await box.exec("dnf install -y git curl wget")
+
+    # Clean cache
+    await box.exec("dnf clean all")
+```
+
+## Multi-Language Support
+
+Templates can support multiple languages:
+
+```python
+# Create multi-language template
+async with boxlite.SimpleBox(image="ubuntu:24.04") as box:
+    # Python
+    await box.exec("apt-get install -y python3 python3-pip")
+    await box.exec("pip install flask")
+
+    # Node.js
+    await box.exec("apt-get install -y nodejs npm")
+    await box.exec("npm install express")
+
+    # Go
+    await box.exec("apt-get install -y golang")
+
+    await box.create_template(name="multi-lang:v1")
+```
+
+## Language-Specific Tips
+
+### Python Best Practices
+
+```python
+# Use virtual environments
+await box.exec("python -m venv /opt/venv")
+
+# Pin versions for reproducibility
+await box.exec("pip freeze > requirements.txt")
+
+# Use pip-compile for locked dependencies
+await box.exec("pip-compile requirements.in")
+
+# Avoid system packages
+# DON'T: apt-get install python3-numpy
+# DO: pip install numpy
+```
+
+### Node.js Best Practices
+
+```python
+# Use package-lock.json for reproducible builds
+await box.exec("npm install --package-lock-only")
+await box.exec("npm ci")  # Clean install from lock
+
+# Use npm scripts
+# "scripts": {
+#   "start": "node index.js",
+#   "test": "jest"
+# }
+
+# Clean npm cache periodically
+await box.exec("npm cache clean --force")
+```
+
+### Go Dependencies
+
+```python
+async with boxlite.SimpleBox(image="golang:1.21") as box:
+    # Initialize go module
+    await box.exec("go mod init myapp")
+
+    # Add dependencies
+    await box.exec("go get github.com/gin-gonic/gin")
+
+    # Download all dependencies
+    await box.exec("go mod download")
+
+    # Create template
+    await box.create_template(name="go-app:v1")
+```
+
+## Pre-installed Runtime Dependencies
+
+BoxLite provides pre-configured images with common dependencies:
+
+### Official BoxLite Images
+
+| Image | Languages | Key Dependencies |
+|-------|-----------|-----------------|
+| boxlite/python-ml | Python | numpy, pandas, scikit-learn, torch |
+| boxlite/node-full | Node.js | npm, yarn, common CLI tools |
+| boxlite/go-dev | Go | go, golangci-lint |
+| boxlite/data-science | Python + R | jupyter, pandas, r tidyverse |
+
+```python
+# Use pre-built image with dependencies
+async with boxlite.SimpleBox(image="boxlite/python-ml:latest") as box:
+    # No need to install - already available!
+    result = await box.exec("python -c 'import torch; print(torch.__version__)'")
+
+    await box.create_template(name="ml-ready:v1")
+```
+
+## Dependency Caching
+
+Speed up builds by caching downloaded packages:
+
+```python
+# Pre-download packages for offline use
+async with boxlite.SimpleBox(image="python:3.11-slim") as box:
+    # Download packages to cache directory
+    await box.exec("pip download -d /tmp/pip-cache numpy pandas")
+
+    # Later installations use cache
+    await box.exec("pip install --no-index --find-links=/tmp/pip-cache numpy")
+
+    await box.create_template(name="cached-deps:v1")
+```
+
+## Troubleshooting Dependency Issues
+
+### Common Issues
+
+#### Network Unavailable
+
+```python
+# If network is disabled, pre-bundle dependencies
+async with boxlite.SimpleBox(image="python:3.11-slim") as box:
+    # Download packages
+    await box.exec("pip download -r requirements.txt -d /deps")
+
+    # Install offline
+    await box.exec("pip install --no-index --find-links=/deps -r requirements.txt")
+```
+
+#### Version Conflicts
+
+```python
+# Resolve by using virtual environments
+await box.exec("python -m venv /opt/venv1")
+await box.exec("/opt/venv1/bin/pip install package1")
+
+await box.exec("python -m venv /opt/venv2")
+await box.exec("/opt/venv2/bin/pip install package2")
+```
+
+#### Missing System Libraries
+
+```python
+# Install system dependencies first
+await box.exec("apt-get update")
+await box.exec("apt-get install -y libffi-dev libssl-dev")
+
+# Then install Python packages
+await box.exec("pip install cryptography")
+```
+
+### Verify Installation
+
+```python
+# Verify packages are installed correctly
+result = await box.exec("pip list")
+
+# Check specific package
+result = await box.exec("pip show numpy")
+
+# Test import
+result = await box.exec("python -c 'import numpy; print(numpy.__version__)'")
+```
+
+## Dependency Size Optimization
+
+Keep templates lean:
+
+```python
+# DON'T: Install everything
+await box.exec("pip install huge-package-with-deps")
+
+# DO: Install only what's needed
+await box.exec("pip install package --no-deps")  # If deps already present
+await box.exec("pip install package1 package2")  # Single command
+
+# DO: Clean up
+await box.exec("pip cache purge")
+await box.exec("rm -rf /tmp/*")
+```
+
+## Related Documentation
+
+- [Creating Custom Templates](/templates/create-template) - Creating templates
+- [How Templates Work](/templates/how-it-works) - Template internals
+- [Debug Build Failures](/templates/debug-build-failures) - Troubleshooting
+
+<Warning>
+  Always verify that your dependencies come from trusted sources. Malicious packages can compromise your Box environment. Use pip's --require-hashes mode for production templates.
+</Warning>

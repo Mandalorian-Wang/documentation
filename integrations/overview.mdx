@@ -1,0 +1,63 @@
+---
+title: "Integration Patterns Overview"
+description: "Understand the supported BoxLite integration entry points and choose the right framework page."
+sidebarTitle: "Integration Patterns"
+---
+
+This section is the routing page for framework-specific integration docs. Use it after you already understand the BoxLite product boundary and have chosen the SDK path you want to embed.
+
+## Integration philosophy
+
+BoxLite provides the execution layer. Higher-level agent frameworks decide when to call tools, how to manage conversation state, and how to present results.
+
+The integration model stays the same even when the calling framework changes:
+
+1. Define a tool contract.
+2. Receive a tool call from the framework.
+3. Execute the requested work inside BoxLite.
+4. Return the execution result to the framework.
+
+## Supported framework entry points
+
+<CardGroup cols={3}>
+  <Card title="Anthropic Claude" icon="brain" href="/integrations/anthropic">
+    Integrate Claude tool use with BoxLite-backed execution.
+  </Card>
+  <Card title="OpenAI Agents SDK" icon="cpu" href="/integrations/openai-agents">
+    Build structured agents that delegate execution to BoxLite.
+  </Card>
+  <Card title="LangChain" icon="link" href="/integrations/langchain">
+    Add BoxLite as a tool in LangChain-based agent workflows.
+  </Card>
+  <Card title="Vercel AI SDK" icon="cloud" href="/integrations/vercel-ai-sdk">
+    Combine streaming responses with BoxLite execution tools.
+  </Card>
+  <Card title="MCP Gateway" icon="network" href="/integrations/mcp-gateway-pattern">
+    Use BoxLite in an MCP-oriented architecture pattern.
+  </Card>
+  <Card title="Direct SDK path" icon="code" href="/getting-started/install">
+    Start with BoxLite itself if you want to embed the runtime without a framework wrapper.
+  </Card>
+</CardGroup>
+
+## Choosing the right page
+
+- Use a framework page when your agent stack is already chosen.
+- Use the direct SDK path when BoxLite itself is the first integration decision.
+- Keep framework-specific code on the framework pages instead of duplicating it here.
+
+## Best practices
+
+1. Start from a BoxLite quickstart before adding an orchestration framework.
+2. Keep BoxLite responsible for execution, not for higher-level agent memory or planning.
+3. Reuse a box only when state continuity is part of the product behavior you want.
+4. Treat this page as a directory, not as the canonical place for runnable framework code.
+
+## What's next?
+
+- [Anthropic Claude Integration](/integrations/anthropic)
+- [OpenAI Agents SDK Integration](/integrations/openai-agents)
+- [LangChain Integration](/integrations/langchain)
+- [Vercel AI SDK Integration](/integrations/vercel-ai-sdk)
+- [MCP Gateway Pattern](/integrations/mcp-gateway-pattern)
+- [Direct SDK setup](/getting-started/install)

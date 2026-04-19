@@ -1,0 +1,364 @@
+---
+title: "OpenTelemetry Integration"
+description: "Configure OpenTelemetry for distributed tracing in BoxRun."
+---
+
+OpenTelemetry (OTel) provides standardized distributed tracing for BoxRun. This guide covers how to enable, configure, and use OpenTelemetry with BoxRun.
+
+## Overview
+
+OpenTelemetry enables:
+- Distributed trace propagation across BoxRun operations
+- End-to-end request visibility
+- Performance bottleneck identification
+- Integration with observability backends (Jaeger, Zipkin, Tempo)
+
+## Prerequisites
+
+- BoxRun server running
+- OpenTelemetry collector or compatible backend
+- Network connectivity between BoxRun and collector
+
+## Enabling OpenTelemetry
+
+### Environment Variables
+
+Set the following environment variables to enable OpenTelemetry:
+
+```bash
+# Core configuration
+export OTEL_SERVICE_NAME=boxrun
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
+export OTEL_EXPORTER_OTLP_PROTOCOL=grpc
+
+# Optional: sampling configuration
+export OTEL_TRACES_SAMPLER=parentbased_traceidratio
+export OTEL_TRACES_SAMPLER_ARG=0.1
+
+# Optional: resource attributes
+export OTEL_RESOURCE_ATTRIBUTES="deployment.environment=production,host.name=$(hostname)"
+```
+
+### Start BoxRun with Tracing
+
+```bash
+# With environment variables
+BOXRUN_LOG_LEVEL=info OTEL_SERVICE_NAME=boxrun \
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317 \
+boxrun serve
+```
+
+## OpenTelemetry Collector
+
+### Minimal Collector Config
+
+If you don't have an existing OTel collector, create a minimal configuration:
+
+```yaml
+# otel-collector.yaml
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    timeout: 1s
+    send_batch_size: 1000
+
+exporters:
+  # Console exporter for debugging
+  console:
+    verbosity: simple
+
+  # Jaeger exporter (optional)
+  jaeger:
+    endpoint: http://localhost:14250
+    tls:
+      insecure: true
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [console, jaeger]
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [console]
+```
+
+### Run the Collector
+
+```bash
+# Using docker
+docker run -d \
+  -p 4317:4317 \
+  -p 4318:4318 \
+  -p 14250:14250 \
+  -v $(pwd)/otel-collector.yaml:/etc/otelcol-contrib/config.yaml \
+  otel/contrib:0.99.0 \
+  --config /etc/otelcol-contrib/config.yaml
+```
+
+## Trace Context
+
+BoxRun propagates trace context through:
+
+### Incoming Requests
+
+When BoxRun receives an incoming request with trace headers:
+1. Extract `traceparent` header
+2. Create span with extracted context
+3. Continue trace through all operations
+
+### Outgoing Operations
+
+BoxRun automatically propagates context to:
+- Box creation operations
+- Command execution spans
+- API calls to backend services
+
+### Manual Context Extraction
+
+For debugging, extract trace context from logs:
+
+```bash
+# Look for trace_id in logs
+journalctl -u boxrun -f | grep trace_id
+
+# Example output:
+# {"level":"info","message":"Box created","trace_id":"0a1b2c3d4e5f6789","span_id":"abc123def456"}
+```
+
+## Custom Span Attributes
+
+### Adding Custom Attributes
+
+Enhance spans with custom attributes:
+
+```python
+# Using Python SDK with OpenTelemetry
+from opentelemetry import trace
+
+tracer = trace.get_tracer(__name__)
+
+# Add custom attributes to span
+with tracer.start_as_current_span("boxrun_operation") as span:
+    span.set_attribute("boxrun.box_name", "mybox")
+    span.set_attribute("boxrun.image", "ubuntu:24.04")
+    span.set_attribute("boxrun.command", "python script.py")
+```
+
+### Available Attributes
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `boxrun.operation` | string | Operation type (create/exec/stop) |
+| `boxrun.box_id` | string | Box UUID |
+| `boxrun.box_name` | string | Box name |
+| `boxrun.image` | string | OCI image reference |
+| `boxrun.exit_code` | int | Command exit code |
+| `boxrun.duration_ms` | int | Operation duration in milliseconds |
+
+## Exporters
+
+### gRPC Exporter (Default)
+
+```bash
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://collector:4317
+export OTEL_EXPORTER_OTLP_PROTOCOL=grpc
+```
+
+### HTTP Exporter
+
+```bash
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://collector:4318
+export OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+```
+
+### Logging Exporter (Development)
+
+```bash
+# For debugging, use logging exporter
+export OTEL_TRACES_EXPORTER=logging
+```
+
+## Sampling
+
+### Probabilistic Sampling
+
+Sample a percentage of traces:
+
+```bash
+export OTEL_TRACES_SAMPLER=traceidratio
+export OTEL_TRACES_SAMPLER_ARG=0.1  # 10% of traces
+```
+
+### Parent-Based Sampling
+
+Only sample if parent is sampled:
+
+```bash
+export OTEL_TRACES_SAMPLER=parentbased_traceidratio
+export OTEL_TRACES_SAMPLER_ARG=0.1
+```
+
+### Always-On Sampler
+
+Capture all traces (development only):
+
+```bash
+export OTEL_TRACES_SAMPLER=always_on
+```
+
+## Visualization
+
+### Jaeger
+
+View traces in Jaeger:
+
+```bash
+# Run Jaeger
+docker run -d \
+  -p 16686:16686 \
+  -p 6831:6831/udp \
+  -p 14268:14268 \
+  jaegertracing/all-in-one:1.50
+```
+
+Access UI at: http://localhost:16686
+
+### Zipkin
+
+```bash
+# Run Zipkin
+docker run -d \
+  -p 9411:9411 \
+  openzipkin/zipkin:latest
+```
+
+Access UI at: http://localhost:9411
+
+### Grafana Tempo
+
+```yaml
+# Prometheus config for Tempo
+scrape_configs:
+  - job_name: 'otel-collector'
+    static_configs:
+      - targets: ['localhost:4317']
+```
+
+## Performance Considerations
+
+### Impact
+
+| Setting | Performance Impact |
+|---------|-------------------|
+| No sampling | ~5-10% CPU overhead |
+| 10% sampling | ~1% CPU overhead |
+| Batch processing | Minimal latency |
+
+### Optimization Tips
+
+1. Use batch processors to reduce network calls
+2. Adjust sampling rate based on traffic
+3. Limit span attributes to essential data
+4. Use sampling for high-volume operations
+
+## Troubleshooting
+
+### No Traces Appearing
+
+1. **Check connectivity**:
+   ```bash
+   curl -X POST http://localhost:4318/v1/traces \
+     -H "Content-Type: application/json" \
+     -d '{"resourceSpans":[]}'
+   ```
+
+2. **Verify environment**:
+   ```bash
+   echo $OTEL_EXPORTER_OTLP_ENDPOINT
+   ```
+
+3. **Check logs for OTel messages**:
+   ```bash
+   journalctl -u boxrun | grep -i otel
+   ```
+
+### High Memory Usage
+
+- Reduce batch size
+- Enable sampling
+- Limit attribute count
+
+### Export Failures
+
+Check collector logs:
+```bash
+docker logs <collector-container>
+```
+
+## Complete Example
+
+```bash
+#!/bin/bash
+# start-boxrun-with-otel.sh
+
+export OTEL_SERVICE_NAME=boxrun-production
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
+export OTEL_EXPORTER_OTLP_PROTOCOL=grpc
+export OTEL_TRACES_SAMPLER=parentbased_traceidratio
+export OTEL_TRACES_SAMPLER_ARG=0.1
+export OTEL_RESOURCE_ATTRIBUTES="deployment.environment=production"
+
+# Start BoxRun
+boxrun serve
+```
+
+## Integration with Existing Stack
+
+### Prometheus + Grafana
+
+Add OTel collector metrics to Prometheus:
+
+```yaml
+# collector config extension
+service:
+  extensions: [health_check]
+  pipelines:
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [prometheus]
+```
+
+Then configure Prometheus to scrape `localhost:8888/metrics`.
+
+### Elasticsearch
+
+Export traces to Elasticsearch:
+
+```yaml
+exporters:
+  elasticsearch:
+    endpoints: [http://localhost:9200]
+    index_prefix: traces
+    tls:
+      insecure: false
+```
+
+<Info>
+  For production deployments, use the OpenTelemetry Operator for Kubernetes to manage collector instances.
+</Info>
+
+## Next Steps
+
+- [Debugging Playbook](/observability/debugging-playbook) - Use traces to debug issues
+- [Metrics and Alerts](/boxrun/observability-metrics-and-alerts) - Combine with metrics for full observability

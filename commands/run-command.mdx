@@ -1,0 +1,419 @@
+---
+title: "Run Commands"
+sidebarTitle: "Run Commands"
+description: "Execute commands inside BoxLite Boxes using the exec() API."
+---
+
+The `exec()` method is the primary way to run commands inside a Box. This guide covers the complete API signature and various usage patterns.
+
+## Overview
+
+The `exec()` method executes a command in the Box and returns an `ExecResult` containing the exit code and output. It supports:
+
+- Simple command execution
+- Argument passing
+- Environment variables
+- Working directory
+- User specification
+- Timeout control
+
+## Method Signature
+
+```python
+async def exec(
+    self,
+    cmd: str,
+    *args: str,
+    env: Optional[dict[str, str]] = None,
+    user: Optional[str] = None,
+    timeout: Optional[float] = None,
+    cwd: Optional[str] = None,
+) -> ExecResult:
+```
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `cmd` | `str` | Required | Command to execute |
+| `*args` | `str` | `()` | Command arguments |
+| `env` | `dict[str, str]` | `None` | Environment variables |
+| `user` | `str` | `None` | User to run as (`name` or `uid:gid`) |
+| `timeout` | `float` | `None` | Timeout in seconds |
+| `cwd` | `str` | `None` | Working directory |
+
+## Basic Examples
+
+### Simple Command
+
+```python
+import boxlite
+
+async with boxlite.SimpleBox(image="python:slim") as box:
+    # Run a simple command
+    result = await box.exec("echo", "Hello, World!")
+
+    print(f"Exit code: {result.exit_code}")  # 0
+    print(f"Output: {result.stdout}")        # "Hello, World!\n"
+```
+
+### Command with Arguments
+
+```python
+async with boxlite.SimpleBox(image="python:slim") as box:
+    # List files with arguments
+    result = await box.exec("ls", "-la", "/workspace")
+
+    # Use Python with inline script
+    result = await box.exec(
+        "python", "-c",
+        "print('Hello from Python')"
+    )
+    print(result.stdout)  # "Hello from Python\n"
+
+    # Use shell command via bash -c
+    result = await box.exec(
+        "bash", "-c",
+        "echo hello && ls -la"
+    )
+```
+
+### Piping with Shell
+
+```python
+async with boxlite.SimpleBox(image="python:slim") as box:
+    # Commands that use shell features (pipes, redirects, etc.)
+    result = await box.exec(
+        "bash", "-c",
+        "echo 'line1\nline2\nline3' | sort | uniq"
+    )
+    print(result.stdout)
+    # Output:
+    # line1
+    # line2
+    # line3
+```
+
+## Environment Variables
+
+### Set Environment Variables
+
+```python
+async with boxlite.SimpleBox(image="python:slim") as box:
+    # Pass custom environment variables
+    result = await box.exec(
+        "python", "-c",
+        "import os; print(os.environ.get('MY_VAR'))",
+        env={"MY_VAR": "Hello from env"}
+    )
+    print(result.stdout)  # "Hello from env\n"
+```
+
+### Multiple Environment Variables
+
+```python
+async with boxlite.SimpleBox(image="python:slim") as box:
+    result = await box.exec(
+        "python", "-c",
+        "import os; print(f'{os.environ.get(\"APP\")} - {os.environ.get(\"ENV\")}')",
+        env={
+            "APP": "myapp",
+            "ENV": "production",
+            "DEBUG": "true"
+        }
+    )
+    print(result.stdout)  # "myapp - production\n"
+```
+
+### Preserve Default Environment
+
+```python
+async with boxlite.SimpleBox(image="python:slim") as box:
+    # By default, the container's default environment is used
+    result = await box.exec("env")
+
+    # To add to default, retrieve and modify
+    default_env = result.stdout
+
+    # Then use exec with custom env
+    result = await box.exec(
+        "python", "-c", "import os; print(os.environ.get('PATH'))",
+        env={"NEW_VAR": "value"}  # Only NEW_VAR will be set
+    )
+```
+
+## Working Directory
+
+### Change Working Directory
+
+```python
+async with boxlite.SimpleBox(image="python:slim") as box:
+    # Run command in specific directory
+    result = await box.exec(
+        "pwd",
+        cwd="/workspace"
+    )
+    print(result.stdout)  # "/workspace\n"
+
+    # List files in specific directory
+    result = await box.exec(
+        "ls", "-la",
+        cwd="/tmp"
+    )
+```
+
+### Create and Use Directory
+
+```python
+async with boxlite.SimpleBox(image="python:slim") as box:
+    # Create directory first
+    await box.exec("mkdir", "-p", "/workspace/subdir")
+
+    # Run in that directory
+    result = await box.exec(
+        "bash", "-c", "echo $PWD",
+        cwd="/workspace/subdir"
+    )
+    print(result.stdout)  # "/workspace/subdir\n"
+```
+
+## User Specification
+
+### Run as Specific User
+
+```python
+async with boxlite.SimpleBox(image="python:slim") as box:
+    # Run as root (default)
+    result = await box.exec("whoami")
+    print(result.stdout)  # "root\n"
+
+    # Run as specific user (if exists in container)
+    result = await box.exec(
+        "whoami",
+        user="nobody"
+    )
+    print(result.stdout)  # "nobody\n"
+```
+
+### Run with User and Group
+
+```python
+async with boxlite.SimpleBox(image="python:slim") as box:
+    # Run as user:group (by name)
+    result = await box.exec(
+        "id",
+        user="nobody:nogroup"
+    )
+    print(result.stdout)  # "uid=65534(nobody) gid=65534(nogroup)"
+
+    # Run as user:group (by UID:GID)
+    result = await box.exec(
+        "id",
+        user="1000:1000"
+    )
+```
+
+## Timeout
+
+### Command Timeout
+
+```python
+import asyncio
+
+async with boxlite.SimpleBox(image="python:slim") as box:
+    # Set timeout for long-running commands
+    result = await box.exec(
+        "sleep", "5",
+        timeout=10  # 10 seconds
+    )
+    print(f"Exit code: {result.exit_code}")  # 0
+
+    # Timeout - command will be killed
+    try:
+        result = await box.exec(
+            "sleep", "3600",
+            timeout=2  # 2 seconds - too short!
+        )
+    except Exception as e:
+        print(f"Command timed out: {e}")
+```
+
+### Timeout with asyncio.wait_for
+
+```python
+import asyncio
+
+async with boxlite.SimpleBox(image="python:slim") as box:
+    async def run_with_timeout():
+        execution = box.exec("sleep", "60")
+
+        try:
+            result = await asyncio.wait_for(execution.wait(), timeout=5.0)
+            return result
+        except asyncio.TimeoutError:
+            # Note: BoxLite's exec() returns ExecResult directly,
+            # so you may need to use the low-level execution API
+            print("Command timed out")
+            raise
+
+    await run_with_timeout()
+```
+
+## Error Handling
+
+### Check Exit Code
+
+```python
+async with boxlite.SimpleBox(image="python:slim") as box:
+    # Successful command
+    result = await box.exec("true")
+    if result.exit_code == 0:
+        print("Command succeeded")
+
+    # Failed command
+    result = await box.exec("false")
+    if result.exit_code != 0:
+        print(f"Command failed with code {result.exit_code}")
+
+    # Command not found
+    result = await box.exec("nonexistent_command_xyz")
+    if result.exit_code == 127:
+        print("Command not found")
+```
+
+### Handle Errors
+
+```python
+async def run_command(box, cmd, *args, **kwargs):
+    """Run command with error handling."""
+    result = await box.exec(cmd, *args, **kwargs)
+
+    if result.exit_code != 0:
+        print(f"Error: {result.stderr}")
+        raise RuntimeError(f"Command failed: {result.stderr}")
+
+    return result
+
+async with boxlite.SimpleBox(image="python:slim") as box:
+    try:
+        result = await run_command(box, "ls", "/nonexistent")
+    except RuntimeError as e:
+        print(f"Handled error: {e}")
+```
+
+## Complete Examples
+
+### Python Script Execution
+
+```python
+import boxlite
+
+async def run_python_script(box, script, *args):
+    """Run a Python script with arguments."""
+    cmd = ["python", script] + list(args)
+    result = await box.exec(*cmd)
+    return result
+
+async with boxlite.SimpleBox(image="python:slim") as box:
+    # Create script in Box
+    await box.copy_in("./my_script.py", "/workspace/script.py")
+
+    # Run with arguments
+    result = await run_python_script(
+        box,
+        "/workspace/script.py",
+        "arg1", "arg2"
+    )
+
+    print(result.stdout)
+```
+
+### Data Processing Pipeline
+
+```python
+async def process_data(box, input_file, output_file):
+    """Process data through a pipeline."""
+    # Step 1: Validate input
+    result = await box.exec("test", "-f", input_file)
+    if result.exit_code != 0:
+        raise FileNotFoundError(f"Input file not found: {input_file}")
+
+    # Step 2: Process with Python
+    result = await box.exec(
+        "python", "-c",
+        f"""
+import json
+with open('{input_file}') as f:
+    data = json.load(f)
+# Process data...
+result = {{'processed': True, 'items': len(data.get('items', []))}}
+with open('{output_file}', 'w') as f:
+    json.dump(result, f)
+"""
+    )
+
+    if result.exit_code != 0:
+        raise RuntimeError(f"Processing failed: {result.stderr}")
+
+    # Step 3: Verify output
+    result = await box.exec("test", "-f", output_file)
+    if result.exit_code != 0:
+        raise RuntimeError("Output file not created")
+
+    return True
+
+async with boxlite.SimpleBox(image="python:slim") as box:
+    # Set up input
+    await box.exec("bash", "-c", "echo '{\"items\": [1,2,3]}' > /workspace/input.json")
+
+    # Process
+    await process_data(box, "/workspace/input.json", "/workspace/output.json")
+
+    # Get result
+    result = await box.exec("cat", "/workspace/output.json")
+    print(result.stdout)  # {"processed": true, "items": 3}
+```
+
+### Interactive Command Sequence
+
+```python
+async def run_interactive_commands(box, commands):
+    """Run multiple commands in sequence."""
+    results = []
+
+    for cmd in commands:
+        # Split command into parts
+        parts = cmd.split()
+        result = await box.exec(*parts)
+        results.append(result)
+
+        if result.exit_code != 0:
+            print(f"Command failed: {cmd}")
+            break
+
+    return results
+
+async with boxlite.SimpleBox(image="python:slim") as box:
+    commands = [
+        "mkdir -p /workspace/data",
+        "cd /workspace/data",
+        "echo 'test' > file.txt",
+        "cat file.txt",
+    ]
+
+    results = await run_interactive_commands(box, commands)
+    for r in results:
+        print(r.stdout)
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Stream Output" icon="stream" href="/commands/stream-output">
+    Real-time stdout/stderr streaming.
+  </Card>
+  <Card title="Exit Codes & Retries" icon="rotate" href="/commands/exit-codes-and-retries">
+    Handle errors and implement retry logic.
+  </Card>
+  <Card title="Commands Overview" icon="info" href="/commands/overview">
+    Command execution concepts.
+  </Card>
+</CardGroup>

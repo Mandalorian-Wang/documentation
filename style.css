@@ -1,0 +1,19 @@
+/* Hide Mint heading permalink controls for second-level headings only. */
+h2 > div.absolute[tabindex="-1"] {
+  display: none !important;
+}
+
+h2 a[aria-label="Navigate to header"] {
+  display: none !important;
+}
+
+/* Emphasize first-level sidebar section titles without affecting child pages. */
+.sidebar-group-header h5#sidebar-title,
+li[data-group-tag] > button > div:last-child {
+  font-weight: 700 !important;
+}
+
+/* Hide the technical wrapper header used only to enable collapsible top sections. */
+#navigation-items > div > .sidebar-group-header {
+  display: none !important;
+}

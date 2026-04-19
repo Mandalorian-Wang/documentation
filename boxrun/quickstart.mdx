@@ -2,7 +2,6 @@
 title: "Quick Start"
 sidebarTitle: "Quickstart"
 description: "Install BoxRun and run your first sandbox in minutes."
-icon: "rocket"
 ---
 
 ## Install
@@ -20,6 +19,8 @@ Verify the installation:
 ```bash
 boxrun --version
 ```
+
+For command details after installation, use [BoxRun CLI Reference](/boxrun/cli). This quickstart is only the first-run path.
 
 ## Try it out
 
@@ -110,13 +111,15 @@ boxrun shell node      # node:22-slim
 boxrun shell alpine    # alpine:3.20
 ```
 
-Run `boxrun images` to see all aliases. Any valid OCI image reference also works (e.g. `python:3.11`, `nginx:latest`).
+Run `boxrun images` to see all recommended aliases. Any valid OCI image reference also works (e.g. `python:3.11`, `nginx:latest`).
 
 ## Python SDK
 
 ```bash
-pip install boxrun-sdk
+python3 -m pip install boxrun-sdk
 ```
+
+The Python package name is `boxrun-sdk`, and the import path is `boxrun_sdk`.
 
 ```python
 import asyncio
@@ -156,7 +159,7 @@ print(result.stdout)  # "42\n"
 
 <CardGroup cols={2}>
   <Card title="CLI Reference" icon="terminal" href="/boxrun/cli">
-    All commands, flags, volume mounts, and shell completions.
+    Canonical BoxRun CLI page. Use it for supported commands, flags, upgrade, and uninstall.
   </Card>
   <Card title="Python SDK Reference" icon="python" href="/boxrun/python-sdk">
     Full API, data types, error handling, AI agent patterns.

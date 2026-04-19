@@ -1,0 +1,68 @@
+---
+title: "What is BoxLite?"
+description: "Understand what BoxLite is, what it owns, and how it relates to BoxRun."
+sidebarTitle: "What is BoxLite?"
+---
+
+BoxLite is an embeddable sandboxing runtime for AI agents and application code that needs isolated execution. It lets your application create lightweight, stateful Linux micro-VMs without introducing a separate daemon or control plane into the default SDK path.
+
+## What BoxLite provides
+
+At its core, BoxLite gives your application hardware-isolated execution environments that it can create, use, and manage programmatically. Each box is a Linux micro-VM with its own runtime state, so application code can execute work inside it and return later to the same workspace state.
+
+### Key capabilities
+
+- **Embeddable**: Your application owns the sandbox lifecycle.
+- **Stateful**: Packages, files, and environment changes can persist with the box.
+- **Snapshot-aware**: Box state can be saved, restored, and reused.
+- **Hardware-isolated**: Isolation is based on micro-VM boundaries rather than only process boundaries.
+
+## When to use BoxLite
+
+Use BoxLite when isolated execution should be part of your application runtime.
+
+Common use cases include:
+
+- **Code execution**: Run generated or untrusted code inside a box instead of on the host.
+- **Browser automation**: Keep browser tasks isolated from the application machine.
+- **Desktop automation**: Run GUI-oriented automation in a controlled box environment.
+- **Long-running agents**: Maintain a persistent workspace across multiple agent steps.
+
+## What BoxLite is not
+
+- BoxLite is not the BoxRun CLI.
+- BoxLite is not the BoxRun REST API.
+- BoxLite is not the operational control plane for shared sandbox management.
+
+The key distinction is that BoxLite is the embeddable runtime. If your application should directly own box lifecycle, this is the product path you want.
+
+## BoxLite vs BoxRun
+
+BoxLite is the runtime. BoxRun is a separate management layer built around operating and exposing boxes through service-style interfaces.
+
+Use BoxLite when:
+
+- Your application code should create boxes directly.
+- You want SDK-level control over lifecycle.
+- You want onboarding centered on a single application runtime.
+
+Use BoxRun when:
+
+- You need a separate CLI or API surface to manage boxes.
+- You are operating boxes as a service.
+- You want to move from SDK onboarding into deployment and operations documentation.
+
+<CardGroup cols={2}>
+  <Card title="Choose BoxLite or BoxRun" icon="arrow-right" href="/getting-started/choose-sdk-or-boxrun">
+    Use the product decision page before you commit to a setup path.
+  </Card>
+  <Card title="Core concepts" icon="lightbulb" href="/core-concepts">
+    Continue into resource model, lifecycle, and image behavior.
+  </Card>
+  <Card title="Install and system requirements" icon="download" href="/getting-started/install">
+    Check platform support and choose the language-specific quickstart.
+  </Card>
+  <Card title="Reference" icon="book" href="/reference/index">
+    Jump to SDK reference if you already know which language or API surface you need.
+  </Card>
+</CardGroup>

@@ -1,0 +1,313 @@
+---
+title: "Observability Overview"
+description: "Logging, metrics, and tracing overview for BoxRun and BoxLite."
+---
+
+Observability in BoxRun allows you to monitor system health, debug issues, and optimize performance. This document provides an overview of the observability stack and how to use it effectively.
+
+## Overview
+
+BoxRun provides observability through three primary pillars:
+
+| Pillar | Description | Use Case |
+|--------|-------------|----------|
+| **Logs** | Structured event records | Debugging, audit, compliance |
+| **Metrics** | Quantitative measurements | Capacity planning, alerting |
+| **Traces** | Request-level path tracking | Performance analysis, latency debugging |
+
+## Logs
+
+### Log Sources
+
+BoxRun produces logs from multiple sources:
+
+| Source | Description | Location |
+|--------|-------------|----------|
+| BoxRun Server | API requests, state changes | systemd journal / stdout |
+| Box Execution | Command output, exit codes | Via BoxRun API |
+| BoxLite Runtime | VM lifecycle, errors | Debug logs |
+
+### Accessing Logs
+
+<Tabs>
+  <Tab title="systemd (Linux)">
+    ```bash
+    # View all BoxRun logs
+    journalctl -u boxrun
+
+    # Real-time tail
+    journalctl -u boxrun -f
+
+    # Error-only logs
+    journalctl -u boxrun -p err
+
+    # Last 100 lines
+    journalctl -u boxrun -n 100
+    ```
+  </Tab>
+  <Tab title="Foreground (All Platforms)">
+    ```bash
+    # Run in foreground to see live logs
+    boxrun serve
+
+    # With debug logging
+    BOXRUN_LOG_LEVEL=debug boxrun serve
+    ```
+  </Tab>
+</Tabs>
+
+### Log Levels
+
+Control verbosity via environment variable:
+
+```bash
+# Available levels: debug, info, warn, error
+export BOXRUN_LOG_LEVEL=info    # Production (default)
+export BOXRUN_LOG_LEVEL=debug   # Debugging issues
+```
+
+### Structured Logging
+
+BoxRun logs are structured with JSON for machine parsing:
+
+```json
+{
+  "timestamp": "2024-04-15T10:30:00Z",
+  "level": "info",
+  "message": "Box created",
+  "box_id": "abc123",
+  "box_name": "mybox",
+  "image": "ubuntu:24.04"
+}
+```
+
+### Log Fields
+
+Common log fields:
+
+| Field | Description |
+|-------|-------------|
+| `timestamp` | ISO 8601 timestamp |
+| `level` | log level (debug/info/warn/error) |
+| `message` | Human-readable message |
+| `box_id` | Box UUID |
+| `box_name` | Box name |
+| `event` | Event type |
+
+## Metrics
+
+### Available Metrics
+
+BoxRun exposes metrics through the REST API:
+
+```bash
+# Get system info (resource limits)
+curl http://localhost:9090/v1/info
+# Returns: {"max_cpu": 8, "max_memory_mb": 16384}
+
+# List all boxes with resource usage
+boxrun list
+```
+
+### Metric Categories
+
+| Category | Metrics | Source |
+|----------|---------|--------|
+| **System** | max_cpu, max_memory_mb, used_boxes | `/v1/info` |
+| **Boxes** | count, state distribution | `boxrun list` |
+| **Execution** | success_rate, avg_duration, exit_codes | `/v1/execs` |
+
+### Custom Metrics Collection
+
+For Prometheus-style scraping, set up an exporter:
+
+```python
+from prometheus_client import start_http_server, Gauge
+
+boxes_running = Gauge('boxrun_boxes_running', 'Number of running boxes')
+
+def update_metrics():
+    import requests
+    info = requests.get('http://localhost:9090/v1/info').json()
+    # Update prometheus metrics
+    boxes_running.set(len(boxes_running))
+```
+
+## Tracing
+
+### OpenTelemetry Integration
+
+BoxRun supports OpenTelemetry for distributed tracing. This enables:
+
+- Request flow tracking across services
+- Latency analysis per operation
+- Dependency visualization
+
+### Enabling Tracing
+
+Set environment variables to enable tracing:
+
+```bash
+# Enable OpenTelemetry tracing
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
+export OTEL_SERVICE_NAME=boxrun
+
+# Run BoxRun
+boxrun serve
+```
+
+### Trace Context
+
+BoxRun propagates trace context for:
+- Box creation operations
+- Command execution
+- API requests
+
+<Info>
+  For detailed OpenTelemetry configuration, see the [OpenTelemetry Integration](/observability/tracing-otel) guide.
+</Info>
+
+## Log Aggregation
+
+### Recommended Stack
+
+For production deployments:
+
+```
+┌─────────────────────────────────────────────────────┐
+│                  Log Aggregation                    │
+├─────────────────────────────────────────────────────┤
+│  BoxRun Logs ──▶ Fluent Bit ──▶ Elasticsearch       │
+│                      │              │               │
+│                      ▼              ▼               │
+│                 Grafana Loki  or  Kibana           │
+└─────────────────────────────────────────────────────┘
+```
+
+### Fluent Bit Configuration
+
+```yaml
+# /etc/fluent-bit/fluent-bit.conf
+[INPUT]
+    Name              tail
+    Path              /var/log/boxrun/*.log
+    Parser            json
+
+[OUTPUT]
+    Name              elasticsearch
+    Match             *
+    Host              elasticsearch
+    Port              9200
+    HTTP_User         elastic
+    HTTP_Password     changeme
+    Logstash_Format   On
+    Logstash_Prefix   boxrun
+```
+
+## Observability Best Practices
+
+### 1. Log Level Strategy
+
+| Environment | Recommended Level |
+|-------------|-------------------|
+| Development | debug |
+| Staging | info |
+| Production | warn |
+
+### 2. Metrics to Monitor
+
+Essential metrics for production:
+
+| Metric | Alert Threshold |
+|--------|----------------|
+| BoxRun server uptime | < 99.9% |
+| Active boxes | > 80% capacity |
+| Execution failure rate | > 5% |
+| API response time | p99 > 1s |
+
+### 3. Log Retention
+
+| Log Type | Retention |
+|----------|-----------|
+| Application logs | 30 days |
+| Audit logs | 1 year |
+| Debug logs | 7 days |
+| Metrics | 90 days |
+
+## Integration Examples
+
+### Grafana Dashboard
+
+Import a pre-built dashboard for BoxRun metrics:
+
+```json
+{
+  "panels": [
+    {
+      "title": "Active Boxes",
+      "type": "stat",
+      "targets": [
+        {"expr": "boxrun_boxes_running"}
+      ]
+    },
+    {
+      "title": "Execution Duration",
+      "type": "graph",
+      "targets": [
+        {"expr": "rate(boxrun_exec_duration_seconds_sum[5m])"}
+      ]
+    }
+  ]
+}
+```
+
+### Alert Manager
+
+Configure Prometheus AlertManager:
+
+```yaml
+groups:
+  - name: boxrun
+    rules:
+      - alert: BoxRunDown
+        expr: up{job="boxrun"} == 0
+        for: 1m
+        labels:
+          severity: critical
+
+      - alert: HighFailureRate
+        expr: rate(boxrun_exec_failed_total[5m]) > 0.05
+        labels:
+          severity: warning
+```
+
+## Debug Mode
+
+Enable detailed debugging for troubleshooting:
+
+```bash
+# Enable debug logging
+export BOXRUN_LOG_LEVEL=debug
+
+# Run server
+boxrun serve
+
+# In another terminal, trigger the issue
+boxrun exec mybox -- echo "test"
+```
+
+Debug output includes:
+- Full request/response bodies
+- SQL queries executed
+- VM lifecycle events
+- Network packet details
+
+<Warning>
+  Debug mode generates significant log volume. Disable after troubleshooting.
+</Warning>
+
+## Next Steps
+
+- [Metrics and Alerts](/boxrun/observability-metrics-and-alerts) - Set up alerting
+- [OpenTelemetry Integration](/observability/tracing-otel) - Configure distributed tracing
+- [Debugging Playbook](/observability/debugging-playbook) - Common issues and solutions

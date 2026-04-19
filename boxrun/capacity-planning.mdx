@@ -1,0 +1,307 @@
+---
+title: "Capacity Planning"
+description: "Hardware requirements calculation, concurrent Box planning, and resource allocation strategies."
+---
+
+This guide helps you plan capacity for BoxRun production deployments. It provides formulas, benchmarks, and reference architectures to ensure optimal resource utilization.
+
+## Overview
+
+BoxRun runs lightweight micro-VMs using hardware virtualization (KVM on Linux, Hypervisor.framework on macOS). Each Box is an isolated VM with dedicated CPU, memory, and disk resources. Capacity planning involves understanding both per-Box resource requirements and system-wide constraints.
+
+## Resource Model
+
+### Per-Box Resource Consumption
+
+Each Box consumes resources based on its workload:
+
+| Resource | Idle | Light Workload | Heavy Workload | Notes |
+|----------|------|----------------|----------------|-------|
+| CPU | ~0.1 cores | 0.5-1.0 cores | 2-4 cores | CPU is contention-based |
+| Memory | ~256 MB | 512 MB | 1024-2048 MB | Includes VM overhead |
+| Disk | Image size + | Working data | Working data | 8 GB default disk |
+
+### Base Overhead
+
+Beyond per-Box resources, the system has baseline overhead:
+
+| Component | Memory | CPU | Disk |
+|-----------|--------|-----|------|
+| BoxRun server | ~50 MB | ~0.1 cores | ~50 MB |
+| gvproxy (networking) | ~100 MB | ~0.1 cores | ~10 MB |
+| BoxLite runtime (per-host) | ~100 MB | ~0.2 cores | ~200 MB |
+
+## Capacity Calculation
+
+### Maximum Box Count Formula
+
+Calculate maximum concurrent Boxes using:
+
+```
+MAX_BOXES = min(
+    (HOST_CPU_CORES - OVERHEAD_CPU) / PER_BOX_CPU,
+    (HOST_MEMORY_MB - OVERHEAD_MEMORY_MB) / PER_BOX_MEMORY_MB
+)
+```
+
+### Reference Hardware Configurations
+
+| Host Specification | Max Concurrent Boxes | Use Case |
+|--------------------|---------------------|----------|
+| 4 cores / 8 GB RAM | 2-3 | Development |
+| 8 cores / 16 GB RAM | 4-6 | Small team / Testing |
+| 16 cores / 32 GB RAM | 10-15 | Production (small) |
+| 32 cores / 64 GB RAM | 20-30 | Production (medium) |
+| 64 cores / 128 GB RAM | 40-50 | Production (large) |
+| 128 cores / 256 GB RAM | 80-100 | Enterprise |
+
+<Note>
+  These estimates assume moderate workloads. Adjust based on your specific workload characteristics.
+</Note>
+
+## Hardware Requirements
+
+### Minimum Requirements
+
+| Component | Minimum | Recommended |
+|-----------|---------|-------------|
+| CPU | 2 cores | 4+ cores |
+| RAM | 4 GB | 8+ GB |
+| Disk | 20 GB | 50+ GB SSD |
+| OS | Ubuntu 20.04+, macOS 12+ | Ubuntu 22.04+, macOS 13+ |
+
+### Platform-Specific Requirements
+
+<Tabs>
+  <Tab title="Linux">
+    **CPU**: x86_64 with VT-x/AMD-v virtualization
+    - Check: `grep -E "(vmx|svm)" /proc/cpuinfo`
+    - Requires KVM kernel module
+
+    **Memory**: At least 4 GB host RAM
+    - Each Box needs minimum 512 MB
+    - Reserve 2 GB for host OS
+
+    **Disk**: SSD recommended for:
+    - OCI image storage
+    - Box disk images
+    - SQLite database
+  </Tab>
+  <Tab title="macOS">
+    **CPU**: Apple Silicon (M1, M2, M3) or Intel with Hypervisor.framework
+
+    **Memory**: At least 8 GB host RAM
+    - macOS requires more headroom
+    - Recommend 16 GB for production
+
+    **Disk**: SSD required
+    - APFS formatted
+    - At least 50 GB free space
+  </Tab>
+</Tabs>
+
+## Concurrent Box Planning
+
+### Workload Classification
+
+Classify your workloads to determine capacity:
+
+| Workload Type | CPU/Box | Memory/Box | Example |
+|---------------|---------|------------|---------|
+| Light | 1 core | 512 MB | API calls, data processing |
+| Medium | 2 cores | 1024 MB | ML inference, compilation |
+| Heavy | 4 cores | 2048 MB | Training, build jobs |
+
+### Example Planning
+
+**Scenario**: 50 concurrent AI agent tasks, each light workload
+
+```
+Required Boxes = 50
+Per-Box CPU = 1 core
+Per-Box Memory = 512 MB
+
+Total CPU = 50 * 1 = 50 cores
+Total Memory = 50 * 512 = 25600 MB = ~25 GB
+
+Recommended host: 64 cores / 64 GB RAM
+Running 50 boxes with headroom
+```
+
+**Scenario**: 10 concurrent build jobs, medium workload
+
+```
+Required Boxes = 10
+Per-Box CPU = 2 cores
+Per-Box Memory = 1024 MB
+
+Total CPU = 20 cores
+Total Memory = 10 GB
+
+Recommended host: 24 cores / 16 GB RAM
+Running 10 boxes with 4 cores headroom
+```
+
+## Resource Limits Configuration
+
+### Global Limits
+
+Set system-wide resource limits via environment variables:
+
+```bash
+# Limit total CPU cores available to BoxRun
+export BOXRUN_MAX_CPU=8
+
+# Limit total memory available (in MB)
+export BOXRUN_MAX_MEMORY_MB=16384
+```
+
+### Per-Box Limits
+
+Configure individual Box resources at creation:
+
+<Tabs>
+  <Tab title="CLI">
+    ```bash
+    # Create Box with custom resources
+    boxrun create ubuntu --name mybox --cpu 4 --memory 2048 --disk 20
+    ```
+  </Tab>
+  <Tab title="Python">
+    ```python
+    box = await client.create(
+        "ubuntu",
+        name="mybox",
+        cpu=4,
+        memory_mb=2048,
+        disk_gb=20
+    )
+    ```
+  </Tab>
+  <Tab title="REST API">
+    ```bash
+    curl -X POST http://localhost:9090/v1/boxes \
+      -H "Content-Type: application/json" \
+      -d '{
+        "image": "ubuntu:24.04",
+        "name": "mybox",
+        "cpu": 4,
+        "memory_mb": 2048,
+        "disk_gb": 20
+      }'
+    ```
+  </Tab>
+</Tabs>
+
+### Default Limits
+
+| Resource | Default | Maximum |
+|----------|---------|---------|
+| Per-box CPU | 2 cores | 8 cores |
+| Per-box Memory | 1024 MB | 8192 MB |
+| Per-box Disk | 8 GB | 100 GB |
+
+## Scaling Strategies
+
+### Vertical Scaling
+
+Increase host resources:
+
+- Add RAM for more Boxes
+- Add CPU cores for compute-heavy workloads
+- Use NVMe SSD for I/O-intensive workloads
+
+### Horizontal Scaling (Advanced)
+
+For large-scale deployments:
+
+1. **Multiple BoxRun instances** - Run multiple BoxRun servers on different ports
+2. **Load balancing** - Distribute requests across instances
+3. **Shared storage** - Use network storage for image caching
+
+```
+┌─────────────┐     ┌─────────────┐
+│   LB/Proxy  │────▶│  BoxRun #1  │
+└─────────────┘     └─────────────┘
+       │                   │
+       │             ┌─────▼─────┐
+       └────────────▶│  BoxRun #2 │
+                     └───────────┘
+```
+
+## Monitoring Capacity
+
+Check current capacity utilization:
+
+```bash
+# Get system info
+curl http://localhost:9090/v1/info
+# Returns: {"max_cpu": 8, "max_memory_mb": 16384}
+
+# List all boxes
+boxrun list
+# Shows: name, state, cpu, memory
+```
+
+### Capacity Alerts
+
+Set up alerts when approaching limits:
+
+| Threshold | Action |
+|-----------|--------|
+| CPU > 80% | Alert: Scale or queue requests |
+| Memory > 80% | Alert: Prevent new boxes |
+| Disk > 90% | Alert: Clean up old images |
+
+## Cost Optimization
+
+### Right-Sizing
+
+- Start with smaller resource allocations
+- Monitor actual usage
+- Adjust based on p95 usage, not peak
+
+### Resource Scheduling
+
+- Schedule heavy workloads during off-peak
+- Use(Box)[stop] for idle boxes to free resources
+- Implement queueing for burst handling
+
+### Image Caching
+
+Reduce disk I/O by caching images:
+
+```bash
+# Pre-pull images to local cache
+boxrun pull ubuntu:24.04
+boxrun pull python:3.12
+```
+
+## Capacity Planning Worksheet
+
+Use this template to plan your deployment:
+
+```
+Host Resources:
+- CPU Cores: ___
+- RAM (GB): ___
+- Disk (GB): ___
+
+Workload Profile:
+- Expected concurrent boxes: ___
+- Average CPU per box: ___
+- Average memory per box: ___
+
+Calculations:
+- MAX_CPU = (HOST_CPU - 2) / PER_BOX_CPU = ___
+- MAX_MEMORY = (HOST_RAM - 4) / PER_BOX_MEMORY = ___
+- RECOMMENDED_MAX = min(MAX_CPU, MAX_MEMORY) = ___
+
+Headroom:
+- Reserve 20% for bursts
+- Final capacity: ___
+```
+
+<Warning>
+  Always test capacity under realistic load before production deployment. Network I/O, disk I/O, and specific workload characteristics can impact actual capacity.
+</Warning>

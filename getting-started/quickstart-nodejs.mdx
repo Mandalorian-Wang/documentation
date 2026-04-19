@@ -2,7 +2,6 @@
 title: "Node.js Quick Start"
 sidebarTitle: "Node.js quickstart"
 description: "Get up and running with BoxLite Node.js SDK in 5 minutes."
-icon: "node-js"
 ---
 
 ## Installation
@@ -13,7 +12,7 @@ npm install @boxlite-ai/boxlite
 
 **Requirements:**
 - Node.js 18 or later
-- Platform with hardware virtualization (see [Installation](/getting-started/index#system-requirements))
+- Platform with hardware virtualization (see [Installation](/getting-started/install#system-requirements))
 
 **Verify Installation:**
 
@@ -83,9 +82,10 @@ main();
       try {
         // Execute untrusted code safely
         const code = `
-    import requests
-    response = requests.get('https://api.github.com/zen')
-    print(response.text)
+    import math
+
+    for value in range(1, 4):
+        print(value, math.factorial(value))
     `;
         const result = await codebox.run(code);
         console.log(result);
@@ -105,7 +105,7 @@ main();
 </Steps>
 
 **What's happening:**
-1. CodeBox automatically installs required packages (requests)
+1. `CodeBox` runs Python code inside an isolated box
 2. Executes the code in complete isolation
 3. Returns the output as a string
 4. Your host system remains completely safe
@@ -153,11 +153,11 @@ BoxLite includes 5 Node.js examples:
 ## Next Steps
 
 <CardGroup cols={2}>
-  <Card title="Core concepts" icon="lightbulb" href="/getting-started/core-concepts">
+  <Card title="Core concepts" icon="lightbulb" href="/core-concepts">
     Understand the different box types (SimpleBox, CodeBox, BrowserBox, and more), lifecycle, images, and resource configuration.
   </Card>
   <Card title="Execute AI-generated code" icon="code" href="/tutorials/code-execution">
-    Learn to use CodeBox for safe code execution — auto-install packages, run untrusted code, and capture output.
+    Learn to use CodeBox for safe code execution, untrusted code runs, and captured output.
   </Card>
   <Card title="Node.js SDK Reference" icon="book" href="/reference/nodejs/index">
     Complete API reference for SimpleBox, CodeBox, BrowserBox, ComputerBox, and more.

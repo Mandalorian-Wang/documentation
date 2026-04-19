@@ -1,0 +1,438 @@
+---
+title: "Exit Codes and Retry Strategies"
+sidebarTitle: "Exit Codes & Retries"
+description: "Understand exit codes and implement retry logic for robust command execution."
+---
+
+Understanding exit codes is essential for error handling and implementing robust retry logic in BoxLite applications.
+
+## Overview
+
+Exit codes indicate the result of command execution:
+
+- **0**: Success
+- **Non-zero**: Error (specific meaning varies by command)
+- **Negative**: Process terminated by signal
+
+## Exit Code Reference
+
+### Standard Exit Codes
+
+| Exit Code | Name | Meaning | Common Causes |
+|-----------|------|---------|---------------|
+| 0 | SUCCESS | Command completed successfully | - |
+| 1 | GENERAL_ERROR | General error | Application bug, invalid input |
+| 2 | MISUSE | Misuse of shell command | Invalid arguments, syntax error |
+| 126 | EXEC_FAILURE | Command cannot execute | Missing execute permission |
+| 127 | NOT_FOUND | Command not found | Binary not in PATH |
+| 128 | INVALID_EXIT | Invalid exit argument | Exit with invalid argument |
+| 130 | SIGNALLED | Terminated by Ctrl+C (SIGINT) | User interrupt |
+| 137 | KILLED | Terminated by SIGKILL | OOM killer, explicit kill |
+| 139 | SEGFAULT | Segmentation fault | Memory access violation |
+| 143 | TERMINATED | Terminated by SIGTERM | Graceful shutdown |
+| 255 | EXIT_ERROR | Exit status out of range | Invalid exit value |
+
+### Signal-Based Exit Codes
+
+When a process is terminated by a signal, the exit code is `128 + signal_number`:
+
+| Signal | Number | Exit Code | Cause |
+|--------|--------|-----------|-------|
+| SIGHUP | 1 | 129 | Hangup |
+| SIGINT | 2 | 130 | Ctrl+C |
+| SIGQUIT | 3 | 131 | Quit signal |
+| SIGKILL | 9 | 137 | Forced termination |
+| SIGTERM | 15 | 143 | Graceful termination |
+
+## Handling Exit Codes
+
+### Basic Exit Code Checking
+
+```python
+import boxlite
+
+async with boxlite.SimpleBox(image="python:slim") as box:
+    # Successful command
+    result = await box.exec("true")
+    print(f"Exit code: {result.exit_code}")  # 0
+
+    # Failed command
+    result = await box.exec("false")
+    print(f"Exit code: {result.exit_code}")  # 1
+
+    # Command not found
+    result = await box.exec("nonexistent_command_xyz")
+    print(f"Exit code: {result.exit_code}")  # 127
+
+    # Invalid argument
+    result = await box.exec("ls", "--invalid-option-xyz")
+    print(f"Exit code: {result.exit_code}")  # 2
+```
+
+### Exit Code Categories
+
+```python
+def categorize_exit_code(exit_code):
+    """Categorize exit code for retry decisions."""
+    if exit_code == 0:
+        return "success"
+    elif exit_code == 1:
+        return "retryable"  # General error, may be temporary
+    elif exit_code == 2:
+        return "invalid_input"  # Bad arguments, don't retry
+    elif exit_code in [126, 127]:
+        return "environment"  # Missing binary/permission
+    elif 128 <= exit_code <= 131:
+        return "interrupted"  # Signal, may retry
+    elif exit_code == 137:
+        return "killed"  # SIGKILL, don't retry
+    elif exit_code == 139:
+        return "crash"  # Segfault, don't retry
+    elif exit_code == 143:
+        return "terminated"  # SIGTERM, may retry
+    else:
+        return "unknown"
+
+# Usage
+result = await box.exec("some_command")
+category = categorize_exit_code(result.exit_code)
+print(f"Category: {category}")
+```
+
+## Retry Strategies
+
+### Simple Retry
+
+```python
+import asyncio
+
+async def exec_with_retry(box, cmd, *args, max_retries=3, delay=1):
+    """Execute command with simple retry."""
+    for attempt in range(max_retries):
+        result = await box.exec(cmd, *args)
+
+        if result.exit_code == 0:
+            return result
+
+        print(f"Attempt {attempt + 1} failed: exit code {result.exit_code}")
+
+        if attempt < max_retries - 1:
+            await asyncio.sleep(delay)
+
+    raise RuntimeError(f"Command failed after {max_retries} attempts")
+
+async with boxlite.SimpleBox(image="python:slim") as box:
+    result = await exec_with_retry(box, "unreliable_command")
+    print(result.stdout)
+```
+
+### Exponential Backoff
+
+```python
+import asyncio
+import random
+
+async def exec_with_exponential_backoff(
+    box, cmd, *args,
+    max_retries=5,
+    base_delay=1,
+    max_delay=30,
+    exponential_base=2
+):
+    """Execute with exponential backoff retry."""
+    for attempt in range(max_retries):
+        result = await box.exec(cmd, *args)
+
+        if result.exit_code == 0:
+            return result
+
+        # Calculate delay with jitter
+        delay = min(base_delay * (exponential_base ** attempt), max_delay)
+        jitter = random.uniform(0, delay * 0.1)
+        total_delay = delay + jitter
+
+        print(f"Attempt {attempt + 1} failed, retrying in {total_delay:.1f}s...")
+
+        if attempt < max_retries - 1:
+            await asyncio.sleep(total_delay)
+
+    raise RuntimeError(f"Command failed after {max_retries} attempts")
+
+async with boxlite.SimpleBox(image="python:slim") as box:
+    try:
+        result = await exec_with_exponential_backoff(
+            box,
+            "flaky_service_call"
+        )
+    except RuntimeError as e:
+        print(f"Failed: {e}")
+```
+
+### Selective Retry Based on Exit Code
+
+```python
+import asyncio
+
+# Exit codes that indicate temporary failures and should retry
+RETRYABLE_CODES = {1, 130, 143}  # General error, interrupt, terminate
+
+# Exit codes that indicate permanent failures
+NON_RETRYABLE_CODES = {2, 126, 127, 139}  # Invalid input, not found, crash
+
+async def exec_with_smart_retry(box, cmd, *args, max_retries=3):
+    """Execute with smart retry based on exit code."""
+    for attempt in range(max_retries):
+        result = await box.exec(cmd, *args)
+
+        if result.exit_code == 0:
+            return result
+
+        # Don't retry permanent failures
+        if result.exit_code in NON_RETRYABLE_CODES:
+            print(f"Permanent failure (exit {result.exit_code}), not retrying")
+            return result
+
+        # Retry temporary failures
+        if result.exit_code in RETRYABLE_CODES:
+            delay = 2 ** attempt
+            print(f"Temporary failure (exit {result.exit_code}), retrying in {delay}s")
+            await asyncio.sleep(delay)
+        else:
+            # Unknown - decide based on attempt number
+            if attempt < max_retries - 1:
+                delay = 2 ** attempt
+                await asyncio.sleep(delay)
+
+    return result
+
+async with boxlite.SimpleBox(image="python:slim") as box:
+    result = await exec_with_smart_retry(box, "some_command")
+```
+
+## Retry Patterns
+
+### Circuit Breaker Pattern
+
+```python
+import time
+from enum import Enum
+
+class CircuitState(Enum):
+    CLOSED = "closed"      # Normal operation
+    OPEN = "open"          # Failing, reject requests
+    HALF_OPEN = "half_open"  # Testing recovery
+
+class CircuitBreaker:
+    def __init__(
+        self,
+        failure_threshold=5,
+        recovery_timeout=30,
+        success_threshold=2
+    ):
+        self.failure_threshold = failure_threshold
+        self.recovery_timeout = recovery_timeout
+        self.success_threshold = success_threshold
+
+        self.state = CircuitState.CLOSED
+        self.failure_count = 0
+        self.success_count = 0
+        self.last_failure_time = None
+
+    def call(self, func, *args, **kwargs):
+        """Execute function with circuit breaker."""
+        if self.state == CircuitState.OPEN:
+            if time.time() - self.last_failure_time > self.recovery_timeout:
+                self.state = CircuitState.HALF_OPEN
+                self.success_count = 0
+            else:
+                raise RuntimeError("Circuit breaker is OPEN")
+
+        result = func(*args, **kwargs)
+
+        if self.state == CircuitState.HALF_OPEN:
+            self.success_count += 1
+            if self.success_count >= self.success_threshold:
+                self.state = CircuitState.CLOSED
+                self.failure_count = 0
+
+        return result
+
+    def record_failure(self):
+        """Record a failure."""
+        self.failure_count += 1
+        self.last_failure_time = time.time()
+
+        if self.failure_count >= self.failure_threshold:
+            self.state = CircuitState.OPEN
+
+# Usage
+breaker = CircuitBreaker()
+
+async def exec_with_circuit_breaker(box, cmd, *args):
+    """Execute with circuit breaker."""
+    def exec_cmd():
+        return box.exec(cmd, *args)
+
+    result = breaker.call(exec_cmd)
+
+    if result.exit_code != 0:
+        breaker.record_failure()
+    else:
+        breaker.failure_count = 0
+
+    return result
+```
+
+### Timeout with Retry
+
+```python
+import asyncio
+
+async def exec_with_timeout_and_retry(
+    box, cmd, *args,
+    timeout=30,
+    max_retries=3
+):
+    """Execute with timeout and retry."""
+    for attempt in range(max_retries):
+        try:
+            result = await asyncio.wait_for(
+                box.exec(cmd, *args),
+                timeout=timeout
+            )
+            return result
+
+        except asyncio.TimeoutError:
+            print(f"Attempt {attempt + 1} timed out")
+            if attempt < max_retries - 1:
+                await asyncio.sleep(1)
+            else:
+                raise RuntimeError(f"Command timed out after {max_retries} attempts")
+
+        except Exception as e:
+            print(f"Attempt {attempt + 1} failed: {e}")
+            if attempt < max_retries - 1:
+                await asyncio.sleep(1)
+            else:
+                raise
+
+async with boxlite.SimpleBox(image="python:slim") as box:
+    result = await exec_with_timeout_and_retry(
+        box,
+        "long_running_command",
+        timeout=30,
+        max_retries=3
+    )
+```
+
+## Complete Example
+
+```python
+import asyncio
+import random
+
+async def robust_exec(box, cmd, *args, **kwargs):
+    """
+    Robust command execution with retry logic.
+
+    Features:
+    - Exponential backoff with jitter
+    - Smart retry based on exit code
+    - Timeout handling
+    - Detailed error reporting
+    """
+    max_retries = kwargs.get('max_retries', 5)
+    base_delay = kwargs.get('base_delay', 1)
+    timeout = kwargs.get('timeout', 30)
+
+    # Define retry behavior by exit code
+    should_retry = lambda code: code in {
+        0,   # Success - no retry needed
+        1,   # General error - retry
+        130, # Interrupted - retry
+        143, # Terminated - retry
+    }
+
+    last_error = None
+
+    for attempt in range(max_retries):
+        try:
+            # Execute with timeout
+            result = await asyncio.wait_for(
+                box.exec(cmd, *args),
+                timeout=timeout
+            )
+
+            if result.exit_code == 0:
+                return result
+
+            # Check if we should retry
+            if not should_retry(result.exit_code):
+                print(f"Non-retryable exit code: {result.exit_code}")
+                return result
+
+            # Prepare for retry
+            last_error = result.stderr or f"Exit code {result.exit_code}"
+            delay = min(base_delay * (2 ** attempt), 30)
+            jitter = random.uniform(0, delay * 0.1)
+            total_delay = delay + jitter
+
+            print(f"Attempt {attempt + 1} failed: {last_error}")
+            print(f"Retrying in {total_delay:.1f}s...")
+
+            if attempt < max_retries - 1:
+                await asyncio.sleep(total_delay)
+
+        except asyncio.TimeoutError:
+            last_error = f"Timeout after {timeout}s"
+            print(f"Attempt {attempt + 1} timed out")
+            if attempt < max_retries - 1:
+                await asyncio.sleep(base_delay * (2 ** attempt))
+
+        except Exception as e:
+            last_error = str(e)
+            print(f"Attempt {attempt + 1} exception: {e}")
+            if attempt < max_retries - 1:
+                await asyncio.sleep(base_delay * (2 ** attempt))
+
+    # All retries exhausted
+    raise RuntimeError(
+        f"Command failed after {max_retries} attempts. Last error: {last_error}"
+    )
+
+# Usage
+async with boxlite.SimpleBox(image="python:slim") as box:
+    try:
+        result = await robust_exec(
+            box,
+            "python", "-c", "import time; print('Success')",
+            max_retries=3,
+            timeout=10
+        )
+        print(f"Success: {result.stdout}")
+    except RuntimeError as e:
+        print(f"Failed: {e}")
+```
+
+## Exit Code Best Practices
+
+1. **Always check exit codes** for critical operations
+2. **Implement retry logic** for network-dependent commands
+3. **Use exponential backoff** to avoid overwhelming systems
+4. **Log failures** with exit codes for debugging
+5. **Distinguish retryable vs non-retryable errors**
+6. **Set appropriate timeouts** to prevent hanging
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Run Commands" icon="play" href="/commands/run-command">
+    Execute commands and handle results.
+  </Card>
+  <Card title="Stream Output" icon="stream" href="/commands/stream-output">
+    Real-time stdout/stderr streaming.
+  </Card>
+  <Card title="Commands Overview" icon="info" href="/commands/overview">
+    Command execution concepts.
+  </Card>
+</CardGroup>

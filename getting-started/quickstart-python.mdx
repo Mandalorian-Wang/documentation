@@ -2,24 +2,26 @@
 title: "Python Quick Start"
 sidebarTitle: "Python quickstart"
 description: "Get up and running with BoxLite Python SDK in 5 minutes."
-icon: "python"
 ---
 
 ## Installation
 
 ```bash
-pip install boxlite
+python3 -m pip install boxlite
 ```
 
 **Requirements:**
 - Python 3.10 or later
-- pip 20.0+
 
-**Verify Installation:**
+**Verify installation:**
 
-```python
+```bash
 python3 -c "import boxlite; print(boxlite.__version__)"
 ```
+
+<Note>
+Validated on April 19, 2026 with Python 3.12. `python3 -m pip install boxlite` and the import check both succeeded in a fresh virtual environment.
+</Note>
 
 ## Basic Execution
 
@@ -68,9 +70,10 @@ python3 -c "import boxlite; print(boxlite.__version__)"
     async def main():
         # Execute untrusted code safely
         code = """
-    import requests
-    response = requests.get('https://api.github.com/zen')
-    print(response.text)
+    import math
+
+    for value in range(1, 4):
+        print(value, math.factorial(value))
     """
 
         async with boxlite.CodeBox() as codebox:
@@ -90,7 +93,7 @@ python3 -c "import boxlite; print(boxlite.__version__)"
 </Steps>
 
 **What's happening:**
-1. CodeBox automatically installs required packages (requests)
+1. `CodeBox` runs Python code inside an isolated box
 2. Executes the code in complete isolation
 3. Returns the output
 4. Your host system remains completely safe
@@ -108,39 +111,39 @@ cd boxlite
 make dev:python
 
 # Run examples
-python examples/python/simplebox_example.py
-python examples/python/codebox_example.py
-python examples/python/browserbox_example.py
-python examples/python/computerbox_example.py
-python examples/python/lifecycle_example.py
-python examples/python/list_boxes_example.py
-python examples/python/cross_process_example.py
-python examples/python/interactivebox_example.py
-python examples/python/native_example.py
+python examples/python/01_getting_started/run_simplebox.py
+python examples/python/01_getting_started/run_codebox.py
+python examples/python/05_browser_desktop/automate_with_playwright.py
+python examples/python/05_browser_desktop/automate_desktop.py
+python examples/python/03_lifecycle/manage_lifecycle.py
+python examples/python/01_getting_started/list_boxes.py
+python examples/python/03_lifecycle/share_across_processes.py
+python examples/python/04_interactive/run_interactive_shell.py
+python examples/python/07_advanced/use_native_api.py
 ```
 
 **Examples overview:**
 
 | # | Example | Description |
 |---|---------|-------------|
-| 1 | **simplebox_example.py** | Foundation patterns |
-| 2 | **codebox_example.py** | AI code execution |
-| 3 | **browserbox_example.py** | Browser automation |
-| 4 | **computerbox_example.py** | Desktop automation |
-| 5 | **lifecycle_example.py** | Box lifecycle management |
-| 6 | **list_boxes_example.py** | Runtime introspection |
-| 7 | **cross_process_example.py** | Multi-process operations |
-| 8 | **interactivebox_example.py** | Interactive shells |
-| 9 | **native_example.py** | Low-level Rust API |
+| 1 | **run_simplebox.py** | Foundation patterns |
+| 2 | **run_codebox.py** | AI code execution |
+| 3 | **automate_with_playwright.py** | Browser automation |
+| 4 | **automate_desktop.py** | Desktop automation |
+| 5 | **manage_lifecycle.py** | Box lifecycle management |
+| 6 | **list_boxes.py** | Runtime introspection |
+| 7 | **share_across_processes.py** | Multi-process operations |
+| 8 | **run_interactive_shell.py** | Interactive shells |
+| 9 | **use_native_api.py** | Low-level Rust API |
 
 ## Next Steps
 
 <CardGroup cols={2}>
-  <Card title="Core concepts" icon="lightbulb" href="/getting-started/core-concepts">
+  <Card title="Core concepts" icon="lightbulb" href="/core-concepts">
     Understand the different box types (SimpleBox, CodeBox, BrowserBox, and more), lifecycle, images, and resource configuration.
   </Card>
   <Card title="Execute AI-generated code" icon="code" href="/tutorials/code-execution">
-    Learn to use CodeBox for safe code execution — auto-install packages, run untrusted code, and capture output.
+    Learn to use CodeBox for safe code execution, untrusted code runs, and captured output.
   </Card>
   <Card title="Python SDK Reference" icon="book" href="/reference/python/index">
     Complete API reference for SimpleBox, CodeBox, BrowserBox, ComputerBox, and more.

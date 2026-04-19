@@ -1,12 +1,13 @@
 {
   "$schema": "https://mintlify.com/docs.json",
   "theme": "mint",
-  "name": "BoxLite Documentation",
+  "name": "BoxLite Docs",
   "colors": {
-    "primary": "#6D28D9",
-    "light": "#8B5CF6",
-    "dark": "#5B21B6"
+    "primary": "#00b0f0",
+    "light": "#39b6ff",
+    "dark": "#0098d2"
   },
+  "customCss": "/style.css",
   "favicon": "/favicon.svg",
   "navigation": {
     "tabs": [
@@ -14,127 +15,311 @@
         "tab": "BoxLite",
         "groups": [
           {
-            "group": "Getting Started",
+            "group": "Browse",
             "pages": [
               "index",
-              "getting-started/index",
-              "getting-started/quickstart-python",
-              "getting-started/quickstart-nodejs",
-              "getting-started/quickstart-rust",
-              "getting-started/quickstart-c",
-              "getting-started/core-concepts",
-              "getting-started/design-principles"
-            ]
-          },
-          {
-            "group": "Tutorials",
-            "pages": [
-              "tutorials/index",
-              "tutorials/ai-coding-tools",
-              "tutorials/code-execution",
-              "tutorials/file-transfer",
-              "tutorials/llm-integration",
-              "tutorials/browser-automation",
-              "tutorials/desktop-automation",
-              "tutorials/interactive-terminal",
-              "tutorials/run-any-language",
-              "tutorials/long-running-services",
-              "tutorials/error-handling"
-            ]
-          },
-          {
-            "group": "Guides",
-            "pages": [
-              "guides/index",
-              "guides/ai-agent-integration",
-              "guides/building-from-source",
-              "guides/image-registry-configuration",
-              "guides/macos-sandbox-debugging"
-            ]
-          },
-          {
-            "group": "SDK Reference",
-            "pages": [
-              "reference/index",
               {
-                "group": "Python SDK",
-                "icon": "python",
+                "group": "Start Here",
+                "icon": "rocket",
                 "pages": [
-                  "reference/python/index",
-                  "reference/python/box-types",
-                  "reference/python/execution",
-                  "reference/python/errors-metrics"
-                ]
+                  "getting-started/what-is-boxlite",
+                  "getting-started/choose-sdk-or-boxrun",
+                  "getting-started/install",
+                  "getting-started/quickstart-nodejs",
+                  "getting-started/quickstart-python",
+                  "getting-started/quickstart-rust",
+                  "getting-started/quickstart-c"
+                ],
+                "expanded": false
               },
               {
-                "group": "Node.js SDK",
-                "icon": "node-js",
+                "group": "Core Concepts",
+                "icon": "lightbulb",
                 "pages": [
-                  "reference/nodejs/index",
-                  "reference/nodejs/box-types",
-                  "reference/nodejs/execution",
-                  "reference/nodejs/errors-metrics"
-                ]
+                  "core-concepts/resource-model",
+                  "core-concepts/lifecycle",
+                  "core-concepts/images"
+                ],
+                "expanded": false,
+                "root": "core-concepts/index"
               },
               {
-                "group": "Rust SDK",
-                "icon": "gear",
+                "group": "Architecture",
+                "icon": "sitemap",
                 "pages": [
-                  "reference/rust/index",
-                  "reference/rust/box-config",
-                  "reference/rust/execution",
-                  "reference/rust/errors-metrics"
-                ]
+                  "architecture/components",
+                  "architecture/security",
+                  "architecture/networking-storage",
+                  "getting-started/design-principles"
+                ],
+                "expanded": false,
+                "root": "architecture/index"
               },
               {
-                "group": "C SDK",
-                "icon": "c",
+                "group": "Tutorials",
+                "icon": "graduation-cap",
                 "pages": [
-                  "reference/c/index",
-                  "reference/c/native-api",
-                  "reference/c/memory-json-threading",
-                  "reference/c/errors-metrics"
-                ]
+                  "tutorials/code-execution",
+                  "tutorials/file-transfer",
+                  "tutorials/error-handling",
+                  "tutorials/long-running-services",
+                  "tutorials/interactive-terminal",
+                  "tutorials/llm-integration",
+                  "tutorials/browser-automation",
+                  "tutorials/desktop-automation",
+                  "tutorials/stateful-workspace-patterns",
+                  "tutorials/snapshots-checkpoint-rollback",
+                  "tutorials/run-any-language",
+                  "tutorials/claude-code-integration"
+                ],
+                "expanded": false,
+                "root": "tutorials/index"
+              },
+              {
+                "group": "Guides",
+                "icon": "book-open",
+                "pages": [
+                  "guides/ai-agent-integration",
+                  "guides/cross-sdk-behavior-differences",
+                  "guides/resource-sizing-for-workloads",
+                  "guides/networking-modes-and-port-strategy",
+                  "guides/performance-tuning",
+                  "guides/cost-control-best-practices",
+                  "guides/image-registry-configuration",
+                  "guides/building-from-source",
+                  "guides/macos-sandbox-debugging"
+                ],
+                "expanded": false,
+                "root": "guides/index"
+              },
+              {
+                "group": "Integrations",
+                "icon": "plug",
+                "pages": [
+                  "integrations/anthropic",
+                  "integrations/openai-agents",
+                  "integrations/langchain",
+                  "integrations/vercel-ai-sdk",
+                  "integrations/mcp-gateway-pattern"
+                ],
+                "expanded": false,
+                "root": "integrations/overview"
+              },
+              {
+                "group": "Templates",
+                "icon": "copy",
+                "pages": [
+                  "templates/how-it-works",
+                  "templates/create-template",
+                  "templates/provision-dependencies",
+                  "templates/versioning-and-rollout",
+                  "templates/debug-build-failures"
+                ],
+                "expanded": false,
+                "root": "templates/overview"
+              },
+              {
+                "group": "Filesystem",
+                "icon": "folder",
+                "pages": [
+                  "filesystem/read-write-files",
+                  "filesystem/upload-files",
+                  "filesystem/download-files",
+                  "filesystem/list-and-stat",
+                  "filesystem/watch-changes"
+                ],
+                "expanded": false,
+                "root": "filesystem/overview"
+              },
+              {
+                "group": "Commands",
+                "icon": "terminal",
+                "pages": [
+                  "commands/run-command",
+                  "commands/stream-output",
+                  "commands/exit-codes-and-retries",
+                  "commands/background-processes",
+                  "commands/interactive-terminal-pty"
+                ],
+                "expanded": false,
+                "root": "commands/overview"
+              },
+              {
+                "group": "Volumes",
+                "icon": "database",
+                "pages": [
+                  "volumes/create-and-manage",
+                  "volumes/read-write",
+                  "volumes/upload-download",
+                  "volumes/performance-and-cost"
+                ],
+                "expanded": false,
+                "root": "volumes/overview"
+              },
+              {
+                "group": "Networking",
+                "icon": "wifi",
+                "pages": [
+                  "networking/egress-control",
+                  "networking/port-forwarding",
+                  "networking/private-connectivity",
+                  "networking/troubleshooting"
+                ],
+                "expanded": false,
+                "root": "networking/overview"
+              },
+              {
+                "group": "Security",
+                "icon": "shield-halved",
+                "pages": [
+                  "security/shared-responsibility",
+                  "security/threat-model-and-hardening",
+                  "security/secrets-management",
+                  "security/audit-logging",
+                  "security/security-policy"
+                ],
+                "expanded": false,
+                "root": "security/overview"
+              },
+              {
+                "group": "Observability",
+                "icon": "chart-line",
+                "pages": [
+                  "observability/tracing-otel",
+                  "observability/debugging-playbook"
+                ],
+                "expanded": false,
+                "root": "observability/overview"
+              },
+              {
+                "group": "Reference",
+                "pages": [
+                  {
+                    "group": "Python SDK",
+                    "pages": [
+                      "reference/python/box-types",
+                      "reference/python/execution",
+                      "reference/python/errors-metrics"
+                    ],
+                    "expanded": false,
+                    "root": "reference/python/index"
+                  },
+                  {
+                    "group": "Node.js SDK",
+                    "pages": [
+                      "reference/nodejs/box-types",
+                      "reference/nodejs/execution",
+                      "reference/nodejs/errors-metrics"
+                    ],
+                    "expanded": false,
+                    "root": "reference/nodejs/index"
+                  },
+                  {
+                    "group": "Rust SDK",
+                    "pages": [
+                      "reference/rust/box-config",
+                      "reference/rust/execution",
+                      "reference/rust/errors-metrics"
+                    ],
+                    "expanded": false,
+                    "root": "reference/rust/index"
+                  },
+                  {
+                    "group": "C SDK",
+                    "pages": [
+                      "reference/c/native-api",
+                      "reference/c/memory-json-threading",
+                      "reference/c/errors-metrics"
+                    ],
+                    "expanded": false,
+                    "root": "reference/c/index"
+                  },
+                  "reference/limits-quotas"
+                ],
+                "expanded": false,
+                "icon": "book",
+                "root": "reference/index"
+              },
+              {
+                "group": "Troubleshooting",
+                "icon": "wrench",
+                "pages": [
+                  "faq",
+                  "troubleshooting/startup-and-image-pull",
+                  "troubleshooting/network-and-port-forwarding",
+                  "troubleshooting/exec-timeout-and-zombie",
+                  "troubleshooting/filesystem-and-permissions"
+                ],
+                "expanded": false,
+                "root": "troubleshooting/index"
+              },
+              {
+                "group": "Cookbook",
+                "icon": "utensils",
+                "pages": [
+                  "cookbook/code-review-bot",
+                  "cookbook/safe-web-scraper",
+                  "cookbook/data-analyst-agent",
+                  "cookbook/multi-sandbox-parallel-jobs"
+                ],
+                "expanded": false
+              },
+              {
+                "group": "Community",
+                "icon": "users",
+                "pages": [
+                  "community/contributing",
+                  "community/roadmap",
+                  "community/release-notes"
+                ],
+                "expanded": false
               }
-            ]
-          },
-          {
-            "group": "Architecture",
-            "pages": [
-              "architecture/index",
-              "architecture/components",
-              "architecture/security",
-              "architecture/networking-storage"
-            ]
-          },
-          {
-            "group": "Resources",
-            "pages": [
-              "faq",
-              "guides/changelog"
-            ]
-          },
-          {
-            "group": "Development",
-            "pages": [
-              "development/cli",
-              "development/rust-style"
             ]
           }
         ]
       },
       {
         "tab": "BoxRun",
+        "href": "/boxrun",
         "groups": [
           {
-            "group": "BoxRun",
+            "group": "Browse",
             "pages": [
-              "boxrun/index",
-              "boxrun/quickstart",
-              "boxrun/cli",
-              "boxrun/python-sdk",
-              "boxrun/rest-api",
-              "boxrun/configuration"
+              {
+                "group": "BoxRun",
+                "icon": "cloud",
+                "pages": [
+                  "boxrun/quickstart",
+                  "boxrun/production-deployment-overview",
+                  "boxrun/deploy-systemd-linux",
+                  "boxrun/deploy-reverse-proxy"
+                ],
+                "expanded": false,
+                "root": "boxrun/index"
+              },
+              {
+                "group": "BoxRun Reference",
+                "icon": "code",
+                "pages": [
+                  "boxrun/cli",
+                  "boxrun/python-sdk",
+                  "boxrun/rest-api",
+                  "boxrun/configuration"
+                ],
+                "expanded": false
+              },
+              {
+                "group": "BoxRun Operations",
+                "icon": "settings",
+                "pages": [
+                  "boxrun/auth-and-access-control",
+                  "boxrun/database-and-backup",
+                  "boxrun/capacity-planning",
+                  "boxrun/observability-metrics-and-alerts",
+                  "boxrun/incident-response-playbook"
+                ],
+                "expanded": false
+              }
             ]
           }
         ]
@@ -142,9 +327,9 @@
     ]
   },
   "logo": {
-    "light": "/logo/light.png",
+    "light": "/logo/boxlite-logo.png",
     "href": "/",
-    "dark": "/logo/dark.png"
+    "dark": "/logo/boxlite-logo-dark.png"
   },
   "navbar": {
     "primary": {
@@ -164,5 +349,8 @@
       "github": "https://github.com/boxlite-ai",
       "discord": "https://go.boxlite.ai/discord"
     }
+  },
+  "interaction": {
+    "drilldown": false
   }
 }

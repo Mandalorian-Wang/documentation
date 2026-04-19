@@ -1,0 +1,323 @@
+---
+title: "Cross-SDK Behavior Differences"
+description: "Compare BoxLite SDK behavior across Python, Node.js, Rust, and C"
+sidebarTitle: "SDK Differences"
+---
+
+BoxLite provides SDK bindings in multiple languages. While the core functionality is the same, each SDK has unique patterns and capabilities. This guide provides a comprehensive comparison to help you choose the right SDK and understand behavioral differences.
+
+## SDK Overview
+
+BoxLite offers four language bindings with different maturity levels and feature sets:
+
+| SDK | Version | API Style | Status | Platforms |
+|-----|---------|-----------|--------|-----------|
+| Python | v0.5.11 | Async/Sync | Stable | macOS (ARM64), Linux (x86_64, ARM64) |
+| Node.js | v0.2.8 | Async | Stable | macOS (ARM64), Linux (x86_64, ARM64) |
+| Rust | Latest | Async (Tokio) | Stable | All platforms |
+| C | v0.5.11 | Sync | Stable | macOS (ARM64), Linux (x86_64, ARM64) |
+
+## Feature Comparison Matrix
+
+| Feature | Python | Node.js | Rust | C |
+|---------|--------|---------|------|---|
+| **Box Types** | | | | |
+| SimpleBox | Yes | Yes | Yes | Yes |
+| CodeBox | Yes | Yes | Via LiteBox | No |
+| BrowserBox | Yes | Yes | Via LiteBox | No |
+| ComputerBox | Yes | Yes | Via LiteBox | No |
+| InteractiveBox | Yes | Yes | Via LiteBox | No |
+| **Runtime Management** | | | | |
+| Create/List/Get boxes | Yes | Yes | Yes | Yes |
+| Metrics collection | Yes | Yes | Yes | Yes |
+| Image pre-pull | Yes | No | Yes | No |
+| **Execution** | | | | |
+| Sync execution | Yes | No | No | Yes |
+| Async execution | Yes | Yes | Yes | No |
+| Streaming stdout/stderr | Yes | Yes | Yes | Via callback |
+| **Package Management** | | | | |
+| install_package() | Yes | No | No | No |
+| **File Operations** | | | | |
+| copy_in/copy_out | Yes | Yes | Yes | Yes |
+| **Special Features** | | | | |
+| Sync API wrapper | Yes | N/A | N/A | N/A |
+| PTY/Interactive | Yes | Yes | Via LiteBox | No |
+
+## Runtime Creation
+
+### Python
+
+```python
+from boxlite import Boxlite, Options
+
+# Default runtime
+runtime = Boxlite.default()
+
+# Custom runtime
+runtime = Boxlite(Options(
+    home_dir="/custom/path",
+    image_registries=["ghcr.io/myorg"]
+))
+```
+
+### Node.js
+
+```typescript
+import { JsBoxlite } from '@boxlite-ai/boxlite';
+
+// Default runtime
+const runtime = JsBoxlite.withDefaultConfig();
+
+// Custom runtime
+const runtime = new JsBoxlite({
+  homeDir: '/custom/path',
+  imageRegistries: ['ghcr.io/myorg']
+});
+```
+
+### Rust
+
+```rust
+use boxlite::runtime::{BoxliteRuntime, BoxliteOptions};
+use std::path::PathBuf;
+
+// Default runtime
+let runtime = BoxliteRuntime::with_defaults()?;
+
+// Custom runtime
+let options = BoxliteOptions {
+    home_dir: PathBuf::from("/custom/path"),
+    image_registries: vec!["ghcr.io/myorg".to_string()],
+};
+let runtime = BoxliteRuntime::new(options)?;
+```
+
+### C (Simple API)
+
+```c
+#include "boxlite.h"
+
+// Simple API - auto-creates runtime
+CBoxliteSimple* box = NULL;
+boxlite_simple_new("alpine:3.19", 0, 0, &box, &error);
+```
+
+### C (Native API)
+
+```c
+CBoxliteRuntime* runtime = NULL;
+boxlite_runtime_new("/custom/path", "[\"ghcr.io/myorg\"]", &runtime, &error);
+```
+
+## Box Creation
+
+### Python
+
+```python
+# Via runtime
+box = await runtime.create(BoxOptions(
+    image="python:slim",
+    cpus=2,
+    memory_mib=4096
+))
+
+# Via SimpleBox
+async with SimpleBox(image="python:slim") as box:
+    pass
+```
+
+### Node.js
+
+```typescript
+// Via runtime
+const box = await runtime.create({
+  image: 'python:slim',
+  cpus: 2,
+  memoryMib: 4096
+});
+
+// Via helper class
+const box = new SimpleBox({ image: 'python:slim' });
+```
+
+### Rust
+
+```rust
+let options = BoxOptions {
+    cpus: Some(2),
+    memory_mib: Some(4096),
+    rootfs: RootfsSpec::Image("python:slim".to_string()),
+    ..Default::default()
+};
+let litebox = runtime.create(options, Some("my-box".to_string())).await?;
+```
+
+### C
+
+```c
+// Simple API - auto-creates and starts
+boxlite_simple_new("python:slim", 2, 4096, &box, &error);
+
+// Native API
+const char* options = "{\"rootfs\":{\"Image\":\"python:slim\"},\"cpus\":2,\"memoryMib\":4096}";
+boxlite_create_box(runtime, options, &box, &error);
+```
+
+## Command Execution
+
+### Python
+
+```python
+# SimpleBox.exec() - returns ExecResult
+result = await box.exec("python", "-c", "print('hello')")
+print(result.stdout)
+print(result.exit_code)
+
+# CodeBox.run() - returns string
+result = await codebox.run("print('hello')")
+```
+
+### Node.js
+
+```typescript
+// Basic execution
+const execution = await box.exec("python", ["-c", "print('hello')"]);
+const result = await execution.wait();
+console.log(result.stdout);
+console.log(result.exitCode);
+
+// CodeBox.run()
+const result = await codebox.run("print('hello')");
+```
+
+### Rust
+
+```rust
+use boxlite::BoxCommand;
+
+let cmd = BoxCommand::new("python3")
+    .args(["-c", "print('hello')"])
+    .timeout(Duration::from_secs(30));
+
+let mut execution = litebox.exec(cmd).await?;
+let result = execution.wait().await?;
+println!("{}", result.stdout());
+```
+
+### C
+
+```c
+// Simple API - buffered result
+const char* args[] = {"-c", "print('hello')", NULL};
+CBoxliteExecResult* result = NULL;
+boxlite_simple_run(box, "python", args, 2, &result, &error);
+printf("Output: %s\n", result->stdout_text);
+
+// Native API - callback-based streaming
+void callback(const char* text, int is_stderr, void* data) {
+    printf("%s", text);
+}
+boxlite_execute(box, "python", "[\"-c\", \"print('hello')\"]", callback, NULL, &exit_code, &error);
+```
+
+## Box Types Availability
+
+### Python
+
+Python has the richest Box type support with specialized classes:
+
+```python
+from boxlite import (
+    SimpleBox,    # Basic command execution
+    CodeBox,      # Python code with package management
+    BrowserBox,   # Browser automation
+    ComputerBox,  # GUI/desktop automation
+    InteractiveBox  # PTY terminal
+)
+```
+
+### Node.js
+
+Node.js provides equivalent specialized classes:
+
+```typescript
+import { SimpleBox, CodeBox, BrowserBox, ComputerBox, InteractiveBox } from '@boxlite-ai/boxlite';
+```
+
+### Rust
+
+Rust uses a unified `LiteBox` interface for all box types:
+
+```rust
+use boxlite::LiteBox;  // All operations through LiteBox
+```
+
+### C
+
+C SDK only supports SimpleBox-style operations. All box types are accessed through the same API.
+
+## Known Limitations
+
+| SDK | Limitation |
+|-----|------------|
+| Python | Sync API cannot be used inside async context |
+| Node.js | N/A |
+| Rust | N/A |
+| C | Only SimpleBox; no async support; no CodeBox package management |
+
+## Platform Support
+
+| Platform | Python | Node.js | Rust | C |
+|----------|--------|---------|------|---|
+| macOS ARM64 | Yes | Yes | Yes | Yes |
+| macOS x86_64 | No | No | Yes | No |
+| Linux x86_64 | Yes | Yes | Yes | Yes |
+| Linux ARM64 | Yes | Yes | Yes | Yes |
+| Windows (WSL2) | Yes | Yes | Yes | Yes |
+
+## Choosing an SDK
+
+Use this decision tree to select the appropriate SDK:
+
+```
+What is your primary language?
+|
++-- Python
+|   +-- Need CodeBox with install_package()? -> Python
+|   +-- Need sync API for existing codebase? -> Python
+|   +-- Otherwise -> Python or Node.js
+|
++-- JavaScript/TypeScript
+|   +-- Node.js only -> Node.js
+|   +-- Need React/server-side -> Node.js
+|
++-- Rust
+|   +-- Building high-performance systems -> Rust
+|   +-- Need fine-grained control -> Rust
+|
++-- C/C++
+|   +-- Embedding in existing C project -> C
+|   +-- Need maximum portability -> C
+```
+
+## Migration Between SDKs
+
+The core concepts map directly across all SDKs:
+
+| Concept | Python | Node.js | Rust | C |
+|---------|--------|---------|------|---|
+| Runtime | `Boxlite.default()` | `JsBoxlite.withDefaultConfig()` | `BoxliteRuntime::with_defaults()` | `boxlite_simple_new()` |
+| Create box | `runtime.create(options)` | `runtime.create(options)` | `runtime.create(options).await` | `boxlite_create_box()` |
+| Execute | `box.exec(cmd, args)` | `box.exec(cmd, args)` | `litebox.exec(cmd).await` | `boxlite_execute()` |
+| Stop | `box.stop()` | `box.stop()` | `litebox.stop().await` | Auto-cleanup |
+
+## See Also
+
+- [Python SDK Reference](/reference/python/index)
+- [Node.js SDK Reference](/reference/nodejs/index)
+- [Rust SDK Reference](/reference/rust/index)
+- [C SDK Reference](/reference/c/index)
+- [Quick Start: Python](/getting-started/quickstart-python)
+- [Quick Start: Node.js](/getting-started/quickstart-nodejs)
+- [Quick Start: Rust](/getting-started/quickstart-rust)
+- [Quick Start: C](/getting-started/quickstart-c)

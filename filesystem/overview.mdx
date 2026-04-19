@@ -1,0 +1,94 @@
+---
+title: "Filesystem Overview"
+sidebarTitle: "Overview"
+description: "Understanding file operations in BoxLite - copy in/out, inline transfers, and temporary file handling."
+---
+
+BoxLite provides multiple methods for transferring files between the host system and Box sandboxes. This section covers **temporary and operational file transfers** — for persistent storage that survives Box restarts, see [Volumes](/volumes/overview).
+
+## When to Use Filesystem Operations
+
+Use these methods for:
+
+- **Dynamic input files** that vary per request
+- **Temporary processing** artifacts that don't need to persist
+- **Security-sensitive data** that shouldn't reside on host
+- **Single-direction transfers** (host to Box or Box to host)
+
+For **persistent storage** that survives Box restarts, use [Volumes](/volumes/overview) instead.
+
+## Available Methods
+
+| Method | Direction | Best For | Size Limit |
+|--------|-----------|----------|------------|
+| `copy_in()` / `copy_out()` | Host ↔ Guest | File transfer (one-time or batch) | Large files (GB+) |
+| Inline base64 | Either direction | Small inline data | ~1 MB |
+| exec + shell | Either direction | Pipe data through command | ~1 MB |
+
+## How It Works
+
+### Copy Operations
+
+The `copy_in()` and `copy_out()` methods provide reliable file transfer between host and guest filesystems:
+
+```text
+Host System                           Box (Guest)
+┌─────────────┐                     ┌─────────────┐
+│ /host/data/ │ ─── copy_in() ───▶ │ /workspace/ │
+│             │ ◀── copy_out() ─── │             │
+└─────────────┘                     └─────────────┘
+```
+
+**Key characteristics:**
+
+- **Reliable**: Uses scp-like semantics with proper error handling
+- **Efficient**: Handles large files efficiently with streaming
+- **Atomic**: Supports overwrite control for safe updates
+- **One-time transfer**: File is copied once, not continuously synchronized
+
+### Inline base64
+
+For small data (< 1 MB), encode directly in commands:
+
+```python
+import base64
+
+# Encode file content
+data = open("config.json", "rb").read()
+encoded = base64.b64encode(data).decode()
+
+# Send via exec
+await box.exec("bash", "-c", f"echo {encoded} | base64 -d > /workspace/config.json")
+```
+
+## When to Use Each Method
+
+### Use `copy_in()` / `copy_out()` for:
+
+- **Batch file transfer**: Large files or many files at once
+- **Security-sensitive data**: Files that shouldn't persist on host after transfer
+- **One-time inputs**: Data used once then discarded
+- **Isolated workflows**: Files that don't need to be shared with host
+
+### Use inline base64 for:
+
+- **Small configuration snippets** (< 1 MB)
+- **Quick prototyping** without file operations
+- **Inline scripts or data**: Passing small amounts of data directly
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Read & Write Files" icon="file-arrow-up" href="/filesystem/read-write-files">
+    Copy files in and out of Boxes using Python SDK.
+  </Card>
+  <Card title="Volume Management" icon="database" href="/volumes/overview">
+    Create and manage persistent volumes for long-term storage.
+  </Card>
+  <Card title="Upload Files" icon="upload" href="/filesystem/upload-files">
+    Detailed guide for uploading files to Boxes.
+  </Card>
+  <Card title="Download Files" icon="download" href="/filesystem/download-files">
+    Detailed guide for downloading files from Boxes.
+  </Card>
+</CardGroup>

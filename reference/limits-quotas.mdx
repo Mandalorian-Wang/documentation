@@ -1,0 +1,324 @@
+---
+title: "Limits and Quotas"
+sidebarTitle: "Limits & Quotas"
+description: "System limits and quotas for BoxLite boxes including CPU, memory, disk, and resource constraints."
+---
+
+This document describes the resource limits and quotas for BoxLite boxes, both per-box and system-wide limits.
+
+## Overview
+
+BoxLite enforces resource limits at two levels:
+
+1. **Per-box limits**: Constraints applied to individual boxes (CPU, memory, disk)
+2. **System-wide limits**: Constraints on total resources available on the host
+
+Resource limits are enforced through cgroups (Linux) and Hypervisor.framework quotas (macOS).
+
+## Per-Box Limits
+
+### Default Values
+
+| Resource | Default | Minimum | Maximum | Configurable |
+|----------|---------|---------|---------|--------------|
+| CPU | 1 core | 1 | Host dependent | Yes |
+| Memory | 2048 MB | 256 MB | Host dependent | Yes |
+| Disk | 10 GB | 1 GB | Host dependent | Yes |
+| Max Open Files | 1024 | 64 | System ulimit | Yes |
+| Max Processes | 100 | 1 | 65535 | Yes |
+
+### Configuration
+
+You can customize per-box resource limits when creating a box:
+
+```python
+import boxlite
+
+runtime = boxlite.BoxliteRuntime()
+
+# Create a box with custom resource limits
+box = await runtime.create(
+    image="ubuntu:24.04",
+    cpus=4,              # 4 CPU cores
+    memory_mib=4096,     # 4 GB RAM
+    disk_size_gb=50,     # 50 GB disk
+)
+
+# Or use BoxOptions
+options = boxlite.BoxOptions(
+    cpus=2,
+    memory_mib=2048,
+    disk_size_gb=20,
+)
+```
+
+### Setting Resource Limits via Security Options
+
+For fine-grained control over resource limits, use the SecurityOptions builder:
+
+```python
+from boxlite import SecurityOptions
+
+box = await runtime.create(
+    image="alpine:latest",
+    advanced=boxlite.AdvancedBoxOptions(
+        security=SecurityOptions.builder()
+            .max_open_files(2048)
+            .max_processes(200)
+            .max_memory_bytes(2 * 1024**3)  # 2 GB
+            .max_cpu_time_seconds(3600)      # 1 hour
+            .build()
+    )
+)
+```
+
+<Note>
+  Memory and CPU limits via SecurityOptions are enforced through cgroups on Linux. On macOS, memory is enforced through Hypervisor.framework while CPU is managed by the host scheduler.
+</Note>
+
+## System-Wide Limits
+
+### Linux
+
+| Resource | Limit | Notes |
+|----------|-------|-------|
+| Concurrent Boxes | Host CPU cores | Each box requires at least 1 CPU core |
+| Total Memory | Host memory - 2GB reserved | BoxLite cannot allocate more than available host memory |
+| KVM Access | Required | `/dev/kvm` must be accessible |
+
+### macOS
+
+| Resource | Limit | Notes |
+|----------|-------|-------|
+| Concurrent Boxes | Host CPU cores (ARM) | Requires Apple Silicon (M1/M2/M3/M4) |
+| Total Memory | Host memory - 2GB reserved | Memory limits enforced via Hypervisor.framework |
+| Hypervisor.framework | Required | Only available on macOS 12+ with Apple Silicon |
+
+### Verifying Host Limits
+
+```bash
+# Check available CPU cores
+nproc
+
+# Check available memory
+free -h
+
+# Check disk space
+df -h ~/.boxlite
+
+# Check KVM availability (Linux)
+ls -l /dev/kvm
+
+# Check Hypervisor.framework (macOS)
+sysctl vm.vmleaf | grep -E 'vmx|svm'  # Should show nothing on Apple Silicon
+```
+
+## What Happens When Limits Are Exceeded
+
+### Memory Limit Exceeded
+
+When a box exceeds its memory limit:
+
+1. **Linux**: The OOM killer (Out-of-Memory killer) terminates the box process
+2. **macOS**: Hypervisor.framework enforces memory limits, causing the box to crash
+
+```
+# Error message example:
+RuntimeError: Box killed - out of memory (limit: 2048 MB)
+```
+
+**Solution**: Increase memory allocation:
+```python
+box = await runtime.create(
+    image="python:3.11",
+    memory_mib=4096,  # Increase to 4 GB
+)
+```
+
+### Disk Space Exceeded
+
+When disk space is exhausted:
+
+1. Write operations fail with "No space left on device"
+2. Box may become unresponsive
+
+```
+# Error message example:
+IOError: [Errno 28] No space left on device: '/root/data'
+```
+
+**Solutions**:
+
+1. Increase disk size:
+   ```python
+   box = await runtime.create(
+       image="ubuntu:24.04",
+       disk_size_gb=50,  # Increase disk allocation
+   )
+   ```
+
+2. Clean up unused data:
+   ```python
+   # Remove temporary files inside the box
+   await box.exec("rm -rf /tmp/*")
+   ```
+
+3. Clean up box cache:
+   ```bash
+   rm -rf ~/.boxlite/images/*
+   boxrun gc
+   ```
+
+### CPU Limit Exceeded
+
+CPU limits are managed by the host scheduler. When a box uses more than its allocated CPU time:
+
+1. **Linux**: cgroups throttles the CPU quota
+2. **macOS**: Host scheduler limits the box to allocated cores
+
+```
+# Symptoms of CPU throttling:
+# - Slow execution
+# - Commands taking longer than expected
+# - "CPU throttled" in debug logs
+```
+
+**Solutions**:
+
+1. Allocate more CPU cores:
+   ```python
+   box = await runtime.create(
+       image="python:3.11",
+       cpus=4,  # Increase to 4 cores
+   )
+   ```
+
+2. Optimize CPU usage in your workload:
+   ```python
+   # Use process pooling efficiently
+   import multiprocessing
+   WORKERS = 4  # Match CPU allocation
+   ```
+
+### Open File Limit Exceeded
+
+When a box exceeds its open file limit:
+
+```
+# Error message example:
+OSError: [Errno 24] Too many open files: '/root/logs'
+```
+
+**Solutions**:
+
+1. Increase the limit:
+   ```python
+   from boxlite import SecurityOptions
+
+   box = await runtime.create(
+       image="alpine:latest",
+       advanced=boxlite.AdvancedBoxOptions(
+           security=SecurityOptions.builder()
+               .max_open_files(4096)
+               .build()
+       )
+   )
+   ```
+
+2. Close files properly in your code:
+   ```python
+   # Always close files
+   with open("data.txt") as f:
+       data = f.read()
+   # File automatically closed
+
+   # Or explicitly close
+   f = open("data.txt")
+   try:
+       data = f.read()
+   finally:
+       f.close()
+   ```
+
+### Process Limit Exceeded
+
+When a box spawns too many processes:
+
+```
+# Error message example:
+RuntimeError: Cannot fork: resource temporarily unavailable
+```
+
+**Solutions**:
+
+1. Increase the process limit:
+   ```python
+   from boxlite import SecurityOptions
+
+   box = await runtime.create(
+       image="alpine:latest",
+       advanced=boxlite.AdvancedBoxOptions(
+           security=SecurityOptions.builder()
+               .max_processes(500)
+               .build()
+       )
+   )
+   ```
+
+2. Reduce process spawns in your code:
+   ```python
+   # Use thread pools instead of process pools where possible
+   from concurrent.futures import ThreadPoolExecutor
+
+   with ThreadPoolExecutor(max_workers=4) as executor:
+       results = executor.map(task, items)
+   ```
+
+## Rate Limits
+
+BoxLite does not impose explicit rate limits on API calls. However, the following system constraints apply:
+
+- **Image pulls**: Limited by network bandwidth and registry response time
+- **Box creation**: Limited by host CPU, memory, and disk I/O
+- **Command execution**: Limited by the box's assigned CPU and memory
+
+## Best Practices
+
+### Right-Sizing Resources
+
+1. **Start small**: Begin with default limits and increase only when needed
+2. **Monitor usage**: Use metrics to understand actual resource consumption
+   ```python
+   metrics = await box.metrics()
+   print(f"CPU: {metrics.cpu_percent:.1f}%")
+   print(f"Memory: {metrics.mem_mb:.1f} MB")
+   ```
+
+3. **Set appropriate limits**: Too low causes crashes, too high wastes resources
+
+### Resource Allocation Example
+
+```python
+import boxlite
+
+# Different resource profiles for different workloads
+WORKLOAD_PROFILES = {
+    "small": {"cpus": 1, "memory_mib": 512, "disk_size_gb": 5},
+    "medium": {"cpus": 2, "memory_mib": 2048, "disk_size_gb": 20},
+    "large": {"cpus": 4, "memory_mib": 8192, "disk_size_gb": 50},
+}
+
+async def create_workload_box(workload_type: str):
+    profile = WORKLOAD_PROFILES.get(workload_type, WORKLOAD_PROFILES["small"])
+    return await runtime.create(
+        image="python:3.11",
+        **profile
+    )
+```
+
+## Related Documentation
+
+- [BoxOptions Reference](/reference/python#boxoptions) — Full BoxOptions API
+- [Security Overview](/security/overview) — Security configuration
+- [Troubleshooting: Out of Memory](/troubleshooting/index#box-is-slow) — Memory issues
+- [Architecture: Resource Management](/architecture/components) — Internal resource management

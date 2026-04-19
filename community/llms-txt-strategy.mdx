@@ -1,0 +1,391 @@
+---
+title: "LLM.txt Strategy"
+description: "How BoxLite generates and maintains llms.txt for AI assistants"
+---
+
+This document explains BoxLite's approach to maintaining `llms.txt` - a text-based documentation file optimized for AI assistants and Large Language Models (LLMs). The llms.txt file serves as a bridge between structured MDX documentation and AI-powered tools.
+
+## Overview
+
+BoxLite maintains an `llms.txt` file that provides AI assistants with a comprehensive overview of the documentation. This enables AI tools to accurately answer questions about BoxLite without needing to parse the full documentation structure.
+
+The strategy follows the [llms.txt specification](https://llmstxt.org/) developed by Mintlify, ensuring compatibility with a wide range of AI tools and documentation platforms.
+
+**Goals:**
+
+1. Enable AI assistants to understand BoxLite's documentation structure
+2. Support retrieval-augmented generation (RAG) systems
+3. Provide accurate context for documentation chatbots
+4. Maintain consistency between generated content and source docs
+
+## What is llms.txt?
+
+`llms.txt` is a plain-text file that provides a structured summary of BoxLite's documentation. Unlike HTML or MDX, this format is specifically designed for AI consumption.
+
+### Key Characteristics
+
+1. **Plain Text Format** — No HTML or Markdown rendering required
+2. **Hierarchical Structure** — Sections organized by category
+3. **Brief Summaries** — Each page includes a concise description
+4. **Machine-Readable** — Easy to parse and index
+
+### Content Structure
+
+The generated file includes:
+
+1. **Project Overview** — Brief description of BoxLite
+2. **Section Directory** — Top-level sections with descriptions
+3. **Page Index** — All documentation pages with summaries
+4. **Cross-References** — Links to related documentation
+
+## File Location
+
+The `llms.txt` file is located at:
+
+```
+/documentation/llms.txt
+```
+
+It is automatically generated and updated during the documentation build process via CI/CD pipeline.
+
+## Generation Process
+
+### How It Works
+
+The `llms.txt` file is generated using a Python script that:
+
+1. **Scans the documentation directory** — Identifies all `.mdx` files
+2. **Extracts frontmatter** — Gets title, description, and icon from each file
+3. **Generates summaries** — Creates brief descriptions of each page
+4. **Formats the output** — Produces a clean, readable text file
+5. **Validates links** — Ensures all internal links are valid
+
+### Generation Script
+
+```python
+def generate_llms_txt(docs_dir: Path) -> str:
+    """
+    Generate llms.txt from documentation directory.
+
+    Args:
+        docs_dir: Path to documentation root
+
+    Returns:
+        Generated llms.txt content
+    """
+    sections = []
+
+    for section_dir in docs_dir.iterdir():
+        if not section_dir.is_dir():
+            continue
+
+        pages = []
+        for mdx_file in section_dir.glob("*.mdx"):
+            frontmatter = parse_frontmatter(mdx_file)
+            pages.append(PageInfo(
+                title=frontmatter.get("title", mdx_file.stem),
+                description=frontmatter.get("description", ""),
+                path=mdx_file.relative_to(docs_dir),
+                icon=frontmatter.get("icon", "")
+            ))
+
+        sections.append(Section(
+            name=section_dir.name,
+            pages=pages
+        ))
+
+    return format_output(sections)
+```
+
+### Output Format
+
+The generated output follows this structure:
+
+```txt
+# BoxLite Documentation
+
+BoxLite provides secure, isolated containerized environments for running untrusted code...
+
+## Getting Started
+
+- [Quick Start (Python)](getting-started/quickstart-python.mdx): Get started with Python SDK
+- [Quick Start (Node.js)](getting-started/quickstart-nodejs.mdx): Get started with Node.js SDK
+
+## Core Concepts
+
+- [Architecture](architecture/index.mdx): System architecture overview
+- [Resource Model](core-concepts/resource-model.mdx): Understanding boxes and resources
+
+## API Reference
+
+- [Python SDK](reference/python/index.mdx): Python SDK API reference
+- [Node.js SDK](reference/nodejs/index.mdx): Node.js SDK API reference
+```
+
+## Content Best Practices
+
+To ensure optimal LLM parsing, follow these best practices when writing documentation.
+
+### Frontmatter Guidelines
+
+Always include complete frontmatter in each documentation file:
+
+```yaml
+---
+title: "Execution"
+description: "Python SDK command execution reference"
+---
+```
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| title | Yes | Short, descriptive title |
+| description | Yes | 1-2 sentence summary |
+| icon | Recommended | Mintlify icon name |
+
+### Writing Principles
+
+1. **Lead with the Summary** — First paragraph should summarize the page
+2. **Use Descriptive Headings** — Clear section titles help navigation
+3. **Include Code Examples** — Working examples are essential
+4. **Cross-Reference Related Pages** — Link to related documentation
+
+### Example: Well-Structured Page
+
+````markdown
+---
+title: "SimpleBox"
+description: "Minimal container for running single commands"
+---
+
+SimpleBox is the most lightweight box type in BoxLite. It provides minimal overhead for running single commands.
+
+## Use Cases
+
+- Running one-off scripts
+- Quick data processing
+- Simple transformations
+
+## Example
+
+```python
+async with SimpleBox(image="python:3.11") as box:
+    result = await box.exec("echo", "hello")
+```
+
+## Related
+
+- [Core Concepts](/core-concepts/index) — Box types and runtime model
+- [Shared Responsibility](/security/shared-responsibility) — Security expectations and boundaries
+````
+
+## MDX Features for LLM Parsing
+
+BoxLite documentation uses Mintlify's MDX extensions to enhance AI parsing.
+
+### Note Components
+
+Include contextual information using Note components:
+
+```markdown
+<Note>
+BoxLite requires KVM support on Linux for hardware acceleration.
+</Note>
+```
+
+### Warning Components
+
+Highlight important warnings:
+
+```markdown
+<Warning>
+This feature is experimental and subject to breaking changes.
+</Warning>
+```
+
+### Code Groups
+
+Multiple code examples with tabs:
+
+<CodeGroup>
+<CodeGroupItem title="Python">
+
+```python
+await box.exec("echo", "hello")
+```
+
+</CodeGroupItem>
+<CodeGroupItem title="Node.js">
+
+```typescript
+await box.exec("echo", "hello");
+```
+
+</CodeGroupItem>
+</CodeGroup>
+
+### Request Examples
+
+API documentation should include request examples:
+
+````markdown
+<RequestExample>
+
+```python
+async with SimpleBox(image="python:3.11") as box:
+    await box.exec("echo", "hello")
+```
+
+</RequestExample>
+````
+
+## Maintenance
+
+### When to Update
+
+The `llms.txt` file should be regenerated when:
+
+1. **New documentation is added** — Creating new pages
+2. **Documentation is reorganized** — Section changes
+3. **Page descriptions change** — Updating frontmatter
+4. **Before releases** — Pre-publish update
+5. **After significant changes** — Feature additions
+
+### Automated Updates
+
+The documentation CI/CD pipeline includes automatic regeneration:
+
+```yaml
+# .github/workflows/docs.yml
+name: Documentation
+
+on:
+  push:
+    paths:
+      - 'documentation/**'
+    branches:
+      - main
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate llms.txt
+        run: python scripts/generate_llms_txt.py
+
+      - name: Commit changes
+        run: |
+          git add documentation/llms.txt
+          git commit -m "docs: update llms.txt"
+```
+
+### Manual Regeneration
+
+To regenerate manually:
+
+```bash
+# Generate llms.txt
+python scripts/generate_llms_txt.py --docs documentation
+
+# Verify output
+cat documentation/llms.txt | head -50
+```
+
+## Usage by AI Assistants
+
+AI assistants can leverage `llms.txt` for various purposes.
+
+### Quick Orientation
+
+```python
+def get_documentation_overview(llms_content: str) -> dict:
+    """Parse llms.txt for documentation overview."""
+    lines = llms_content.split('\n')
+
+    overview = {}
+    current_section = None
+
+    for line in lines:
+        if line.startswith('## '):
+            current_section = line[3:].strip()
+            overview[current_section] = []
+        elif line.startswith('- [') and current_section:
+            overview[current_section].append(line)
+
+    return overview
+```
+
+### Finding Relevant Pages
+
+```python
+def find_relevant_docs(query: str, llms_content: str) -> list:
+    """Search llms.txt for relevant documentation."""
+    results = []
+    lines = llms_content.split('\n')
+
+    for i, line in enumerate(lines):
+        if query.lower() in line.lower():
+            # Get surrounding context
+            context = lines[max(0, i-2):i+3]
+            results.append('\n'.join(context))
+
+    return results
+```
+
+### Answering Questions
+
+When answering user questions about BoxLite:
+
+1. **Parse llms.txt** to find relevant sections
+2. **Search full documentation** for detailed answers
+3. **Provide code examples** when available
+4. **Link to source documentation** for more information
+
+## Guidelines for Contributors
+
+When adding or updating documentation:
+
+### Do's
+
+1. **Use descriptive frontmatter** — Include clear title and description
+2. **Follow naming conventions** — Use consistent file naming
+3. **Write concise summaries** — 1-2 sentences maximum
+4. **Include working examples** — Test all code snippets
+5. **Cross-reference related pages** — Link to related docs
+
+### Don'ts
+
+1. **Skip frontmatter** — Every page needs title and description
+2. **Use vague descriptions** — Be specific about page content
+3. **Break the hierarchy** — Follow existing structure
+4. **Include broken links** — Verify all internal links
+5. **Forget to regenerate** — Update llms.txt after changes
+
+### Testing
+
+Before submitting changes:
+
+```bash
+# Generate llms.txt
+python scripts/generate_llms_txt.py
+
+# Verify output
+head -30 documentation/llms.txt
+
+# Check for missing pages
+python scripts/validate_llms.py
+```
+
+## Related Documentation
+
+- [Contributing Guide](/community/contributing) — How to contribute to docs
+- [Release Notes](/community/release-notes) — Published release updates
+- [Mintlify llms.txt](https://mintlify.com/docs/llms) — Platform documentation
+
+## References
+
+- [llms.txt specification](https://llmstxt.org/) — Official specification
+- [Mintlify Documentation](https://mintlify.com/docs) — Documentation platform
+- [RAG best practices](https://arxiv.org/abs/...) — Research on retrieval

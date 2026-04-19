@@ -1,0 +1,286 @@
+---
+title: "Code Review Bot"
+description: "Build a code review AI agent using BoxLite"
+---
+
+This cookbook shows how to build a code review bot that uses BoxLite for secure, isolated code execution.
+
+## Overview
+
+A code review bot needs to:
+1. Clone and analyze repositories
+2. Run linters and static analysis tools
+3. Execute code to verify behavior
+4. Provide feedback without risking the host system
+
+BoxLite provides the isolation needed to safely run untrusted code from pull requests.
+
+## Architecture
+
+```
+User PR -> Webhook -> Code Review Bot -> BoxLite -> Analysis Results
+```
+
+## Implementation
+
+### Prerequisites
+
+```python
+# requirements.txt
+boxlite>=1.0.0
+httpx>=0.25.0
+python-gitlab>=4.0.0  # Or GitHub SDK
+```
+
+### Basic Code Review Bot
+
+```python
+import asyncio
+import tempfile
+import os
+from pathlib import Path
+from boxlite import SimpleBox
+
+class CodeReviewBot:
+    """AI-powered code review bot using BoxLite for safe execution."""
+
+    def __init__(self, image: str = "python:3.11-slim"):
+        self.image = image
+
+    async def review_pull_request(self, repo_url: str, pr_branch: str, base_branch: str = "main"):
+        """Review a pull request in an isolated environment."""
+        async with SimpleBox(
+            image=self.image,
+            network=True,
+            timeout=300  # 5 minutes max
+        ) as box:
+            # Clone repository
+            await self._clone_repo(box, repo_url, base_branch)
+
+            # Checkout PR branch
+            await self._checkout_branch(box, pr_branch)
+
+            # Run linters
+            lint_results = await self._run_linters(box)
+
+            # Run tests
+            test_results = await self._run_tests(box)
+
+            # Analyze code
+            analysis = await self._analyze_code(box)
+
+            return {
+                "lint": lint_results,
+                "tests": test_results,
+                "analysis": analysis
+            }
+
+    async def _clone_repo(self, box, repo_url: str, branch: str):
+        """Clone repository into box."""
+        # Use git to clone - box has network access
+        result = await box.exec(
+            "git", "clone", "--depth", "1", "--branch", branch, repo_url, "/workspace/repo"
+        )
+        if result.exit_code != 0:
+            raise RuntimeError(f"Failed to clone: {result.stderr}")
+
+    async def _checkout_branch(self, box, branch: str):
+        """Checkout PR branch."""
+        result = await box.exec(
+            "bash", "-c",
+            "cd /workspace/repo && git fetch origin " + branch + " && git checkout " + branch
+        )
+        if result.exit_code != 0:
+            raise RuntimeError(f"Failed to checkout branch: {result.stderr}")
+
+    async def _run_linters(self, box):
+        """Run multiple linters on the code."""
+        linters = ["pylint", "ruff", "mypy"]
+
+        results = {}
+        for linter in linters:
+            # Install linter if needed
+            await box.exec("pip", "install", "-q", linter, background=True)
+
+            result = await box.exec(
+                "bash", "-c",
+                f"cd /workspace/repo && {linter} . || true"
+            )
+            results[linter] = {
+                "exit_code": result.exit_code,
+                "output": result.stdout + result.stderr
+            }
+
+        return results
+
+    async def _run_tests(self, box):
+        """Run test suite."""
+        # Check for common test frameworks
+        result = await box.exec(
+            "bash", "-c",
+            "cd /workspace/repo && (pytest || python -m pytest || unittest discover) || true"
+        )
+        return {
+            "exit_code": result.exit_code,
+            "output": result.stdout + result.stderr
+        }
+
+    async def _analyze_code(self, box):
+        """Perform static analysis on code."""
+        # Run code complexity analysis
+        result = await box.exec(
+            "bash", "-c",
+            "cd /workspace/repo && "
+            "find . -name '*.py' -exec wc -l {} + | tail -1 && "
+            "find . -name '*.py' | xargs -I {} radon complexity {} -s"
+        )
+        return result.stdout
+
+
+# Usage example
+async def main():
+    bot = CodeReviewBot()
+
+    # Review a PR
+    results = await bot.review_pull_request(
+        repo_url="https://github.com/user/repo.git",
+        pr_branch="feature/new-feature",
+        base_branch="main"
+    )
+
+    # Generate review comment
+    print("=== Code Review Results ===")
+    print(f"Lint issues: {len(results['lint'])}")
+    print(f"Tests passed: {results['tests']['exit_code'] == 0}")
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+### Advanced: LLM-Powered Review
+
+```python
+import asyncio
+from boxlite import SimpleBox
+
+class AICodeReviewer:
+    """AI-enhanced code reviewer using BoxLite."""
+
+    def __init__(self, llm_client=None):
+        self.llm = llm_client
+
+    async def review_with_ai(self, diff: str, language: str = "python"):
+        """Review code changes with AI assistance."""
+        async with SimpleBox(
+            image="python:3.11-slim",
+            timeout=120
+        ) as box:
+            # Analyze the diff
+            prompt = f"""Review this {language} code change:
+
+{diff}
+
+Provide:
+1. Potential bugs
+2. Security issues
+3. Code quality suggestions
+4. Performance concerns
+"""
+
+            # Use local LLM or API
+            if self.llm:
+                review = await self.llm.complete(prompt)
+            else:
+                # Fallback to simple heuristics
+                review = await self._heuristic_review(box, diff, language)
+
+            return review
+
+    async def _heuristic_review(self, box, diff: str, language: str):
+        """Fallback heuristic review."""
+        result = await box.exec(
+            "python", "-c", f"""
+import ast
+import sys
+
+code = '''{diff}'''
+
+try:
+    ast.parse(code)
+    print("Syntax: OK")
+except SyntaxError as e:
+    print(f"Syntax Error: {{e}}")
+
+# Basic security checks
+if 'eval(' in code:
+    print("Warning: eval() detected - potential security issue")
+if 'exec(' in code:
+    print("Warning: exec() detected - potential security issue")
+if 'os.system(' in code:
+    print("Warning: os.system() detected - potential security issue")
+"""
+        )
+        return result.stdout
+```
+
+## Security Considerations
+
+1. **Timeout limits** - Always set reasonable timeouts
+2. **Resource limits** - Limit CPU and memory for boxes
+3. **Network access** - Enable only when needed for git operations
+4. **Cleanup** - Boxes are automatically cleaned up when context exits
+
+```python
+# Secure configuration for code review
+async with SimpleBox(
+    image="python:3.11-slim",
+    network=True,  # Need for git clone
+    timeout=300,   # 5 min max
+    cpu=1,         # Limit CPU
+    memory_mb=512, # Limit memory
+    auto_remove=True  # Auto cleanup
+) as box:
+    # Review code
+    pass
+```
+
+## Integrating with GitHub/GitLab
+
+```python
+# GitHub webhook handler
+from github import Github
+
+async def handle_webhook(payload, github_token):
+    """Handle GitHub PR webhook."""
+    g = Github(github_token)
+    repo = g.get_repo(payload["repository"]["full_name"])
+    pr = repo.get_pull(payload["pull_request"]["number"])
+
+    # Get diff
+    diff = pr.get_diff()
+
+    # Review
+    reviewer = AICodeReviewer()
+    review = await reviewer.review_with_ai(diff)
+
+    # Post comment
+    pr.create_review(
+        body=review,
+        event="COMMENT"
+    )
+```
+
+## Best Practices
+
+1. **Isolate each review** - Create new box for each PR
+2. **Set strict timeouts** - Prevent infinite loops
+3. **Limit resources** - Prevent resource exhaustion
+4. **Log everything** - Track all reviews for debugging
+5. **Graceful degradation** - Fall back to basic checks if AI fails
+
+## Related Documentation
+
+- [AI Agent Integration](/guides/ai-agent-integration) - General AI agent patterns
+- [Execution Reference](/reference/python/execution) - Full execution API
+- [Error Handling](/tutorials/error-handling) - Exception handling

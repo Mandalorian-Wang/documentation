@@ -1,0 +1,516 @@
+---
+title: "Private Connectivity"
+description: "Configure private network mode for isolated, internal-only communication."
+---
+
+Private connectivity enables BoxLite sandboxes to operate within isolated private networks, enabling sandbox-to-sandbox communication and access to internal infrastructure without exposure to the public internet. This is essential for enterprise environments requiring network isolation, microservices architectures, and secure internal service communication.
+
+## Understanding Private Connectivity
+
+Private connectivity in BoxLite allows sandboxes to be placed in custom virtual networks with user-specified IP addresses. Unlike the default NAT mode where sandboxes share the host's network connection and are not directly reachable, private mode provides direct network access to internal networks and other sandboxes.
+
+### When to Use Private Connectivity
+
+Private connectivity is ideal for:
+
+- **Microservices communication**: Enable multiple sandboxes to communicate with each other
+- **Internal API access**: Connect to private APIs and services not exposed to the internet
+- **Database connections**: Access internal databases without exposing them publicly
+- **Development environments**: Simulate production network topologies locally
+- **Security compliance**: Meet requirements for air-gapped or private network operation
+- **Multi-agent workflows**: Enable AI agents to share data through network communication
+
+## Configuration Options
+
+### Basic Private Network Setup
+
+Create a sandbox in a private network with a static IP:
+
+```python
+from boxlite import SimpleBox
+
+# Create sandbox in private network
+async with SimpleBox(
+    image="python:3.11-slim",
+    network=True,
+    network_mode="private",
+    ip="192.168.100.10"
+) as box:
+    # Sandbox has private network access
+    result = await box.exec("curl", "http://192.168.100.20:8080")
+```
+
+### Custom Subnet Configuration
+
+Configure private networks with specific subnet ranges:
+
+```python
+from boxlite import SimpleBox
+
+# Configure custom private network
+box = await runtime.create_box(
+    image="python:3.11-slim",
+    network=True,
+    network_mode="private",
+    ip="10.0.1.100",
+    subnet="10.0.1.0/24",
+    gateway="10.0.1.1"
+)
+```
+
+### Static IP Assignment
+
+For deterministic network addressing:
+
+```python
+from boxlite import SimpleBox
+
+# Assign static IPs for predictable addressing
+boxes = []
+for i in range(3):
+    box = SimpleBox(
+        image="my-service:latest",
+        network=True,
+        network_mode="private",
+        ip=f"192.168.100.{10 + i}"
+    )
+    boxes.append(box)
+
+# boxes[0] = 192.168.100.10
+# boxes[1] = 192.168.100.11
+# boxes[2] = 192.168.100.12
+```
+
+## Sandbox-to-Sandbox Communication
+
+### Direct Communication
+
+Sandboxes in the same private network can communicate directly:
+
+```python
+from boxlite import SimpleBox
+import asyncio
+
+async def main():
+    # Create multiple sandboxes in same private network
+    boxes = []
+
+    for i in range(3):
+        box = SimpleBox(
+            image="python:3.11-slim",
+            network=True,
+            network_mode="private",
+            ip=f"192.168.100.{10 + i}"
+        )
+        boxes.append(box)
+
+    # All boxes can communicate with each other
+    # 192.168.100.10 <-> 192.168.100.11 <-> 192.168.100.12
+
+    # Example: Box 1 calls Box 2's API
+    result = await boxes[0].exec(
+        "curl", "http://192.168.100.11:8000/api/health"
+    )
+
+asyncio.run(main())
+```
+
+### Service Discovery Pattern
+
+Implement service discovery for dynamic sandbox communication:
+
+```python
+from boxlite import SimpleBox
+import asyncio
+
+class ServiceRegistry:
+    """Simple service registry for sandbox communication"""
+
+    def __init__(self):
+        self.services = {}
+
+    def register(self, name: str, ip: str, port: int):
+        self.services[name] = {"ip": ip, "port": port}
+
+    def get_endpoint(self, name: str) -> str:
+        service = self.services.get(name)
+        if service:
+            return f"http://{service['ip']}:{service['port']}"
+        return None
+
+async def main():
+    registry = ServiceRegistry()
+
+    # Create API box
+    async with SimpleBox(
+        image="my-api:latest",
+        network=True,
+        network_mode="private",
+        ip="192.168.100.10",
+        ports=[(8000, 8000, "tcp")]
+    ) as api_box:
+        registry.register("api", "192.168.100.10", 8000)
+
+        # Create client box
+        async with SimpleBox(
+            image="python:3.11-slim",
+            network=True,
+            network_mode="private",
+            ip="192.168.100.20"
+        ) as client_box:
+            # Client can discover API via registry
+            endpoint = registry.get_endpoint("api")
+            result = await client_box.exec("curl", f"{endpoint}/health")
+            print(result.stdout)
+
+asyncio.run(main())
+```
+
+### Load Balancing Across Sandboxes
+
+Distribute requests across multiple sandbox instances:
+
+```python
+from boxlite import SimpleBox
+import random
+import httpx
+
+class SimpleLoadBalancer:
+    """Round-robin load balancer for sandbox backends"""
+
+    def __init__(self, backends: list):
+        self.backends = backends
+        self.current = 0
+
+    def get_backend(self):
+        backend = self.backends[self.current]
+        self.current = (self.current + 1) % len(self.backends)
+        return backend
+
+async def main():
+    # Create multiple backend sandboxes
+    backends = []
+    for i in range(3):
+        box = SimpleBox(
+            image="my-backend:latest",
+            network=True,
+            network_mode="private",
+            ip=f"192.168.100.{10 + i}",
+            ports=[(8000, 8000, "tcp")]
+        )
+        backends.append(box)
+
+    # Load balance requests
+    lb = SimpleLoadBalancer(backends)
+
+    for _ in range(10):
+        backend = lb.get_backend()
+        async with httpx.AsyncClient() as client:
+            response = await client.get("http://localhost:8000/api/data")
+            print(f"Response: {response.status_code}")
+```
+
+## Private Network with DNS
+
+### Custom DNS Servers
+
+Configure private DNS servers for internal domain resolution:
+
+```python
+from boxlite import SimpleBox
+
+# Use internal DNS servers
+async with SimpleBox(
+    image="python:3.11-slim",
+    network=True,
+    network_mode="private",
+    ip="192.168.100.10",
+    dns=["192.168.100.1", "192.168.100.2"]  # Internal DNS
+) as box:
+    # Can resolve internal domains
+    result = await box.exec("nslookup", "api.internal.example.com")
+```
+
+### DNS Resolution for Services
+
+Use DNS for service discovery within private network:
+
+```python
+from boxlite import SimpleBox
+
+# DNS-based service discovery
+async with SimpleBox(
+    image="my-service:latest",
+    network=True,
+    network_mode="private",
+    ip="192.168.100.10",
+    dns=["192.168.100.1"],
+    dns_search=["internal.local"]
+) as box:
+    # Can use hostname instead of IP
+    result = await box.exec("curl", "http://api.internal.local:8080")
+```
+
+## Technical Implementation
+
+### Network Architecture
+
+Private connectivity uses a dedicated virtual network interface:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                       Host Machine                              │
+│                                                                 │
+│   ┌──────────────────────────────────────────────────────────┐  │
+│   │              Private Network (192.168.100.0/24)        │  │
+│   │                                                          │  │
+│   │   ┌─────────────┐    ┌─────────────┐    ┌─────────┐  │  │
+│   │   │  BoxLite VM │    │  BoxLite VM │    │  BoxLite│  │  │
+│   │   │  192.168.   │    │  192.168.   │    │  VM     │  │  │
+│   │   │  100.10     │◄──►│  100.11     │◄──►│  100.12 │  │  │
+│   │   │             │    │             │    │         │  │  │
+│   │   │  eth0       │    │  eth0       │    │  eth0   │  │  │
+│   │   └─────────────┘    └─────────────┘    └─────────┘  │  │
+│   │                                                          │  │
+│   │   ┌─────────────────────────────────────────────────┐  │  │
+│   │   │              gvproxy / vsock                      │  │  │
+│   │   │         Private network bridge                   │  │  │
+│   │   └─────────────────────────────────────────────────┘  │  │
+│   └──────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Network Modes Comparison
+
+| Mode | Outbound Internet | Inbound Access | Sandbox-to-Sandbox | Use Case |
+|------|-------------------|----------------|---------------------|----------|
+| **NAT (Default)** | Yes | No | No | General workloads |
+| **Private** | Optional | Via port-forward | Yes | Internal services |
+| **Host** | Yes | Yes | Yes | Development/debug |
+| **None** | No | No | No | Isolated execution |
+
+## Use Cases
+
+### Internal API Backend
+
+Expose internal APIs without internet exposure:
+
+```python
+from boxlite import SimpleBox
+
+# Internal API backend
+async with SimpleBox(
+    image="my-api:latest",
+    network=True,
+    network_mode="private",
+    ip="10.0.1.10",
+    ports=[(8000, 8000, "tcp")]
+) as api_box:
+    # API only accessible from other sandboxes in private network
+    pass
+
+# Client sandbox
+async with SimpleBox(
+    image="my-client:latest",
+    network=True,
+    network_mode="private",
+    ip="10.0.1.20"
+) as client_box:
+    # Can reach internal API via private network
+    result = await client_box.exec("curl", "http://10.0.1.10:8000/api/data")
+```
+
+### Database Access Pattern
+
+Connect to internal databases securely:
+
+```python
+from boxlite import SimpleBox
+
+# Database box
+async with SimpleBox(
+    image="postgres:15",
+    network=True,
+    network_mode="private",
+    ip="10.0.2.10",
+    ports=[(5432, 5432, "tcp")]
+) as db_box:
+    # PostgreSQL only accessible from private network
+    # Default credentials: postgres/postgres
+    pass
+
+# Application box
+async with SimpleBox(
+    image="my-app:latest",
+    network=True,
+    network_mode="private",
+    ip="10.0.2.20"
+) as app_box:
+    # Connect to database via private IP
+    await app_box.exec(
+        "psql", "-h", "10.0.2.10", "-U", "postgres", "-c", "SELECT 1"
+    )
+```
+
+### Multi-Environment Simulation
+
+Simulate different network environments:
+
+```python
+from boxlite import SimpleBox
+
+class NetworkEnvironment:
+    """Simulate different network environments"""
+
+    def __init__(self, name: str, subnet: str):
+        self.name = name
+        self.subnet = subnet
+        self.boxes = []
+
+    def create_box(self, image: str, service_name: str):
+        """Add a box to the environment"""
+        ip_base = self.subnet.split("/")[0].rsplit(".", 1)[0]
+        ip = f"{ip_base}.{100 + len(self.boxes)}"
+
+        box = SimpleBox(
+            image=image,
+            network=True,
+            network_mode="private",
+            ip=ip
+        )
+        self.boxes.append({"name": service_name, "box": box, "ip": ip})
+        return box
+
+# Create development environment
+dev_env = NetworkEnvironment("development", "192.168.50.0/24")
+web_box = dev_env.create_box("nginx:latest", "web")
+api_box = dev_env.create_box("my-api:latest", "api")
+
+# Create staging environment
+staging_env = NetworkEnvironment("staging", "192.168.60.0/24")
+web_box_staging = staging_env.create_box("nginx:latest", "web")
+```
+
+## Best Practices
+
+### Security Recommendations
+
+1. **Use private mode for internal services**: Avoid exposing services to the internet when not needed
+2. **Implement network segmentation**: Separate different service tiers into different subnets
+3. **Use static IPs**: Maintain predictable addressing for service communication
+4. **Combine with egress control**: Restrict outbound traffic from private sandboxes
+5. **Monitor inter-sandbox traffic**: Track communication patterns for anomalies
+
+### Network Design
+
+1. **Plan IP allocation**: Define IP ranges before creating sandboxes
+2. **Use consistent subnet schemes**: Align with organizational network standards
+3. **Reserve IPs for infrastructure**: Allocate IP ranges for DNS, gateways, etc.
+4. **Document network topology**: Keep records of sandbox network assignments
+
+### Performance Optimization
+
+1. **Keep sandboxes in same subnet**: Minimize routing overhead
+2. **Use connection pooling**: Reduce connection setup latency
+3. **Implement retry logic**: Handle transient network issues gracefully
+
+## Troubleshooting
+
+### Sandbox Not Reachable
+
+**Symptom:** Cannot connect to sandbox via private IP.
+
+**Solution:**
+
+```python
+# Verify sandbox is in private mode
+box_info = await box.info()
+print(box_info.network.mode)  # Should be "private"
+
+# Check IP configuration
+result = await box.exec("ip", "addr", "show", "eth0")
+print(result.stdout)
+
+# Verify connectivity
+result = await box.exec("ping", "-c", "3", "192.168.100.1")
+```
+
+### DNS Resolution Failing
+
+**Symptom:** Cannot resolve internal domain names.
+
+**Solution:**
+
+```python
+# Check DNS configuration
+result = await box.exec("cat", "/etc/resolv.conf")
+print(result.stdout)
+
+# Test DNS manually
+result = await box.exec("nslookup", "api.internal.local")
+
+# Verify DNS server is reachable
+result = await box.exec("ping", "-c", "1", "192.168.100.1")
+```
+
+### Cross-Subnet Communication
+
+**Symptom:** Cannot communicate between sandboxes in different subnets.
+
+**Solution:**
+
+```python
+# Ensure both sandboxes have routing configured
+result = await box.exec("ip", "route", "show")
+print(result.stdout)
+
+# Check if subnets are properly configured
+# Verify gateway is set correctly
+result = await box.exec("cat", "/etc/netconfig")
+```
+
+## Integration Examples
+
+### Kubernetes-like Service Networking
+
+```python
+from boxlite import SimpleBox
+
+class K8sService:
+    """Simulate Kubernetes service abstraction"""
+
+    def __init__(self, name: str, selector: dict):
+        self.name = name
+        self.selector = selector
+        self.pods = []
+
+    def add_pod(self, box: SimpleBox, ip: str):
+        self.pods.append({"box": box, "ip": ip})
+
+    def get_endpoints(self):
+        return [pod["ip"] for pod in self.pods]
+
+# Usage
+api_service = K8sService("api-svc", {"app": "api"})
+
+# Add replicas
+for i in range(3):
+    box = SimpleBox(
+        image="my-api:latest",
+        network=True,
+        network_mode="private",
+        ip=f"10.0.1.{10 + i}"
+    )
+    api_service.add_pod(box, f"10.0.1.{10 + i}")
+
+# Service exposes all pod IPs
+print(f"API service endpoints: {api_service.get_endpoints()}")
+```
+
+## See Also
+
+- [Network Overview](/networking/overview) - Network architecture and topology
+- [Port Forwarding](/networking/port-forwarding) - Exposing services from sandbox
+- [Egress Control](/networking/egress-control) - Outbound traffic management
+- [Network Troubleshooting](/networking/troubleshooting) - Debugging network issues
+- [Architecture: Networking & Storage](/architecture/networking-storage) - Detailed networking architecture

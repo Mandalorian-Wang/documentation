@@ -1,0 +1,541 @@
+---
+title: "Interactive Terminal (PTY)"
+sidebarTitle: "Interactive PTY"
+description: "Use PTY sessions for interactive terminal access in BoxLite, including shell sessions, interactive programs, and best practices."
+---
+
+This guide covers using PTY (pseudo-terminal) sessions for interactive terminal access in BoxLite.
+
+## Overview
+
+PTY (Pseudo-Terminal) sessions enable interactive terminal access within Boxes, supporting:
+- Interactive shell sessions (bash, sh, zsh)
+- Interactive programs (vim, nano, less)
+- Command-line tools that require terminal input/output
+- Full terminal emulation with colors and cursor control
+
+### When to Use PTY
+
+| Use Case | Description |
+|----------|-------------|
+| Interactive Shells | Bash, zsh, fish shells |
+| Text Editors | vim, nano, emacs |
+| File Managers | mc, ranger, nnn |
+| Interactive CLI | pip, npm, git (interactive mode) |
+| Debuggers | pdb, ipdb, gdb |
+
+### PTY vs Non-PTY
+
+| Feature | PTY | Non-PTY |
+|---------|-----|---------|
+| Interactive Input | Yes | Limited |
+| Terminal Colors | Yes | No |
+| Cursor Control | Yes | No |
+| Signal Handling | Yes (SIGINT, etc) | Partial |
+| Performance | Slightly slower | Faster |
+
+## Prerequisites
+
+- BoxLite Python SDK installed
+- Understanding of async programming
+- Basic terminal concepts
+
+## Basic PTY Usage
+
+### Enabling PTY Mode
+
+```python
+import asyncio
+import boxlite
+
+async def basic_pty():
+    """Use PTY for interactive command execution."""
+    async with boxlite.SimpleBox(
+        image="python:slim"
+    ) as box:
+        # Execute with PTY enabled
+        # Note: tty=True enables pseudo-terminal
+        result = await box.exec(
+            "bash",
+            "-c",
+            "echo 'Hello from PTY' && ls -la",
+            tty=True
+        )
+
+        print(f"Output: {result.stdout}")
+        print(f"Exit code: {result.exit_code}")
+
+asyncio.run(basic_pty())
+```
+
+### Interactive Shell Session
+
+```python
+import asyncio
+import boxlite
+
+async def interactive_shell():
+    """Start an interactive shell session."""
+    async with boxlite.SimpleBox(
+        image="python:slim"
+    ) as box:
+        # Start interactive bash session
+        result = await box.exec(
+            "bash",
+            "-i",
+            tty=True  # Interactive mode
+        )
+
+        print(f"Shell output:\n{result.stdout}")
+
+asyncio.run(interactive_shell())
+```
+
+### Running Interactive Programs
+
+```python
+import asyncio
+import boxlite
+
+async def run_interactive_program():
+    """Run programs that require interactive input."""
+    async with boxlite.SimpleBox(
+        image="python:slim"
+    ) as box:
+        # Python interactive mode
+        result = await box.exec(
+            "python",
+            "-i",
+            tty=True
+        )
+
+        # Note: Interactive programs need proper PTY setup
+        print(f"Result: {result.stdout}")
+
+asyncio.run(run_interactive_program())
+```
+
+## PTY Configuration
+
+### Terminal Size Configuration
+
+```python
+import asyncio
+import boxlite
+
+async def configured_pty():
+    """Configure PTY with specific terminal size."""
+    async with boxlite.SimpleBox(
+        image="python:slim"
+    ) as box:
+        # Set terminal size via environment
+        result = await box.exec(
+            "bash",
+            "-c",
+            "export COLUMNS=120 && export LINES=40 && echo $COLUMNS x $LINES",
+            tty=True
+        )
+
+        print(f"Terminal size: {result.stdout}")
+
+asyncio.run(configured_pty())
+```
+
+### Shell Environment Setup
+
+```python
+import asyncio
+import boxlite
+
+async def shell_with_env():
+    """Set up shell with custom environment."""
+    async with boxlite.SimpleBox(
+        image="python:slim"
+    ) as box:
+        # Set environment variables for PTY
+        result = await box.exec(
+            "bash",
+            "-c",
+            """
+            export TERM=xterm-256color
+            export COLORTERM=truecolor
+            echo "TERM: $TERM"
+            echo "Colors enabled"
+            """,
+            tty=True
+        )
+
+        print(result.stdout)
+
+asyncio.run(shell_with_env())
+```
+
+## Input/Output Handling
+
+### Sending Input to PTY
+
+```python
+import asyncio
+import boxlite
+
+async def pty_with_input():
+    """Send input to PTY-enabled command."""
+    async with boxlite.SimpleBox(
+        image="python:slim"
+    ) as box:
+        # Create a simple interactive script
+        script = '''
+read -p "Enter your name: " name
+echo "Hello, $name!"
+'''
+
+        # Write script to file
+        await box.exec("bash", "-c", f"cat > /tmp/script.sh << 'EOF'\n{script}\nEOF")
+
+        # Execute with input
+        result = await box.exec(
+            "bash",
+            "/tmp/script.sh",
+            tty=True
+        )
+
+        print(f"Output:\n{result.stdout}")
+
+asyncio.run(pty_with_input())
+```
+
+### Capturing PTY Output
+
+```python
+import asyncio
+import boxlite
+
+async def capture_pty_output():
+    """Capture full PTY output including escape sequences."""
+    async with boxlite.SimpleBox(
+        image="python:slim"
+    ) as box:
+        # Run command that produces colored output
+        result = await box.exec(
+            "bash",
+            "-c",
+            "printf '\\033[31mRed\\033[0m \\033[32mGreen\\033[0m'",
+            tty=True
+        )
+
+        print(f"Raw output: {repr(result.stdout)}")
+        print(f"Exit code: {result.exit_code}")
+
+asyncio.run(capture_pty_output())
+```
+
+### Streaming PTY Output
+
+```python
+import asyncio
+import boxlite
+
+async def stream_pty_output():
+    """Stream output from PTY command."""
+    async with boxlite.SimpleBox(
+        image="python:slim"
+    ) as box:
+        # Long-running command with output
+        result = await box.exec(
+            "bash",
+            "-c",
+            "for i in $(seq 1 10); do echo \"Line $i\"; sleep 0.5; done",
+            tty=True
+        )
+
+        # Process output line by line
+        for line in result.stdout.splitlines():
+            print(f"Received: {line}")
+
+asyncio.run(stream_pty_output())
+```
+
+## Common Patterns
+
+### Interactive npm/yarn Commands
+
+```python
+import asyncio
+import boxlite
+
+async def interactive_npm():
+    """Run npm commands that require terminal interaction."""
+    async with boxlite.SimpleBox(
+        image="node:18-slim"
+    ) as box:
+        # Initialize a new npm project (non-interactive mode preferred)
+        result = await box.exec(
+            "npm",
+            "init",
+            "-y",  # Non-interactive
+            tty=True
+        )
+
+        print(f"npm init output:\n{result.stdout}")
+
+asyncio.run(interactive_npm())
+```
+
+### Git Interactive Operations
+
+```python
+import asyncio
+import boxlite
+
+async def git_operations():
+    """Use git with PTY for better output formatting."""
+    async with boxlite.SimpleBox(
+        image="python:slim"
+    ) as box:
+        # Configure git
+        await box.exec("git", "config", "--global", "color.ui", "always")
+
+        # Clone and show log with colors
+        await box.exec("git", "clone", "--depth", "1", "https://github.com/torvalds/linux.git", "/workspace/linux")
+
+        result = await box.exec(
+            "git",
+            "-C", "/workspace/linux",
+            "log",
+            "--oneline",
+            "--graph",
+            "--decorate",
+            tty=True
+        )
+
+        print(f"Git log:\n{result.stdout}")
+
+asyncio.run(git_operations())
+```
+
+### Running Tests with PTY
+
+```python
+import asyncio
+import boxlite
+
+async def run_tests_with_pty():
+    """Run test suites with PTY for better output."""
+    async with boxlite.SimpleBox(
+        image="python:slim"
+    ) as box:
+        # Install pytest
+        await box.exec("pip", "install", "-q", "pytest")
+
+        # Create a test file
+        await box.exec("bash", "-c", """
+cat > /workspace/test_example.py << 'EOF'
+def test_pass():
+    assert True
+
+def test_fail():
+    assert False, "Expected failure"
+EOF
+""")
+
+        # Run pytest with verbose output
+        result = await box.exec(
+            "pytest",
+            "-v",
+            "/workspace/test_example.py",
+            tty=True
+        )
+
+        print(f"Test output:\n{result.stdout}")
+
+asyncio.run(run_tests_with_pty())
+```
+
+## Signal Handling
+
+### Sending Signals to PTY Process
+
+```python
+import asyncio
+import boxlite
+
+async def signal_handling():
+    """Handle signals in PTY sessions."""
+    async with boxlite.SimpleBox(
+        image="python:slim"
+    ) as box:
+        # Create a script that handles signals
+        script = '''
+trap "echo Received SIGINT; exit 1" INT
+trap "echo Received SIGTERM; exit 1" TERM
+
+echo "Waiting... (PID: $$)"
+while true; do
+    sleep 1
+done
+'''
+
+        await box.exec("bash", "-c", f"cat > /tmp/signal_test.sh << 'EOF'\n{script}\nEOF")
+        await box.exec("chmod", "+x", "/tmp/signal_test.sh")
+
+        # Run in background with timeout
+        result = await box.exec(
+            "timeout",
+            "5",
+            "bash",
+            "/tmp/signal_test.sh",
+            tty=True
+        )
+
+        print(f"Result:\n{result.stdout}")
+
+asyncio.run(signal_handling())
+```
+
+### Interrupting Long-Running Commands
+
+```python
+import asyncio
+import boxlite
+
+async def interruptible_command():
+    """Run command that can be interrupted via PTY."""
+    async with boxlite.SimpleBox(
+        image="python:slim"
+    ) as box:
+        # Create interruptible script
+        await box.exec("bash", "-c", """
+cat > /tmp/sleep_loop.sh << 'EOF'
+#!/bin/bash
+for i in $(seq 1 100); do
+    echo "Iteration $i"
+    sleep 1
+done
+EOF
+chmod +x /tmp/sleep_loop.sh
+""")
+
+        # Run with timeout
+        result = await box.exec(
+            "timeout",
+            "3",
+            "bash",
+            "/tmp/sleep_loop.sh",
+            tty=True
+        )
+
+        print(f"Output (was interrupted):\n{result.stdout}")
+
+asyncio.run(interruptible_command())
+```
+
+## Troubleshooting
+
+### PTY Not Working
+
+**Symptom**: Interactive commands don't work as expected
+
+**Cause**: PTY not enabled or not supported
+
+**Solution**:
+```python
+# Enable PTY explicitly
+result = await box.exec("bash", "-c", "echo hello", tty=True)
+
+# Check if tty is available
+result = await box.exec("test", "-t", "0")
+print(f"PTY available: {result.exit_code == 0}")
+```
+
+### Output Missing or Truncated
+
+**Symptom**: Output is incomplete
+
+**Cause**: Buffer issues or timing problems
+
+**Solution**:
+```python
+# Wait for full output
+await asyncio.sleep(1)
+
+# Or use larger timeout
+result = await box.exec("bash", "-c", "long_command", tty=True, timeout=30)
+```
+
+### Interactive Input Not Working
+
+**Symptom**: Cannot send input to interactive program
+
+**Cause**: Input buffering or PTY mode issues
+
+**Solution**:
+```python
+# Use expect-like patterns
+script = '''
+spawn python
+expect ">>>"
+send "print('hello')\r"
+expect ">>>"
+send "exit()\r"
+'''
+
+# Or pipe input
+result = await box.exec(
+    "bash",
+    "-c",
+    "echo 'input' | python -i",
+    tty=True
+)
+```
+
+## Best Practices
+
+1. **Use PTY Only When Needed**: Non-PTY is faster for batch operations
+   ```python
+   # Batch mode - no PTY needed
+   result = await box.exec("ls", "-la")
+
+   # Interactive mode - use PTY
+   result = await box.exec("bash", "-i", tty=True)
+   ```
+
+2. **Set Terminal Size**: Configure appropriate COLUMNS and LINES
+   ```python
+   await box.exec("bash", "-c", "export COLUMNS=80 LINES=24; command", tty=True)
+   ```
+
+3. **Handle Timeouts**: Interactive commands may need longer timeouts
+   ```python
+   result = await box.exec("bash", "/tmp/slow_script.sh", tty=True, timeout=120)
+   ```
+
+4. **Clean Up**: Close PTY sessions properly
+   ```python
+   async with boxlite.SimpleBox(image="python:slim") as box:
+       result = await box.exec("bash", "-i", tty=True)
+   # PTY automatically cleaned up
+   ```
+
+## Security Notes
+
+1. **Limit Interactive Sessions**: Use timeouts to prevent runaway processes
+2. **Validate Input**: Sanitize any user input sent to PTY
+3. **Monitor Resource Usage**: Interactive shells can consume more resources
+4. **Restrict Shell Access**: Use limited shells (nologin, false) when appropriate
+
+## Related Topics
+
+<CardGroup cols={2}>
+  <Card title="Commands Overview" icon="terminal" href="/commands/overview">
+    Command execution overview.
+  </Card>
+  <Card title="Run Command" icon="play" href="/commands/run-command">
+    Basic command execution.
+  </Card>
+  <Card title="Stream Output" icon="stream" href="/commands/stream-output">
+    Streaming command output.
+  </Card>
+  <Card title="Exit Codes" icon="check" href="/commands/exit-codes-and-retries">
+    Exit code handling.
+  </Card>
+</CardGroup>

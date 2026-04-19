@@ -1,0 +1,237 @@
+---
+title: "Debug Template Build Failures"
+sidebarTitle: "Debug Build Failures"
+description: "Troubleshoot common issues when creating and building BoxLite templates."
+---
+
+Template creation can fail for various reasons. This guide covers the most common issues and their solutions.
+
+## Overview
+
+When creating templates from running Boxes or building from Dockerfiles, you may encounter failures. These typically fall into a few categories:
+
+- **Image pull failures**: Network or authentication issues
+- **Dependency installation failures**: Timeout or missing packages
+- **Storage failures**: Disk space or permission issues
+- **Configuration failures**: Invalid image references or settings
+
+## Common Issues and Solutions
+
+### Issue 1: Image Pull Failure
+
+**Symptoms:**
+- Template creation fails with "Failed to pull image" error
+- Network timeout errors
+- Authentication required errors
+
+**Troubleshooting Steps:**
+
+```bash
+# 1. Check network connectivity
+curl -I https://registry.hub.docker.com/v2/
+
+# 2. Verify image name format
+# Correct: docker.io/library/python:3.12-slim
+# Or: python:3.12-slim (defaults to Docker Hub)
+
+# 3. Test authentication if using private registry
+docker login your-registry.example.com
+```
+
+**Solutions:**
+
+```python
+# Use a custom registry
+async with boxlite.SimpleBox(
+    image="python:3.12-slim",
+    registry="mirror.gcr.io"  # Use a mirror
+) as box:
+    await box.exec("pip install numpy")
+    await box.create_template(name="my-template:v1")
+```
+
+### Issue 2: Dependency Installation Timeout
+
+**Symptoms:**
+- `pip install` times out
+- `npm install` hangs
+- Package download failures
+
+**Solutions:**
+
+```python
+# Use timeout parameter
+result = await box.exec(
+    "pip", "install", "numpy",
+    timeout=300  # 5 minutes
+)
+if result.exit_code != 0:
+    print(f"Install failed: {result.stderr}")
+
+# Alternative: Use mirror repository in China
+await box.exec("pip install numpy -i https://pypi.tuna.tsinghua.edu.cn/simple")
+```
+
+### Issue 3: Disk Space Insufficient
+
+**Symptoms:**
+- "No space left on device" error
+- Template creation fails at final stages
+- Copy operations fail
+
+**Diagnosis:**
+
+```python
+import shutil
+
+# Check available disk space
+total, used, free = shutil.disk_usage("/")
+print(f"Free: {free // (2**30)} GB")
+```
+
+**Solutions:**
+
+```python
+# Clean up unnecessary files in the Box
+await box.exec("apt-get clean")
+await box.exec("rm -rf /var/lib/apt/lists/*")
+await box.exec("pip cache purge")
+
+# Or use a smaller base image
+async with boxlite.SimpleBox(image="python:3.12-alpine") as box:
+    # ...
+```
+
+### Issue 4: Permission Denied
+
+**Symptoms:**
+- "Permission denied" when creating files
+- Template capture fails with permission errors
+- User/owner mismatch
+
+**Solutions:**
+
+```python
+# Run as root if needed
+result = await box.exec(
+    "chmod", "-R", "755", "/workspace",
+    user="root"  # Run as root
+)
+
+# Or fix ownership
+await box.exec("chown", "-R", "root:root", "/workspace")
+```
+
+### Issue 5: Invalid Base Image
+
+**Symptoms:**
+- Image not found errors
+- Unsupported image format
+- Architecture mismatch
+
+**Solutions:**
+
+```python
+# Verify image is valid OCI format
+import subprocess
+result = subprocess.run([
+    "docker", "manifest", "inspect", "python:3.12-slim"
+], capture_output=True)
+
+if result.returncode != 0:
+    print("Image not found or inaccessible")
+
+# Use a verified base image
+async with boxlite.SimpleBox(image="python:3.12-slim") as box:
+    # Use official images from Docker Hub
+    pass
+```
+
+### Issue 6: Template Name Conflicts
+
+**Symptoms:**
+- "Template already exists" error
+- Version conflicts
+
+**Solutions:**
+
+```python
+# Use a different name
+await box.create_template(name="my-template:v2")
+
+# Or force overwrite (if supported)
+await box.create_template(
+    name="my-template:v1",
+    overwrite=True
+)
+```
+
+## Debugging Techniques
+
+### Enable Verbose Logging
+
+```python
+import logging
+
+# Enable debug logging
+logging.basicConfig(level=logging.DEBUG)
+
+# Now create template
+async with boxlite.SimpleBox(image="python:3.12-slim") as box:
+    await box.create_template(name="my-template:v1")
+```
+
+### Inspect Box State Before Capture
+
+```python
+async with boxlite.SimpleBox(image="python:3.12-slim") as box:
+    # Inspect what's in the Box before capturing
+    result = await box.exec("df", "-h")
+    print(result.stdout)
+
+    result = await box.exec("pip", "list")
+    print(result.stdout)
+
+    # Verify key files exist
+    result = await box.exec("ls", "-la", "/workspace")
+    print(result.stdout)
+
+    # Then create template
+    await box.create_template(name="debugged-template:v1")
+```
+
+### Test Template Immediately
+
+```python
+# Create template
+async with boxlite.SimpleBox(image="python:3.12-slim") as box:
+    await box.exec("pip install numpy")
+    await box.create_template(name="test-template:v1")
+
+# Verify by creating a new Box from template
+async with boxlite.SimpleBox(template="test-template:v1") as new_box:
+    result = await new_box.exec("python", "-c", "import numpy; print(numpy.__version__)")
+    print(result.stdout)
+```
+
+## Error Reference
+
+| Error Code | Message | Solution |
+|------------|---------|----------|
+| E_IMAGE_NOT_FOUND | "Image not found" | Check image name and registry |
+| E_NETWORK_TIMEOUT | "Connection timeout" | Check network, try mirror |
+| E_DISK_FULL | "No space left" | Clean up space |
+| E_PERMISSION_DENIED | "Permission denied" | Run as appropriate user |
+| E_TEMPLATE_EXISTS | "Template exists" | Use different name or overwrite |
+| E_INVALID_FORMAT | "Invalid image format" | Use OCI-compatible image |
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Create Templates" icon="plus" href="/templates/create-template">
+    Learn how to create custom templates.
+  </Card>
+  <Card title="Filesystem Operations" icon="folder" href="/filesystem/overview">
+    Manage files in your Boxes.
+  </Card>
+</CardGroup>

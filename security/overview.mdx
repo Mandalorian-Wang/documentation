@@ -1,0 +1,322 @@
+---
+title: "Security Overview"
+description: "Security architecture, isolation mechanisms, and defense-in-depth model for BoxLite."
+---
+
+This document provides an overview of BoxLite's security architecture, including the defense-in-depth model, isolation mechanisms, and security features.
+
+## Overview
+
+BoxLite implements a multi-layered security architecture designed to provide strong isolation for untrusted workloads. The security model combines hardware virtualization with OS-level sandboxing to create defense-in-depth.
+
+## Security Architecture
+
+### Layer Overview
+
+BoxLite's security consists of three primary layers:
+
+| Layer | Component | Purpose |
+|-------|-----------|---------|
+| **Hardware** | KVM (Linux) / Hypervisor.framework (macOS) | VM-level isolation |
+| **OS** | Jailer (seccomp, cgroups, namespaces) | Process-level sandboxing |
+| **Application** | SecurityOptions | Runtime configuration |
+
+### Architecture Diagram
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                              HOST OS                                │
+│  ┌───────────────────────────────────────────────────────────────┐  │
+│  │                      JAILER BOUNDARY                          │  │
+│  │  ┌─────────────────────────────────────────────────────────┐  │  │
+│  │  │                  SHIM PROCESS (sandboxed)             │  │  │
+│  │  │  ┌───────────────────────────────────────────────────┐  │  │  │
+│  │  │  │              VM (libkrun/KVM)                     │  │  │  │
+│  │  │  │  ┌─────────────────────────────────────────────┐  │  │  │  │
+│  │  │  │  │            GUEST (untrusted)                │  │  │  │  │
+│  │  │  │  └─────────────────────────────────────────────┘  │  │  │  │
+│  │  │  └───────────────────────────────────────────────────┘  │  │  │
+│  │  └─────────────────────────────────────────────────────────┘  │  │
+│  └───────────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+## Isolation Mechanisms
+
+### Hardware Virtualization
+
+<Tabs>
+  <Tab title="Linux (KVM)">
+    - **KVM (Kernel-based Virtual Machine)**: Full hardware virtualization
+    - **VirtIO**: Paravirtualized drivers for efficiency
+    - **vhost-net**: Kernel-bypass networking
+
+    Benefits:
+    - Near-native performance
+    - Complete hardware isolation
+    - No shared kernel with host
+  </Tab>
+  <Tab title="macOS (Hypervisor.framework)">
+    - **Apple Hypervisor**: Apple's virtualization framework
+    - **Apple Silicon**: Native support via NSExceptionDomain
+    - **Intel**: VT-x support via Hypervisor.framework
+
+    Benefits:
+    - No third-party kernel extensions
+    - Secure nested virtualization
+    - Apple Silicon optimized
+  </Tab>
+</Tabs>
+
+### OS-Level Isolation (Jailer)
+
+The Jailer provides OS-level sandboxing around the VM:
+
+#### Linux Isolation
+
+| Mechanism | Description |
+|-----------|-------------|
+| **Namespaces** | Isolates mount, PID, network, user namespaces |
+| **Seccomp BPF** | Filters syscalls, blocks dangerous operations |
+| **cgroups v2** | Limits CPU, memory, I/O resources |
+| **chroot/pivot_root** | Restricts filesystem access |
+| **Privilege dropping** | Runs as unprivileged user |
+
+#### macOS Isolation
+
+| Mechanism | Description |
+|-----------|-------------|
+| **sandbox-exec** | Kernel-enforced Seatbelt profiles |
+| **rlimits** | POSIX resource limits |
+| **Entitlements** | Fine-grained capability control |
+
+## Security Configuration
+
+### Security Presets
+
+BoxLite provides three security presets:
+
+```python
+from boxlite import SecurityOptions, Boxlite
+
+# Development - for trusted workloads
+security = SecurityOptions.development()
+
+# Standard - balanced security/performance
+security = SecurityOptions.standard()
+
+# Maximum - for untrusted workloads
+security = SecurityOptions.maximum()
+```
+
+### Preset Comparison
+
+| Option | Development | Standard | Maximum |
+|--------|-------------|----------|---------|
+| jailer_enabled | false | true | true |
+| seccomp_enabled | false | true | true |
+| chroot_enabled | false | true | true |
+| network_enabled | true | true | configurable |
+| max_open_files | unlimited | 1024 | 512 |
+| max_processes | unlimited | 100 | 50 |
+| max_file_size | unlimited | 1GB | 512MB |
+
+### Custom Configuration
+
+For fine-grained control:
+
+```python
+security = SecurityOptions(
+    jailer_enabled=True,
+    seccomp_enabled=True,
+    chroot_enabled=True,
+    close_fds=True,
+    sanitize_env=True,
+    network_enabled=True,
+    max_open_files=1024,
+    max_file_size=1024 * 1024 * 1024,  # 1GB
+    max_processes=100,
+    max_memory_mb=2048,
+)
+```
+
+## Threat Model
+
+BoxLite's security architecture addresses these threats:
+
+### 1. Guest Escape
+
+**Threat**: Attacker escapes the VM to access host system
+
+**Mitigations**:
+- Hardware-level isolation (separate page tables)
+- Jailer boundary prevents VM-to-host access
+- Minimal attack surface in shim process
+
+### 2. Shim Exploitation
+
+**Threat**: Vulnerability in shim process used for privilege escalation
+
+**Mitigations**:
+- Seccomp BPF restricts allowed syscalls
+- Privilege dropping (run as non-root)
+- Minimal file descriptor inheritance
+- Environment sanitization
+
+### 3. Resource Exhaustion
+
+**Threat**: Malicious box consumes all host resources
+
+**Mitigations**:
+- cgroups v2 limits (CPU, memory, I/O)
+- Per-box resource quotas
+- Maximum file descriptors limit
+- Disk space limits
+
+### 4. Information Leakage
+
+**Threat**: Box accesses data from other boxes or host
+
+**Mitigations**:
+- Separate filesystem namespaces
+- Network isolation via gvproxy
+- No shared memory between boxes
+- Secure disk image handling
+
+## Network Security
+
+### Network Isolation
+
+BoxLite uses gvproxy for network isolation:
+
+- **User-space networking**: Network stack isolated from host kernel
+- **NAT**: Boxes use NAT, no direct host network access
+- **DNS filtering**: Built-in DNS controls
+
+### Port Forwarding
+
+Controlled port forwarding:
+
+```python
+# Forward host port 8080 to box port 80
+box.run_forward(8080, 80)
+```
+
+### Network Options
+
+```python
+from boxlite import BoxOptions
+
+# Disable network completely
+options = BoxOptions(network_enabled=False)
+
+# Allow only specific ports
+options = BoxOptions(
+    network_enabled=True,
+    allowed_ports=[80, 443],  # Whitelist
+)
+```
+
+## Data Security
+
+### Disk Encryption
+
+Box disk images are stored as QCOW2 files:
+
+- Copy-on-write for efficiency
+- Optional LUKS encryption for sensitive data
+
+### Secure Deletion
+
+When boxes are deleted:
+
+1. Remove disk image file
+2. Zero disk blocks (optional)
+3. Remove from database
+
+### Temporary Files
+
+- Use tmpfs for temporary data (if available)
+- Automatically cleaned on box stop
+
+## Audit and Compliance
+
+### Logging
+
+Security-relevant events are logged:
+
+- Box creation/destruction
+- Resource limit violations
+- Security policy violations
+- Authentication events
+
+### Event Types
+
+| Event | Description |
+|-------|-------------|
+| box_created | New box instance created |
+| box_destroyed | Box instance destroyed |
+| exec_started | Command execution started |
+| security_violation | Security policy violated |
+| resource_limit_exceeded | Resource limit hit |
+
+## Security Best Practices
+
+### For Development
+
+1. Use `SecurityOptions.development()` for local testing
+2. Enable debug logging for troubleshooting
+3. Don't run untrusted code in development mode
+
+### For Production
+
+1. Always use `SecurityOptions.maximum()`
+2. Disable network for sensitive workloads
+3. Implement proper backup and recovery
+4. Monitor security events
+5. Keep BoxLite updated
+
+### For Untrusted Workloads
+
+1. Run with `SecurityOptions.maximum()`
+2. Disable network access if not needed
+3. Use restrictive resource limits
+4. Implement network segmentation
+5. Enable comprehensive logging
+
+## Platform-Specific Security
+
+### Linux Security Features
+
+- **AppArmor**: Additional MAC (optional)
+- **SELinux**: Label-based access control (optional)
+- **Seccomp**: Syscall filtering (enabled by default)
+- **cgroups v2**: Resource control
+
+### macOS Security Features
+
+- **Code Signing**: Binary verification
+- **Hardened Runtime**: Runtime protection
+- **Notarization**: Apple notarization
+- **Entitlements**: Capability whitelisting
+
+## Security Updates
+
+BoxLite follows a regular security update schedule:
+
+| Priority | Response Time |
+|----------|---------------|
+| Critical | 24-48 hours |
+| High | 1-2 weeks |
+| Medium | 1 month |
+| Low | Quarterly |
+
+<Info>
+  For the shared responsibility model, see [Shared Responsibility Model](/security/shared-responsibility).
+</Info>
+
+## Related Documentation
+
+- [Security Configuration](/guides/ai-agent-integration) - Configuring SecurityOptions
+- [Shared Responsibility Model](/security/shared-responsibility) - Security responsibility boundaries
+- [Troubleshooting](/troubleshooting/index) - Security-related troubleshooting

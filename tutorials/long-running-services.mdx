@@ -2,7 +2,6 @@
 title: "Run services with port forwarding"
 description: "Start HTTP servers and JSON APIs inside a sandbox, forward ports to the host, and access them from your application."
 sidebarTitle: "Long-running services"
-icon: "server"
 ---
 
 Sometimes you need a **service** running inside a sandbox — an HTTP server, a JSON API, a background worker — that your host application can talk to. This tutorial shows how to start background processes inside a box, forward ports to the host, and make requests to services running in complete isolation.
@@ -19,7 +18,7 @@ A script that:
 <Tabs>
   <Tab title="Python">
     ```bash
-    pip install boxlite requests
+    python3 -m pip install boxlite requests
     ```
     Requires Python 3.10+.
   </Tab>

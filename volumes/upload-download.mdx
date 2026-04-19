@@ -1,0 +1,634 @@
+---
+title: "Volume Import and Export"
+sidebarTitle: "Import/Export"
+description: "Import data into and export data from BoxLite volumes, including bulk operations, formats, and best practices."
+---
+
+This guide covers importing data into and exporting data from BoxLite volumes.
+
+## Overview
+
+Volume import/export operations enable bulk data transfer between BoxLite volumes and external storage systems. These operations are essential for:
+
+- Initial data seeding
+- Data backup and restore
+- Dataset sharing between Boxes
+- Migration scenarios
+
+### Import vs Export
+
+| Operation | Direction | Typical Use Case |
+|-----------|-----------|------------------|
+| Import | Host -> Box | Load training data, configuration files |
+| Export | Box -> Host | Backup results, archive artifacts |
+
+## Prerequisites
+
+- BoxLite Python SDK installed
+- A Box with volume configured (QCOW2 or virtiofs)
+- Sufficient disk space for imports/exports
+
+## Importing Data
+
+### Single File Import
+
+```python
+import boxlite
+import os
+
+async def import_single_file():
+    """Import a single file into Box volume."""
+    # Ensure source exists
+    source_file = "/host/path/data.csv"
+    if not os.path.exists(source_file):
+        print(f"Source file not found: {source_file}")
+        return
+
+    async with boxlite.SimpleBox(
+        image="python:slim",
+        disk_size_gb=20
+    ) as box:
+        # Ensure destination directory exists
+        await box.exec("mkdir", "-p", "/data/imports")
+
+        # Import file
+        await box.copy_in(
+            source_file,
+            "/data/imports/data.csv"
+        )
+
+        # Verify import
+        result = await box.exec("ls", "-la", "/data/imports/")
+        print(result.stdout)
+
+asyncio.run(import_single_file())
+```
+
+### Bulk Import from Directory
+
+```python
+import boxlite
+import os
+from pathlib import Path
+
+async def bulk_import():
+    """Import all files from a directory."""
+    source_dir = "/host/path/dataset"
+    destination = "/data/dataset"
+
+    # Verify source directory exists
+    if not os.path.isdir(source_dir):
+        print(f"Source directory not found: {source_dir}")
+        return
+
+    async with boxlite.SimpleBox(
+        image="python:slim",
+        disk_size_gb=50
+    ) as box:
+        # Create destination directory
+        await box.exec("mkdir", "-p", destination)
+
+        # Get list of files to import
+        files = list(Path(source_dir).rglob("*"))
+        files = [f for f in files if f.is_file()]
+
+        print(f"Importing {len(files)} files...")
+
+        # Import each file
+        for host_file in files:
+            relative_path = host_file.relative_to(source_dir)
+            dest_path = f"{destination}/{relative_path}"
+
+            # Create subdirectories if needed
+            dest_dir = os.path.dirname(dest_path)
+            await box.exec("mkdir", "-p", dest_dir)
+
+            # Copy file
+            await box.copy_in(str(host_file), dest_path)
+
+        print("Import complete")
+
+asyncio.run(bulk_import())
+```
+
+### Import with Format Conversion
+
+```python
+import boxlite
+
+async def import_and_convert():
+    """Import data and convert format inside Box."""
+    async with boxlite.SimpleBox(
+        image="python:slim",
+        disk_size_gb=20
+    ) as box:
+        # Import CSV
+        await box.copy_in(
+            "/host/path/data.csv",
+            "/data/input.csv"
+        )
+
+        # Convert to JSON using Python
+        await box.exec("bash", "-c", """
+            python3 -c "
+import pandas as pd
+df = pd.read_csv('/data/input.csv')
+df.to_json('/data/output.json', orient='records')
+            "
+        """)
+
+        # Export converted file
+        await box.copy_out(
+            "/data/output.json",
+            "/host/path/output.json"
+        )
+
+asyncio.run(import_and_convert())
+```
+
+### Import from Remote URL
+
+```python
+import boxlite
+
+async def import_from_url():
+    """Download and import data from remote URL."""
+    async with boxlite.SimpleBox(
+        image="python:slim",
+        disk_size_gb=50
+    ) as box:
+        # Download file from URL
+        await box.exec("bash", "-c", """
+            wget -O /data/dataset.zip \
+                "https://example.com/dataset.zip"
+        """)
+
+        # Extract archive
+        await box.exec("bash", "-c", """
+            unzip -q /data/dataset.zip -d /data/
+        """)
+
+        # Verify import
+        result = await box.exec("find", "/data", "-type f")
+        print(f"Downloaded files:\n{result.stdout}")
+
+asyncio.run(import_from_url())
+```
+
+## Exporting Data
+
+### Single File Export
+
+```python
+import boxlite
+import os
+
+async def export_single_file():
+    """Export a single file from Box to host."""
+    # Ensure destination directory exists
+    dest_dir = "/host/path/exports"
+    os.makedirs(dest_dir, exist_ok=True)
+
+    async with boxlite.SimpleBox(
+        image="python:slim",
+        disk_size_gb=20
+    ) as box:
+        # Create some data to export
+        await box.exec("bash", "-c", """
+            echo "exported data" > /data/results.txt
+        """)
+
+        # Export file
+        await box.copy_out(
+            "/data/results.txt",
+            f"{dest_dir}/results.txt"
+        )
+
+        print("Export complete")
+
+asyncio.run(export_single_file())
+```
+
+### Bulk Export to Directory
+
+```python
+import boxlite
+import os
+
+async def bulk_export():
+    """Export all data from Box to host directory."""
+    dest_dir = "/host/path/exports"
+    os.makedirs(dest_dir, exist_ok=True)
+
+    async with boxlite.SimpleBox(
+        image="python:slim",
+        disk_size_gb=50
+    ) as box:
+        # List files to export
+        result = await box.exec("find", "/data", "-type f")
+        files = result.stdout.strip().split("\n")
+
+        print(f"Exporting {len(files)} files...")
+
+        # Export each file
+        for container_path in files:
+            if not container_path:
+                continue
+
+            # Calculate relative path
+            relative_path = container_path.replace("/data/", "")
+            host_path = os.path.join(dest_dir, relative_path)
+
+            # Create parent directory
+            host_dir = os.path.dirname(host_path)
+            os.makedirs(host_dir, exist_ok=True)
+
+            # Export file
+            await box.copy_out(container_path, host_path)
+
+        print(f"Exported to {dest_dir}")
+
+asyncio.run(bulk_export())
+```
+
+### Export with Compression
+
+```python
+import boxlite
+import os
+
+async def export_with_compression():
+    """Export data with compression."""
+    dest_dir = "/host/path/exports"
+    os.makedirs(dest_dir, exist_ok=True)
+
+    async with boxlite.SimpleBox(
+        image="python:slim",
+        disk_size_gb=50
+    ) as box:
+        # Create archive inside Box
+        await box.exec("bash", "-c", """
+            tar -czf /data/archive.tar.gz -C /data .
+        """)
+
+        # Export archive
+        await box.copy_out(
+            "/data/archive.tar.gz",
+            f"{dest_dir}/backup.tar.gz"
+        )
+
+        # Verify archive
+        archive_path = f"{dest_dir}/backup.tar.gz"
+        size = os.path.getsize(archive_path)
+        print(f"Archive size: {size / (1024*1024):.2f} MB")
+
+asyncio.run(export_with_compression())
+```
+
+### Export to Remote Storage
+
+```python
+import boxlite
+
+async def export_to_remote():
+    """Export data to remote storage."""
+    async with boxlite.SimpleBox(
+        image="python:slim",
+        disk_size_gb=50
+    ) as box:
+        # Create export archive
+        await box.exec("bash", "-c", """
+            tar -czf /data/export.tar.gz -C /data .
+        """)
+
+        # Upload to remote storage
+        await box.exec("bash", "-c", """
+            curl -T /data/export.tar.gz \
+                "https://storage.example.com/upload"
+        """)
+
+        print("Export to remote storage complete")
+
+asyncio.run(export_to_remote())
+```
+
+## Incremental Sync
+
+### One-Way Sync (Host to Box)
+
+```python
+import boxlite
+import os
+import hashlib
+
+async def incremental_sync_host_to_box():
+    """Incrementally sync data from host to Box."""
+    source_dir = "/host/path/data"
+    dest_dir = "/data/sync"
+
+    # Build file manifest from host
+    host_manifest = {}
+    if os.path.exists(source_dir):
+        for root, dirs, files in os.walk(source_dir):
+            for filename in files:
+                filepath = os.path.join(root, filename)
+                relative = os.path.relpath(filepath, source_dir)
+                with open(filepath, "rb") as f:
+                    host_manifest[relative] = hashlib.md5(f.read()).hexdigest()
+
+    async with boxlite.SimpleBox(
+        image="python:slim",
+        disk_size_gb=50
+    ) as box:
+        # Get existing files in Box
+        result = await box.exec("find", dest_dir, "-type f")
+        existing_files = result.stdout.strip().split("\n") if result.stdout.strip() else []
+
+        # Build manifest from Box
+        box_manifest = {}
+        for filepath in existing_files:
+            relative = filepath.replace(dest_dir + "/", "")
+            result = await box.exec("md5sum", filepath)
+            if result.exit_code == 0:
+                box_manifest[relative] = result.stdout.split()[0]
+
+        # Sync changed files
+        synced = 0
+        for relative_path, host_hash in host_manifest.items():
+            if relative_path not in box_manifest or box_manifest[relative_path] != host_hash:
+                host_path = os.path.join(source_dir, relative_path)
+                dest_path = f"{dest_dir}/{relative_path}"
+
+                # Create parent directory
+                await box.exec("mkdir", "-p", os.path.dirname(dest_path))
+
+                # Copy file
+                await box.copy_in(host_path, dest_path)
+                synced += 1
+
+        print(f"Synced {synced} files")
+
+asyncio.run(incremental_sync_host_to_box())
+```
+
+### Bidirectional Sync
+
+```python
+import boxlite
+import os
+import hashlib
+from datetime import datetime
+
+async def bidirectional_sync():
+    """Bidirectional sync between host and Box."""
+    host_dir = "/host/path/sync"
+    box_dir = "/data/sync"
+
+    async with boxlite.SimpleBox(
+        image="python:slim",
+        disk_size_gb=50
+    ) as box:
+        # Get modification times from Box
+        result = await box.exec("find", box_dir, "-type f", "-printf", "%p\\n%T+\\n")
+        if result.exit_code == 0:
+            box_files = {}
+            lines = result.stdout.strip().split("\n")
+            for i in range(0, len(lines)-1, 2):
+                if lines[i] and lines[i+1]:
+                    box_files[lines[i]] = lines[i+1]
+
+        # Get modification times from host
+        host_files = {}
+        if os.path.exists(host_dir):
+            for root, dirs, files in os.walk(host_dir):
+                for f in files:
+                    filepath = os.path.join(root, f)
+                    mtime = os.path.getmtime(filepath)
+                    relative = os.path.relpath(filepath, host_dir)
+                    host_files[relative] = mtime
+
+        # Sync newer files to Box
+        for relative, host_mtime in host_files.items():
+            box_path = f"{box_dir}/{relative}"
+            # Check if Box file exists and is older
+            # (simplified sync logic)
+
+        print("Sync complete")
+
+asyncio.run(bidirectional_sync())
+```
+
+## Progress Tracking
+
+### Import with Progress
+
+```python
+import boxlite
+import os
+
+async def import_with_progress():
+    """Import files with progress tracking."""
+    source_files = [
+        "/host/path/file1.txt",
+        "/host/path/file2.txt",
+        "/host/path/file3.txt",
+    ]
+
+    async with boxlite.SimpleBox(
+        image="python:slim",
+        disk_size_gb=20
+    ) as box:
+        total = len(source_files)
+        for idx, source in enumerate(source_files, 1):
+            if os.path.exists(source):
+                filename = os.path.basename(source)
+                await box.copy_in(source, f"/data/{filename}")
+                progress = int((idx / total) * 100)
+                print(f"Progress: {progress}% ({idx}/{total})")
+
+asyncio.run(import_with_progress())
+```
+
+### Large File Import with Chunking
+
+```python
+import boxlite
+
+async def chunked_import():
+    """Import large file with chunked transfer."""
+    large_file = "/host/path/large_file.bin"
+
+    async with boxlite.SimpleBox(
+        image="python:slim",
+        disk_size_gb=100
+    ) as box:
+        # Split large file into chunks
+        await box.exec("bash", "-c", f"""
+            split -b 10M {large_file} /data/chunks/chunk_
+        """)
+
+        # Verify chunks
+        result = await box.exec("ls", "/data/chunks/")
+        chunks = result.stdout.strip().split("\n")
+        print(f"Created {len(chunks)} chunks")
+
+        # Reassemble if needed
+        # await box.exec("bash", "-c", "cat /data/chunks/chunk_* > /data/reassembled.bin")
+
+asyncio.run(chunked_import())
+```
+
+## Error Handling
+
+### Retry Logic
+
+```python
+import boxlite
+import asyncio
+
+async def import_with_retry(max_retries=3):
+    """Import with automatic retry on failure."""
+    source = "/host/path/data.csv"
+    destination = "/data/data.csv"
+
+    for attempt in range(max_retries):
+        try:
+            async with boxlite.SimpleBox(
+                image="python:slim",
+                disk_size_gb=20
+            ) as box:
+                await box.copy_in(source, destination)
+                print("Import successful")
+                return
+        except Exception as e:
+            print(f"Attempt {attempt + 1} failed: {e}")
+            if attempt < max_retries - 1:
+                await asyncio.sleep(2 ** attempt)  # Exponential backoff
+            else:
+                print("Import failed after all retries")
+                raise
+
+asyncio.run(import_with_retry())
+```
+
+### Validation After Import
+
+```python
+import boxlite
+import os
+
+async def import_with_validation():
+    """Import with post-import validation."""
+    source = "/host/path/data.csv"
+    destination = "/data/data.csv"
+
+    # Get source file checksum
+    source_checksum = ""
+    if os.path.exists(source):
+        import hashlib
+        with open(source, "rb") as f:
+            source_checksum = hashlib.md5(f.read()).hexdigest()
+
+    async with boxlite.SimpleBox(
+        image="python:slim",
+        disk_size_gb=20
+    ) as box:
+        # Import file
+        await box.copy_in(source, destination)
+
+        # Validate checksum
+        result = await box.exec("md5sum", destination)
+        if result.exit_code == 0:
+            dest_checksum = result.stdout.split()[0]
+            if source_checksum == dest_checksum:
+                print("Validation passed - file integrity confirmed")
+            else:
+                print("Validation failed - checksums do not match")
+                raise ValueError("File integrity check failed")
+
+asyncio.run(import_with_validation())
+```
+
+## Common Errors
+
+### Error 1: Disk Full During Import
+
+**Symptom**: Import fails with "No space left on device"
+
+**Cause**: Insufficient disk space in target volume
+
+**Solution**:
+```python
+# Check available space before import
+async with boxlite.SimpleBox(
+    image="python:slim",
+    disk_size_gb=20
+) as box:
+    result = await box.exec("df", "-h", "/data")
+    print(result.stdout)
+
+    # Or increase disk size
+    # disk_size_gb=50
+```
+
+### Error 2: Permission Denied on Export
+
+**Symptom**: Export fails with permission error
+
+**Cause**: Host directory not writable
+
+**Solution**:
+```python
+import os
+import stat
+
+# Check and fix permissions
+dest_dir = "/host/path/exports"
+os.makedirs(dest_dir, exist_ok=True)
+os.chmod(dest_dir, stat.S_IRWXU)
+```
+
+### Error 3: Large File Timeout
+
+**Symptom**: Large file transfer times out
+
+**Cause**: Default timeout too short for large files
+
+**Solution**:
+```python
+# Use longer timeout or chunked transfer
+# For very large files, consider compression first
+await box.exec("bash", "-c", f"gzip -c {large_file} > {compressed}")
+```
+
+## Best Practices
+
+1. **Validate Before Export**: Always verify file checksums after import/export
+2. **Compress Large Transfers**: Use compression for large data transfers
+3. **Use Incremental Sync**: Only transfer changed files when possible
+4. **Monitor Progress**: Track progress for large bulk operations
+5. **Handle Failures Gracefully**: Implement retry logic for reliability
+
+## Security Notes
+
+1. **Validate File Sources**: Only import from trusted sources
+2. **Scan for Malware**: Scan imported files before processing
+3. **Encrypt Sensitive Data**: Use encryption for sensitive data transfers
+4. **Restrict Export Permissions**: Limit export destinations appropriately
+
+## Related Topics
+
+<CardGroup cols={2}>
+  <Card title="Volumes Overview" icon="database" href="/volumes/overview">
+    Volume type comparison and selection guide.
+  </Card>
+  <Card title="Create and Manage Volumes" icon="plus" href="/volumes/create-and-manage">
+    Creating and configuring volumes.
+  </Card>
+  <Card title="Volume Read/Write" icon="file-lines" href="/volumes/read-write">
+    Reading and writing data to volumes.
+  </Card>
+  <Card title="Performance and Cost" icon="gauge" href="/volumes/performance-and-cost">
+    Volume performance optimization.
+  </Card>
+</CardGroup>

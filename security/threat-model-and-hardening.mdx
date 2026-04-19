@@ -1,0 +1,441 @@
+---
+title: "Threat Model and Hardening"
+description: "BoxLite threat model, attack surface analysis, and security hardening checklist."
+---
+
+# Threat Model and Hardening
+
+This document provides a comprehensive threat model for BoxLite, analyzes the attack surface, and provides security hardening guidelines. Understanding these threats and mitigations is essential for secure deployment.
+
+## Overview
+
+BoxLite's threat model identifies potential security threats, analyzes the attack surface, and outlines mitigation strategies. This document follows a defense-in-depth approach, ensuring multiple layers of security controls.
+
+## Threat Model
+
+BoxLite operates in a hostile environment where untrusted code may execute. Understanding the threats helps in proper configuration and deployment.
+
+### Threat Categories
+
+| Category | Description | Risk Level |
+|----------|-------------|------------|
+| VM Escape | Attacker escapes VM isolation | Critical |
+| Side Channel | Timing or cache-based attacks | Medium |
+| Resource Exhaustion | DoS via resource consumption | High |
+| Data Exfiltration | Unauthorized data access | High |
+| Privilege Escalation | Gaining elevated privileges | Critical |
+
+### Threat Actors
+
+| Actor | Capability | Intent | Mitigation |
+|-------|-------------|--------|-------------|
+| Malicious Box | Execute arbitrary code | Escape, exfiltrate | VM isolation, seccomp |
+| External Attacker | Network access | Disrupt, access | Network isolation |
+| Compromised Host | Host-level access | Access VM data | Encryption, minimal trust |
+| Malicious Operator | Administrative access | Data access | RBAC, audit logging |
+
+## Attack Surface Analysis
+
+BoxLite presents multiple attack surfaces that require protection.
+
+### Component Attack Surfaces
+
+| Component | Exposure | Risk | Mitigation |
+|-----------|----------|------|------------|
+| Shim Process | Network (optional) | Medium | Seccomp, minimal FDs |
+| VM (Guest) | Isolated | Low | Hardware virtualization |
+| gvproxy | Network | Medium | Network policies |
+| API Server | Network | High | Authentication, TLS |
+| Storage | Filesystem | Medium | Encryption, permissions |
+
+### Network Attack Surface
+
+```python
+# Minimize network exposure
+box_options = BoxOptions(
+    network_enabled=False,  # Disable if not needed
+    # OR
+    allowed_ports=[],  # Whitelist approach
+    # OR
+    allowed_sources=["10.0.0.0/8"]  # IP restriction
+)
+```
+
+### Entry Points
+
+1. **API Endpoints**: Authentication required, TLS encrypted
+2. **Box Execution**: Sandboxed, resource-limited
+3. **File Upload**: Validation, scanning
+4. **Network Ports**: Controlled, firewalled
+
+## Known Threats and Mitigations
+
+### 1. VM Escape
+
+**Description**: Attacker escapes the VM isolation to access host resources.
+
+**Attack Vectors**:
+- Hypervisor vulnerability
+- VirtIO driver vulnerability
+- Shared memory exploits
+
+**Mitigations**:
+
+```python
+# Maximum security for untrusted workloads
+security = SecurityOptions.maximum()
+
+# Additional hardening
+security = SecurityOptions(
+    jailer_enabled=True,
+    seccomp_enabled=True,
+    close_fds=True,
+    sanitize_env=True,
+    network_enabled=False,  # Disable if possible
+    max_memory_mb=1024,  # Limit resources
+)
+```
+
+**Defense Layers**:
+1. Hardware virtualization (KVM/Hypervisor.framework)
+2. Jailer OS-level sandboxing
+3. Seccomp syscall filtering
+4. Minimal shim attack surface
+
+### 2. Side Channel Attacks
+
+**Description**: Attacker uses timing or cache patterns to extract information.
+
+**Attack Vectors**:
+- Cache timing attacks
+- Spectre/Meltdown variants
+- Branch prediction exploitation
+
+**Mitigations**:
+
+```python
+# Enable hypervisor-specific protections
+box_options = BoxOptions(
+    hypervisor="kvm",  # Use KVM for better isolation
+    cpu_mode="host-passthrough",  # Or "none" for more isolation
+    # Note: "none" provides better isolation but lower performance
+)
+```
+
+**Defense Layers**:
+1. Microcode updates on host
+2. Hypervisor-level mitigations
+3. VM CPU pinning (in sensitive deployments)
+4. Disable hyper-threading for sensitive workloads
+
+### 3. Resource Exhaustion
+
+**Description**: Attacker consumes all host resources, causing DoS.
+
+**Attack Vectors**:
+- Fork bomb (process exhaustion)
+- Memory exhaustion
+- Disk space exhaustion
+- Network bandwidth exhaustion
+
+**Mitigations**:
+
+```python
+# Strict resource limits
+security = SecurityOptions(
+    max_processes=50,
+    max_open_files=512,
+    max_memory_mb=2048,
+    max_file_size=1024 * 1024 * 1024,  # 1GB
+)
+
+# Enable cgroups limits
+box_options = BoxOptions(
+    cgroup_enabled=True,
+    cpu_quota_percent=50,  # Max 50% of one CPU
+    io_limit_mbps=100,  # Max 100 MB/s I/O
+)
+```
+
+**Defense Layers**:
+1. cgroups v2 resource limits
+2. Per-box quotas
+3. Disk space limits
+4. Network bandwidth limits
+
+### 4. Data Exfiltration
+
+**Description**: Attacker extracts data from the host or other boxes.
+
+**Attack Vectors**:
+- Network data exfiltration
+- File-based data leakage
+- Timing-based covert channels
+
+**Mitigations**:
+
+```python
+# Disable network for sensitive workloads
+box_options = BoxOptions(network_enabled=False)
+
+# Or use network policies
+box_options = BoxOptions(
+    network_enabled=True,
+    allowed_destinations=["10.0.0.0/8"],  # Internal only
+    dns_sandbox=True,  # Filter DNS
+)
+
+# Audit all file operations
+audit_config = AuditConfig(
+    log_file_access=True,
+    log_network_connections=True,
+)
+```
+
+**Defense Layers**:
+1. Network isolation (gvproxy)
+2. Filesystem namespaces
+3. No shared memory between boxes
+4. Audit logging
+
+### 5. Privilege Escalation
+
+**Description**: Attacker gains elevated privileges in the host.
+
+**Attack Vectors**:
+- Shim process exploitation
+- Jailer configuration bypass
+- Privilege dropping failure
+
+**Mitigations**:
+
+```python
+# Enable all security features
+security = SecurityOptions(
+    jailer_enabled=True,
+    seccomp_enabled=True,
+    chroot_enabled=True,
+    close_fds=True,
+    sanitize_env=True,
+    # Run as non-root
+    user="nobody",
+    group="nogroup",
+)
+```
+
+**Defense Layers**:
+1. Privilege dropping (run as non-root)
+2. Seccomp BPF filtering
+3. Minimal syscall surface
+4. Environment sanitization
+
+## Security Hardening Checklist
+
+Use this checklist to secure your BoxLite deployment.
+
+### Pre-Deployment Hardening
+
+- [ ] Use `SecurityOptions.maximum()` for production
+- [ ] Enable audit logging
+- [ ] Configure log destination (syslog/SIEM)
+- [ ] Enable disk encryption
+- [ ] Configure network isolation
+- [ ] Set resource limits appropriate for workload
+- [ ] Use trusted OCI images only
+
+### Network Hardening
+
+- [ ] Disable network if not needed
+- [ ] Implement IP whitelisting
+- [ ] Configure DNS filtering
+- [ ] Use TLS for all API communication
+- [ ] Implement rate limiting
+
+### Access Control Hardening
+
+- [ ] Enable MFA for API access
+- [ ] Configure SSO integration
+- [ ] Implement RBAC
+- [ ] Use short-lived tokens
+- [ ] Rotate credentials regularly
+
+### Monitoring Hardening
+
+- [ ] Forward security events to SIEM
+- [ ] Set up alerts for security violations
+- [ ] Configure log retention (1 year minimum)
+- [ ] Enable integrity verification for logs
+
+### Template Hardening
+
+```python
+# Create hardened template
+await box.create_template(
+    name="hardened-base:v1",
+    description="Security-hardened base template",
+    security=SecurityOptions.maximum(),
+    # Include only necessary packages
+    base_image="ubuntu:24.04-minimal",
+    # No long-term secrets
+    secrets=[],  # Inject at runtime
+)
+```
+
+## Platform-Specific Hardening
+
+### Linux Hardening
+
+```bash
+# Enable additional Linux security modules
+# AppArmor
+sudo apt-get install apparmor
+sudo aa-enforce /etc/apparmor.d/*
+
+# SELinux (if available)
+sudo setenforce 1
+
+# Verify seccomp is enabled
+grep -i seccomp /proc/$(pgrep -f boxlite)/status
+```
+
+### macOS Hardening
+
+```python
+# Enable all macOS-specific protections
+box_options = BoxOptions(
+    # Use Apple Silicon if available
+    platform="arm64",
+    # Enable hardened runtime (if building from source)
+    hardened_runtime=True,
+    # Use shortest possible timeouts
+    idle_timeout_seconds=300,
+)
+```
+
+## Performance vs Security Tradeoffs
+
+Some security measures impact performance. Understand the tradeoffs:
+
+| Measure | Security Gain | Performance Impact | Use Case |
+|---------|---------------|-------------------|----------|
+| SecurityOptions.maximum() | High | Medium | Production, untrusted |
+| seccomp_enabled | High | Low | All production |
+| network_enabled=false | High | None | Sensitive workloads |
+| max_memory_mb=1024 | Medium | None | Resource-constrained |
+| cpu_pinning | Low | Improves consistency | Side-channel sensitive |
+
+## Common Attack Scenarios
+
+### Scenario 1: Untrusted Code Execution
+
+**Situation**: Running code from unknown third-party AI agent.
+
+**Hardening**:
+```python
+# Maximum isolation for untrusted code
+security = SecurityOptions(
+    jailer_enabled=True,
+    seccomp_enabled=True,
+    chroot_enabled=True,
+    close_fds=True,
+    sanitize_env=True,
+    network_enabled=False,
+    max_memory_mb=1024,
+    max_processes=50,
+    max_open_files=512,
+)
+
+# Audit all operations
+audit_config = AuditConfig(
+    log_all_execution=True,
+    log_all_file_access=True,
+    min_severity="info",
+)
+```
+
+### Scenario 2: Multi-Tenant Environment
+
+**Situation**: Multiple customers sharing infrastructure.
+
+**Hardening**:
+```python
+# Strict isolation between tenants
+box_options = BoxOptions(
+    network_enabled=True,
+    allowed_sources=[tenant_vpc],  # Per-tenant network
+    cgroup_enabled=True,
+    disk_quota_gb=50,
+)
+
+# Encryption per tenant
+encryption_config = EncryptionConfig(
+    type="luks",
+    key_source="vault",  # Per-tenant keys
+)
+```
+
+### Scenario 3: Sensitive Data Processing
+
+**Situation**: Processing PHI, financial data, or other sensitive information.
+
+**Hardening**:
+```python
+# Maximum security for sensitive data
+security = SecurityOptions.maximum()
+
+box_options = BoxOptions(
+    network_enabled=False,  # Air-gapped
+    encrypted_disk=True,
+    audit_logging=True,
+    data_residency="us-east-1",  # Compliance region
+)
+
+# No secrets in box - inject at runtime
+secrets = vault.get("api-key")  # External secrets only
+```
+
+## Validation and Testing
+
+Regularly test your security configuration.
+
+### Security Testing
+
+```bash
+# Test VM isolation
+boxrun create --security=standard test-box
+boxrun exec test-box -- sh -c "cat /proc/1/cgroup"  # Should show isolation
+
+# Test resource limits
+boxrun exec test-box -- sh -c "ulimit -a"  # Verify limits applied
+
+# Test network isolation
+boxrun exec test-box -- sh -c "curl google.com"  # Should fail if network disabled
+
+# Test seccomp
+boxrun exec test-box -- sh -c "strace echo test"  # strace should be blocked
+```
+
+### Compliance Verification
+
+```python
+# Generate compliance report
+audit_report = await boxlite.generate_compliance_report(
+    standards=["soc2", "hipaa"],
+    output_format="json"
+)
+
+print(f"Compliance Score: {audit_report.score}")
+print(f"Passed Controls: {audit_report.passed}")
+print(f"Failed Controls: {audit_report.failed}")
+```
+
+## Related Documentation
+
+- [Security Overview](/security/overview) - Security architecture
+- [Shared Responsibility Model](/security/shared-responsibility) - Security responsibilities
+- [Audit Logging](/security/audit-logging) - Security event logging
+- [Secrets Management](/security/secrets-management) - Secure credential handling
+
+<Warning>
+  Security hardening is an ongoing process. Regularly review and update your security configuration as new threats emerge and new features are released.
+</Warning>

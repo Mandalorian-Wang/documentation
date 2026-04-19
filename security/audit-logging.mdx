@@ -1,0 +1,453 @@
+---
+title: "Audit Logging"
+description: "Audit log field specifications, event types, and compliance logging for BoxLite operations."
+---
+
+# Audit Logging
+
+BoxLite provides comprehensive audit logging capabilities that capture security-relevant events across the entire platform. This documentation covers what events are logged, the log format structure, and how to integrate with security information and event management (SIEM) systems.
+
+## Overview
+
+Audit logging is a critical component of BoxLite's security architecture. It provides visibility into security-relevant operations, enables compliance verification, and supports forensic analysis in the event of a security incident. All audit logs are designed to meet enterprise requirements for integrity, availability, and tamper-evidence.
+
+### Why Audit Logging Matters
+
+For enterprise deployments, audit logging serves multiple purposes:
+
+- **Security Monitoring**: Detect suspicious activities and potential security breaches in real-time
+- **Compliance**: Meet regulatory requirements such as SOC 2, HIPAA, PCI-DSS, and GDPR
+- **Forensics**: Investigate security incidents and understand the root cause of issues
+- **Operational Insights**: Understand usage patterns and optimize resource allocation
+
+## Events Logged
+
+BoxLite logs security-relevant events across several categories. Understanding what is logged helps you configure appropriate retention policies and build effective monitoring rules.
+
+### Authentication Events
+
+Authentication events capture all attempts to access the BoxLite system, whether successful or failed.
+
+| Event Type | Description | Severity |
+|------------|-------------|----------|
+| `auth_success` | Successful authentication | info |
+| `auth_failure` | Failed authentication attempt | warning |
+| `auth_lockout` | Account locked after multiple failures | warning |
+| `token_created` | New API token generated | info |
+| `token_revoked` | API token revoked | info |
+| `session_expired` | Session expired or terminated | info |
+
+### Box Lifecycle Events
+
+Box lifecycle events track the creation, modification, and destruction of Box instances.
+
+| Event Type | Description | Severity |
+|------------|-------------|----------|
+| `box_created` | New Box instance created | info |
+| `box_started` | Box started/booted | info |
+| `box_stopped` | Box stopped/shutdown | info |
+| `box_destroyed` | Box permanently deleted | warning |
+| `box_paused` | Box paused (if supported) | info |
+
+### Execution Events
+
+Execution events capture commands run inside Boxes, which is essential for understanding what code executed in your environment.
+
+| Event Type | Description | Severity |
+|------------|-------------|----------|
+| `exec_started` | Command execution started | info |
+| `exec_completed` | Command completed successfully | info |
+| `exec_failed` | Command failed with error | warning |
+| `exec_output_captured` | Command output captured | info |
+
+### Security Events
+
+Security events are critical for detecting and responding to security incidents.
+
+| Event Type | Description | Severity |
+|------------|-------------|----------|
+| `security_violation` | Security policy violated | critical |
+| `resource_limit_exceeded` | Resource limit exceeded | warning |
+| `network_policy_blocked` | Network access denied | warning |
+| `seccomp_violation` | Blocked syscall attempt | warning |
+| `file_access_denied` | File access denied | warning |
+| `isolation_breach_attempt` | Attempted VM escape | critical |
+
+### Configuration Changes
+
+Configuration change events track modifications to security settings and system configuration.
+
+| Event Type | Description | Severity |
+|------------|-------------|----------|
+| `security_config_changed` | Security settings modified | info |
+| `network_config_changed` | Network configuration updated | info |
+| `access_control_changed` | Access control policy modified | warning |
+| `template_created` | New template created | info |
+| `template_deleted` | Template deleted | warning |
+
+## Log Format
+
+BoxLite produces structured JSON logs that are easy to parse, store, and analyze. Each log entry contains a consistent set of fields that provide complete context about the event.
+
+### Log Entry Structure
+
+```json
+{
+  "timestamp": "2026-04-19T10:30:45.123Z",
+  "version": "1.0",
+  "event_type": "box_created",
+  "severity": "info",
+  "actor": {
+    "type": "user",
+    "id": "user-12345",
+    "name": "john.doe@example.com",
+    "ip": "192.168.1.100"
+  },
+  "target": {
+    "type": "box",
+    "id": "box-abcde",
+    "name": "data-science-box",
+    "image": "python:3.11-slim"
+  },
+  "context": {
+    "source": "api",
+    "request_id": "req-xyz789",
+    "correlation_id": "corr-123"
+  },
+  "details": {
+    "cpus": 2,
+    "memory_mib": 4096,
+    "disk_gb": 10,
+    "security_preset": "standard"
+  },
+  "metadata": {
+    "host": "boxlite-node-01",
+    "environment": "production"
+  }
+}
+```
+
+### Field Descriptions
+
+Each log entry contains the following top-level fields:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `timestamp` | string | ISO 8601 timestamp in UTC |
+| `version` | string | Log format version |
+| `event_type` | string | Unique event identifier |
+| `severity` | string | Log level (debug, info, warning, error, critical) |
+| `actor` | object | User or system that triggered the event |
+| `target` | object | Resource affected by the event |
+| `context` | string | Request context for correlation |
+| `details` | object | Event-specific data |
+| `metadata` | object | Host and environment information |
+
+### Severity Levels
+
+BoxLite uses standardized severity levels aligned with syslog:
+
+| Level | Value | Description | Use Case |
+|-------|-------|-------------|----------|
+| `debug` | 7 | Detailed diagnostic information | Development/debugging |
+| `info` | 6 | Normal operational events | General monitoring |
+| `warning` | 4 | Potential issues requiring attention | Anomaly detection |
+| `error` | 3 | Errors that need investigation | Problem tracking |
+| `critical` | 2 | Security incidents requiring immediate action | Incident response |
+
+## Configuration
+
+BoxLite provides flexible configuration options for audit logging, allowing you to tailor the logging behavior to your specific requirements.
+
+### Enabling Audit Logging
+
+Audit logging is enabled by default in production environments:
+
+```python
+from boxlite import Boxlite, BoxOptions
+
+# Audit logging is enabled by default in production
+box_options = BoxOptions(
+    audit_logging=True,  # Explicit enable (default in production)
+    audit_log_level="info"  # Minimum severity to log
+)
+```
+
+### Log Destination Configuration
+
+You can configure where logs are sent:
+
+```python
+from boxlite import AuditConfig, LogDestination
+
+# Configure multiple destinations
+audit_config = AuditConfig(
+    destinations=[
+        LogDestination.file(
+            path="/var/log/boxlite/audit.json",
+            rotation="daily",
+            max_size_mb=100,
+            retention_days=90
+        ),
+        LogDestination.syslog(
+            host="syslog.company.com",
+            port=514,
+            protocol="tcp",
+            facility="local0"
+        )
+    ],
+    include_sensitive_data=False,  # Set to true for debugging
+    buffer_size=1000,
+    flush_interval_seconds=5
+)
+```
+
+### Event Filtering
+
+Control which events are logged based on type and severity:
+
+```python
+audit_config = AuditConfig(
+    # Include specific event categories
+    include_events=[
+        "auth_success",
+        "auth_failure",
+        "security_violation",
+        "box_created",
+        "box_destroyed"
+    ],
+
+    # Or exclude specific events
+    exclude_events=[
+        "exec_output_captured",  # High volume, may contain sensitive data
+        "debug_.*"  # All debug events
+    ],
+
+    # Set minimum severity
+    min_severity="warning"
+)
+```
+
+## SIEM Integration
+
+BoxLite integrates with popular SIEM platforms through standard protocols, enabling centralized security monitoring and correlation.
+
+### Syslog Integration
+
+The most common integration method uses syslog, supported by virtually all SIEM platforms:
+
+```python
+from boxlite import AuditConfig, LogDestination
+
+# Configure syslog output
+audit_config = AuditConfig(
+    destinations=[
+        LogDestination.syslog(
+            host="siem.company.com",
+            port=514,
+            protocol="tcp",  # Use TCP for reliability
+            tls=True,  # Enable TLS encryption
+            facility="local0",
+            format="rfc5424"  # RFC 5424 structured syslog
+        )
+    ]
+)
+
+# Apply configuration
+boxlite.set_audit_config(audit_config)
+```
+
+### Common SIEM Integrations
+
+#### Splunk Integration
+
+```python
+# Splunk HTTP Event Collector (HEC)
+audit_config = AuditConfig(
+    destinations=[
+        LogDestination.http(
+            url="https://splunk.company.com:8088/services/collector",
+            headers={
+                "Authorization": f"Splunk {splunk_token}"
+            },
+            batch_size=50,
+            retry_attempts=3
+        )
+    ]
+)
+```
+
+#### Elastic/OpenSearch Integration
+
+```python
+# Elasticsearch bulk API
+audit_config = AuditConfig(
+    destinations=[
+        LogDestination.http(
+            url="https://elasticsearch.company.com:9200/boxlite-audit/_bulk",
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"ApiKey {api_key}"
+            },
+            batch_size=100
+        )
+    ]
+)
+```
+
+#### Azure Sentinel Integration
+
+```python
+# Azure Monitor / Log Analytics
+audit_config = AuditConfig(
+    destinations=[
+        LogDestination.http(
+            url="https://{workspace_id}.ods.opinsights.azure.com/api/agents/oid/{tenant_id}?api-version=2023-04-01",
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {access_token}"
+            },
+            batch_size=50
+        )
+    ]
+)
+```
+
+### Parsing BoxLite Logs
+
+Most SIEM platforms provide automatic parsing for JSON logs. If manual parsing is needed, use these key fields:
+
+```
+index=boxlite-audit event_type=security_violation
+| search severity=critical
+| stats count by actor.name, target.box_name
+```
+
+Key searchable fields:
+- `event_type`: Event category
+- `severity`: Log level
+- `actor.name`: User identifier
+- `target.box_name`: Box name
+- `timestamp`: Event time
+
+## Retention and Storage
+
+Proper log retention is essential for compliance and forensic analysis.
+
+### Retention Policy
+
+```python
+audit_config = AuditConfig(
+    destinations=[
+        LogDestination.file(
+            path="/var/log/boxlite/audit.json",
+            rotation="daily",
+            max_size_mb=100,
+            retention_days=365  # 1 year retention
+        )
+    ]
+)
+```
+
+### Recommended Retention Periods
+
+| Compliance Standard | Minimum Retention |
+|--------------------|-------------------|
+| SOC 2 | 90 days (online), 1 year (archive) |
+| HIPAA | 6 years |
+| PCI-DSS | 1 year |
+| GDPR | 2 years (may vary by jurisdiction) |
+| General Enterprise | 90 days (online), 2 years (archive) |
+
+### Log Integrity
+
+BoxLite ensures log integrity through:
+
+- **Write-once storage**: Append-only log files prevent modification
+- **Checksums**: SHA-256 checksums for each log entry
+- **Tamper detection**: Integrity verification scripts available
+- **Immutable storage**: Support for WORM (write once, read many) storage
+
+```python
+# Enable log signing for integrity verification
+audit_config = AuditConfig(
+    sign_logs=True,  # Enable cryptographic signing
+    key_id="audit-signing-key-2024",
+    hash_algorithm="sha256"
+)
+```
+
+## Query Examples
+
+Common queries for security monitoring and investigation.
+
+### Authentication Monitoring
+
+```bash
+# Failed authentication attempts in the last hour
+boxlite-audit event_type=auth_failure severity=warning
+| stats count by actor.ip, actor.name
+| where count > 3
+
+# New API tokens created
+boxlite-audit event_type=token_created
+| stats count by actor.name, details.token_id
+```
+
+### Security Violations
+
+```bash
+# All security violations in the last 24 hours
+boxlite-audit event_type=security_violation severity=warning OR critical
+
+# VM escape attempts (critical)
+boxlite-audit event_type=isolation_breach_attempt severity=critical
+```
+
+### Box Lifecycle Tracking
+
+```bash
+# Boxes created in the last week by user
+boxlite-audit event_type=box_created
+| stats count by actor.name, target.box_name
+| sort -count
+
+# Recently destroyed boxes
+boxlite-audit event_type=box_destroyed severity=warning
+| stats count by target.box_name, actor.name
+```
+
+## Performance Considerations
+
+Audit logging adds minimal overhead to BoxLite operations. Consider these best practices:
+
+- **Async logging**: Logs are written asynchronously to avoid blocking operations
+- **Batching**: Multiple events are batched together for efficient network delivery
+- **Sampling**: For high-volume events, consider sampling rather than complete logging
+- **Filtering**: Only log events relevant to your security and compliance requirements
+
+```python
+# Optimize for high-throughput scenarios
+audit_config = AuditConfig(
+    batch_size=100,
+    flush_interval_seconds=1,
+    async_mode=True,
+
+    # Sample high-volume events
+    sampling_rules={
+        "exec_completed": 0.1,  # Log 10% of completed executions
+        "exec_output_captured": 0.0  # Never log output by default
+    }
+)
+```
+
+## Related Documentation
+
+- [Security Overview](/security/overview) - Security architecture and features
+- [Shared Responsibility Model](/security/shared-responsibility) - Security responsibility boundaries
+- [Threat Model and Hardening](/security/threat-model-and-hardening) - Security hardening guide
+- [Troubleshooting](/troubleshooting/index) - Audit logging troubleshooting
+
+<Warning>
+  Audit logs may contain sensitive information such as file paths, user identifiers, and system details. Ensure log storage is secured and access is controlled appropriately.
+</Warning>

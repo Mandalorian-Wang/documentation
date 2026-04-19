@@ -1,0 +1,687 @@
+---
+title: "Background Processes"
+sidebarTitle: "Background"
+description: "Run and manage background processes in BoxLite, including process lifecycle, daemon patterns, and best practices."
+---
+
+This guide covers running and managing background processes in BoxLite.
+
+## Overview
+
+Background processes are long-running tasks that continue execution after the initial command returns. In BoxLite, background processes can be managed using shell patterns combined with the `exec` API.
+
+### When to Use Background Processes
+
+| Use Case | Description |
+|----------|-------------|
+| Web Servers | HTTP servers, API backends |
+| Workers | Queue consumers, cron jobs |
+| Daemons | System services, monitors |
+| Long-running Tasks | Data processing, training jobs |
+
+## Prerequisites
+
+- BoxLite Python SDK installed
+- Understanding of the `exec` API
+- Knowledge of process management in Linux
+
+## Running Background Processes
+
+### Basic Background Execution
+
+```python
+import boxlite
+
+async def run_background_process():
+    """Run a simple background process."""
+    async with boxlite.SimpleBox(
+        image="python:slim"
+    ) as box:
+        # Start background process using nohup
+        # The process continues running after exec returns
+        result = await box.exec("bash", "-c", """
+            nohup python -m http.server 8080 > /tmp/server.log 2>&1 &
+            echo $!
+        """)
+
+        # Get the PID of the background process
+        pid = result.stdout.strip()
+        print(f"Background process started with PID: {pid}")
+
+        # Wait a moment for server to start
+        import asyncio
+        await asyncio.sleep(1)
+
+        # Verify process is running
+        result = await box.exec("ps", "-p", pid)
+        if result.exit_code == 0:
+            print("Process is running")
+
+asyncio.run(run_background_process())
+```
+
+### Using Screen Sessions
+
+```python
+import boxlite
+
+async def run_in_screen_session():
+    """Run background process in a screen session."""
+    async with boxlite.SimpleBox(
+        image="python:slim"
+    ) as box:
+        # Start a named screen session
+        await box.exec("bash", "-c", """
+            # Start screen session in detached mode
+            screen -dmS mysession
+
+            # Send command to session
+            screen -S mysession -X stuff 'python -m http.server 8080\\n'
+        """)
+
+        # List running screen sessions
+        result = await box.exec("screen", "-ls")
+        print(f"Screen sessions:\n{result.stdout}")
+
+asyncio.run(run_in_screen_session())
+```
+
+### Using Tmux Sessions
+
+```python
+import boxlite
+
+async def run_in_tmux():
+    """Run background process in a tmux session."""
+    async with boxlite.SimpleBox(
+        image="python:slim"
+    ) as box:
+        # Start tmux session
+        await box.exec("bash", "-c", """
+            tmux new-session -d -s myapp 'python -m http.server 8080'
+        """)
+
+        # List tmux sessions
+        result = await box.exec("tmux", "ls")
+        print(f"Tmux sessions:\n{result.stdout}")
+
+asyncio.run(run_in_tmux())
+```
+
+## Process Lifecycle Management
+
+### Starting Processes
+
+```python
+import boxlite
+
+async def start_managed_process():
+    """Start a background process with lifecycle management."""
+    async with boxlite.SimpleBox(
+        image="python:slim"
+    ) as box:
+        # Create a startup script
+        startup_script = """#!/bin/bash
+# Start background server
+python -m http.server 8080 > /tmp/server.log 2>&1 &
+
+# Save PID for later management
+echo $! > /var/run/server.pid
+
+# Exit
+exit 0
+"""
+        # Write and execute startup script
+        await box.exec("bash", "-c", f"cat > /tmp/start.sh << 'EOF'\n{startup_script}\nEOF")
+        await box.exec("chmod", "+x", "/tmp/start.sh")
+        await box.exec("bash", "-c", "/tmp/start.sh")
+
+        # Verify PID file
+        result = await box.exec("cat", "/var/run/server.pid")
+        pid = result.stdout.strip()
+        print(f"Server started with PID: {pid}")
+
+asyncio.run(start_managed_process())
+```
+
+### Checking Process Status
+
+```python
+import boxlite
+
+async def check_process_status():
+    """Check if background process is running."""
+    async with boxlite.SimpleBox(
+        image="python:slim"
+    ) as box:
+        # Start background process
+        await box.exec("bash", "-c", """
+            nohup python -m http.server 8080 > /tmp/server.log 2>&1 &
+            echo $! > /tmp/server.pid
+        """)
+
+        # Check if process exists
+        pid_result = await box.exec("cat", "/tmp/server.pid")
+        pid = pid_result.stdout.strip()
+
+        check_result = await box.exec("ps", "-p", pid, "-o", "pid,ppid,stat,comm")
+        print(f"Process status:\n{check_result.stdout}")
+
+        # Alternative: check via /proc
+        proc_result = await box.exec("test", "-d", f"/proc/{pid}")
+        if proc_result.exit_code == 0:
+            print(f"Process {pid} is running")
+        else:
+            print(f"Process {pid} is not running")
+
+asyncio.run(check_process_status())
+```
+
+### Stopping Processes
+
+```python
+import boxlite
+
+async def stop_background_process():
+    """Stop a background process gracefully."""
+    async with boxlite.SimpleBox(
+        image="python:slim"
+    ) as box:
+        # Start process
+        await box.exec("bash", "-c", """
+            nohup python -m http.server 8080 > /tmp/server.log 2>&1 &
+            echo $! > /tmp/server.pid
+        """)
+
+        # Wait for startup
+        import asyncio
+        await asyncio.sleep(1)
+
+        # Get PID
+        pid_result = await box.exec("cat", "/tmp/server.pid")
+        pid = pid_result.stdout.strip()
+
+        # Graceful shutdown - send SIGTERM
+        await box.exec("kill", pid)
+
+        # Wait for process to terminate
+        await asyncio.sleep(1)
+
+        # Check if process stopped
+        check_result = await box.exec("ps", "-p", pid)
+        if check_result.exit_code != 0:
+            print(f"Process {pid} stopped successfully")
+        else:
+            # Force kill if still running
+            print("Process still running, forcing kill...")
+            await box.exec("kill", "-9", pid)
+
+asyncio.run(stop_background_process())
+```
+
+### Restarting Processes
+
+```python
+import boxlite
+
+async def restart_process():
+    """Restart a background process."""
+    async with boxlite.SimpleBox(
+        image="python:slim"
+    ) as box:
+        pid_file = "/tmp/server.pid"
+
+        # Function to stop process
+        async def stop_process():
+            result = await box.exec("test", "-f", pid_file)
+            if result.exit_code == 0:
+                pid_result = await box.exec("cat", pid_file)
+                pid = pid_result.stdout.strip()
+                await box.exec("kill", pid)
+                await box.exec("rm", "-f", pid_file)
+                print(f"Stopped process {pid}")
+
+        # Function to start process
+        async def start_process():
+            await box.exec("bash", "-c", """
+                nohup python -m http.server 8080 > /tmp/server.log 2>&1 &
+                echo $! > /tmp/server.pid
+            """)
+            import asyncio
+            await asyncio.sleep(1)
+            pid_result = await box.exec("cat", pid_file)
+            print(f"Started process {pid_result.stdout.strip()}")
+
+        # Restart sequence
+        await stop_process()
+        import asyncio
+        await asyncio.sleep(1)
+        await start_process()
+
+asyncio.run(restart_process())
+```
+
+## Process Monitoring
+
+### Health Checks
+
+```python
+import boxlite
+
+async def monitor_background_process():
+    """Monitor background process health."""
+    async with boxlite.SimpleBox(
+        image="python:slim"
+    ) as box:
+        # Start process
+        await box.exec("bash", "-c", """
+            nohup python -m http.server 8080 > /tmp/server.log 2>&1 &
+            echo $! > /tmp/server.pid
+        """)
+
+        import asyncio
+        await asyncio.sleep(1)
+
+        # Monitor loop
+        for i in range(5):
+            # Check process exists
+            pid_result = await box.exec("cat", "/tmp/server.pid")
+            if pid_result.exit_code != 0:
+                print("Process not found")
+                break
+
+            pid = pid_result.stdout.strip()
+            proc_result = await box.exec("test", "-d", f"/proc/{pid}")
+
+            if proc_result.exit_code == 0:
+                # Process is running, check CPU/memory
+                stat_result = await box.exec("ps", "-p", pid, "-o", "%cpu,%mem")
+                print(f"Check {i+1}: Running - {stat_result.stdout}")
+            else:
+                print(f"Check {i+1}: Process {pid} not found")
+
+            await asyncio.sleep(1)
+
+asyncio.run(monitor_background_process())
+```
+
+### Log Monitoring
+
+```python
+import boxlite
+
+async def monitor_logs():
+    """Monitor background process logs."""
+    async with boxlite.SimpleBox(
+        image="python:slim"
+    ) as box:
+        # Start process with logging
+        await box.exec("bash", "-c", """
+            nohup python -c "
+import http.server
+import socketserver
+import time
+
+class MyHandler(http.server.SimpleHTTPRequestHandler):
+    def log_message(self, format, *args):
+        with open('/tmp/server.log', 'a') as f:
+            f.write('%s - - [%s] %s\n' % (self.address_string(),
+                                          self.log_date_time_string(),
+                                          format % args))
+
+PORT = 8080
+with socketserver.TCPServer(('', PORT), MyHandler) as httpd:
+    httpd.serve_forever()
+" > /tmp/server.log 2>&1 &
+            echo $! > /tmp/server.pid
+        """)
+
+        import asyncio
+        await asyncio.sleep(2)
+
+        # Monitor logs
+        result = await box.exec("tail", "-f", "/tmp/server.log")
+        print(f"Server logs:\n{result.stdout}")
+
+        # Or get last 10 lines
+        result = await box.exec("tail", "-n", "10", "/tmp/server.log")
+        print(f"Last 10 log lines:\n{result.stdout}")
+
+asyncio.run(monitor_logs())
+```
+
+### Resource Monitoring
+
+```python
+import boxlite
+
+async def monitor_resources():
+    """Monitor resource usage of background processes."""
+    async with boxlite.SimpleBox(
+        image="python:slim"
+    ) as box:
+        # Start CPU-intensive background process
+        await box.exec("bash", "-c", """
+            python -c "while True: pass" > /dev/null 2>&1 &
+            echo $! > /tmp/cpu_process.pid
+        """)
+
+        import asyncio
+        await asyncio.sleep(1)
+
+        # Get PID
+        pid_result = await box.exec("cat", "/tmp/cpu_process.pid")
+        pid = pid_result.stdout.strip()
+
+        # Monitor CPU usage
+        result = await box.exec("top", "-b", "-n", "1", "-p", pid)
+        print(f"Resource usage:\n{result.stdout}")
+
+        # Alternative: ps with detailed info
+        result = await box.exec("ps", "-p", pid, "-o", "pid,pcpu,pmem,rss,vsz,comm")
+        print(f"Process details:\n{result.stdout}")
+
+asyncio.run(monitor_resources())
+```
+
+## Daemon Patterns
+
+### Supervisor Pattern
+
+```python
+import boxlite
+
+async def supervisor_daemon():
+    """Implement a supervisor-like daemon pattern."""
+    supervisor_script = """#!/usr/bin/env python3
+import os
+import sys
+import time
+import signal
+
+class Supervisor:
+    def __init__(self):
+        self.processes = {}
+
+    def start_process(self, name, command):
+        pid = os.fork()
+        if pid == 0:
+            # Child process - execute command
+            os.execv('/bin/sh', ['/bin/sh', '-c', command])
+        else:
+            # Parent process - store PID
+            self.processes[name] = pid
+            print(f"Started {name} with PID {pid}")
+
+    def stop_process(self, name):
+        if name in self.processes:
+            os.kill(self.processes[name], signal.SIGTERM)
+            del self.processes[name]
+            print(f"Stopped {name}")
+
+    def run(self):
+        # Start monitored processes
+        self.start_process('server', 'python -m http.server 8080')
+        self.start_process('worker', 'python worker.py')
+
+        # Monitor and restart
+        while True:
+            time.sleep(5)
+            for name, pid in list(self.processes.items()):
+                try:
+                    os.kill(pid, 0)  # Check if process exists
+                except ProcessLookupError:
+                    print(f"Process {name} died, restarting...")
+                    self.start_process(name, self.get_command(name))
+
+if __name__ == '__main__':
+    Supervisor().run()
+"""
+    async with boxlite.SimpleBox(
+        image="python:slim"
+    ) as box:
+        await box.exec("bash", "-c", f"cat > /tmp/supervisor.py << 'EOF'\n{supervisor_script}\nEOF")
+        await box.exec("chmod", "+x", "/tmp/supervisor.py")
+
+        # Run supervisor in background
+        await box.exec("bash", "-c", "nohup python /tmp/supervisor.py > /tmp/supervisor.log 2>&1 &")
+
+        import asyncio
+        await asyncio.sleep(2)
+
+        # Check supervisor process
+        result = await box.exec("ps", "aux", "|", "grep", "supervisor")
+        print(f"Supervisor processes:\n{result.stdout}")
+
+asyncio.run(supervisor_daemon())
+```
+
+### Cron-Like Scheduling
+
+```python
+import boxlite
+
+async def cron_scheduler():
+    """Implement cron-like job scheduling."""
+    scheduler_script = """#!/bin/bash
+# Simple cron-like scheduler
+
+JOB_INTERVAL=10  # seconds
+
+while true; do
+    TIMESTAMP=$(date +%Y-%m-%d_%H:%M:%S)
+
+    # Run scheduled jobs
+    echo "[$TIMESTAMP] Running scheduled jobs..." >> /tmp/scheduler.log
+
+    # Example: cleanup old files
+    find /tmp -type f -mmin +5 -delete 2>/dev/null
+
+    sleep $JOB_INTERVAL
+done
+"""
+    async with boxlite.SimpleBox(
+        image="python:slim"
+    ) as box:
+        await box.exec("bash", "-c", f"cat > /tmp/scheduler.sh << 'EOF'\n{scheduler_script}\nEOF")
+        await box.exec("chmod", "+x", "/tmp/scheduler.sh")
+
+        # Run scheduler in background
+        await box.exec("bash", "-c", "nohup /tmp/scheduler.sh > /dev/null 2>&1 &")
+
+        import asyncio
+        await asyncio.sleep(3)
+
+        # Check scheduler
+        result = await box.exec("ps", "aux", "|", "grep", "scheduler")
+        print(f"Scheduler processes:\n{result.stdout}")
+
+        # Check log
+        result = await box.exec("tail", "-n", "5", "/tmp/scheduler.log")
+        print(f"Scheduler log:\n{result.stdout}")
+
+asyncio.run(cron_scheduler())
+```
+
+## Error Handling
+
+### Process Failure Recovery
+
+```python
+import boxlite
+
+async def process_with_recovery():
+    """Run background process with automatic recovery."""
+    async with boxlite.SimpleBox(
+        image="python:slim"
+    ) as box:
+        recovery_script = """#!/bin/bash
+MAX_RETRIES=3
+RETRY_DELAY=5
+
+start_server() {
+    python -m http.server 8080 > /tmp/server.log 2>&1
+}
+
+# Start server
+start_server
+PID=$!
+
+# Monitor and restart if needed
+for i in $(seq 1 $MAX_RETRIES); do
+    sleep $RETRY_DELAY
+
+    if ! kill -0 $PID 2>/dev/null; then
+        echo "Process died, restart attempt $i..."
+        start_server
+        PID=$!
+    fi
+done
+
+echo "Max retries reached, exiting"
+"""
+        await box.exec("bash", "-c", f"cat > /tmp/recovery.sh << 'EOF'\n{recovery_script}\nEOF")
+        await box.exec("chmod", "+x", "/tmp/recovery.sh")
+
+        # Run with recovery
+        await box.exec("bash", "-c", "nohup /tmp/recovery.sh > /dev/null 2>&1 &")
+
+        import asyncio
+        await asyncio.sleep(5)
+
+        result = await box.exec("ps", "aux", "|", "grep", "http.server")
+        print(f"Server processes:\n{result.stdout}")
+
+asyncio.run(process_with_recovery())
+```
+
+### Zombie Process Prevention
+
+```python
+import boxlite
+
+async def prevent_zombies():
+    """Prevent zombie processes with proper signal handling."""
+    safe_script = """#!/bin/bash
+# Ignore SIGCHLD to prevent zombies
+trap '' SIGCHLD
+
+# Start background process
+python -m http.server 8080 &
+PID=$!
+
+# Wait for process
+wait $PID
+
+echo "Process completed with exit code: $?"
+"""
+    async with boxlite.SimpleBox(
+        image="python:slim"
+    ) as box:
+        await box.exec("bash", "-c", f"cat > /tmp/safe.sh << 'EOF'\n{safe_script}\nEOF")
+        await box.exec("chmod", "+x", "/tmp/safe.sh")
+
+        # Run
+        result = await box.exec("bash", "-c", "nohup /tmp/safe.sh > /tmp/safe.log 2>&1 &")
+
+        import asyncio
+        await asyncio.sleep(2)
+
+        # Check for zombie processes
+        result = await box.exec("ps", "aux", "|", "grep", "defunct")
+        print(f"Zombie processes: {result.stdout}")
+
+asyncio.run(prevent_zombies())
+```
+
+## Common Errors
+
+### Error 1: Process Exits Immediately
+
+**Symptom**: Background process starts but exits immediately
+
+**Cause**: Missing environment, wrong working directory, or errors in startup script
+
+**Solution**:
+```python
+# Check process exit status and logs
+result = await box.exec("cat", "/tmp/server.log")
+print(f"Log: {result.stdout}")
+
+# Add error handling to startup script
+await box.exec("bash", "-c", """
+    set -e
+    # Your commands here
+""")
+```
+
+### Error 2: Cannot Connect to Background Service
+
+**Symptom**: Service started but cannot connect
+
+**Cause**: Service not fully started, wrong port, or network issues
+
+**Solution**:
+```python
+# Wait for service to be ready
+await box.exec("bash", "-c", """
+    for i in $(seq 1 10); do
+        if curl -s http://localhost:8080 > /dev/null; then
+            echo "Server ready"
+            break
+        fi
+        sleep 1
+    done
+""")
+```
+
+### Error 3: Too Many Background Processes
+
+**Symptom**: System becomes slow or unresponsive
+
+**Cause**: Too many processes consuming resources
+
+**Solution**:
+```python
+# Limit background processes
+await box.exec("bash", "-c", """
+    # Check process count
+    ps aux | wc -l
+
+    # Kill excess processes
+    ps aux | grep "excess process" | awk '{print $2}' | xargs -r kill
+""")
+```
+
+## Best Practices
+
+1. **Use PID Files**: Store PIDs for management
+2. **Implement Health Checks**: Monitor process status
+3. **Handle Logs Appropriately**: Log to files, rotate logs
+4. **Graceful Shutdown**: Use SIGTERM before SIGKILL
+5. **Resource Limits**: Set CPU/memory limits for processes
+6. **Failover Patterns**: Implement restart logic for critical processes
+
+## Security Notes
+
+1. **Run as Non-Root**: Use `user` parameter to run as non-root user
+2. **Limit Privileges**: Use minimal required permissions
+3. **Secure Logs**: Protect sensitive information in logs
+4. **Resource Quotas**: Prevent DoS from runaway processes
+
+## Related Topics
+
+<CardGroup cols={2}>
+  <Card title="Commands Overview" icon="terminal" href="/commands/overview">
+    Command execution overview.
+  </Card>
+  <Card title="Run Command" icon="play" href="/commands/run-command">
+    Basic command execution.
+  </Card>
+  <Card title="Interactive Terminal (PTY)" icon="terminal" href="/commands/interactive-terminal-pty">
+    PTY sessions for interactive use.
+  </Card>
+  <Card title="Stream Output" icon="stream" href="/commands/stream-output">
+    Real-time output streaming.
+  </Card>
+</CardGroup>

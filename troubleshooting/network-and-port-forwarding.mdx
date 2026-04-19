@@ -1,0 +1,234 @@
+---
+title: "Network and Port Forwarding"
+sidebarTitle: "Network & Ports"
+description: "Troubleshoot network connectivity and port forwarding issues in BoxLite"
+---
+
+This guide covers common network and port forwarding issues you may encounter when running boxes with BoxLite.
+
+## Overview
+
+BoxLite provides network connectivity to boxes through `gvproxy`, a userspace networking proxy that handles port forwarding and NAT. Understanding how this works helps diagnose issues quickly.
+
+## Common Issues
+
+### Port Forward Not Working
+
+**Symptom:** Unable to connect to a service running inside a box via port forwarding.
+
+**Diagnosis Steps:**
+
+1. **Verify gvproxy is running:**
+   ```bash
+   ps aux | grep gvproxy
+   ```
+
+2. **Check port availability:**
+   ```bash
+   lsof -i :8080
+   # Should show boxlite/gvproxy or be empty
+   ```
+
+3. **Verify port configuration:**
+   ```python
+   # Correct format: (host_port, guest_port, protocol)
+   ports=[(8080, 80, "tcp")]
+
+   # Wrong (ports swapped):
+   # ports=[(80, 8080, "tcp")]  # Don't do this
+   ```
+
+4. **Test service inside box:**
+   ```python
+   async with SimpleBox(image="python:3.11-slim", ports=[(8080, 8000, "tcp")]) as box:
+       # Start HTTP server in box
+       await box.exec("python", "-m", "http.server", "8000", background=True)
+
+       # Wait for server to start
+       await asyncio.sleep(2)
+
+       # Test from host
+       import httpx
+       response = httpx.get("http://localhost:8080")
+       print(response.status_code)
+   ```
+
+### No Internet Access from Box
+
+**Symptom:** Box cannot reach external services (DNS fails, connection refused).
+
+**Causes:**
+- Networking not enabled
+- Firewall blocking outbound connections
+- gvproxy not running correctly
+
+**Solutions:**
+
+```python
+# Enable networking when creating box
+box = await runtime.create_box(
+    image="python:3.11-slim",
+    network=True  # Required for internet access
+)
+
+# Or with SimpleBox
+async with SimpleBox(image="python:3.11-slim", network=True) as box:
+    result = await box.exec("curl", "-s", "https://example.com")
+    print(result.stdout)
+```
+
+**Check gvproxy status:**
+
+```bash
+# Check if gvproxy is running
+ps aux | grep gvproxy
+
+# Check for errors
+ls ~/.boxlite/gvproxy/
+
+# Restart networking
+# Stop the box first, then recreate with network=True
+```
+
+### DNS Resolution Fails
+
+**Symptom:** `ping` works but domain names don't resolve.
+
+**Solution:**
+
+```python
+# Use IP addresses instead of hostnames
+# Or configure custom DNS
+
+box = await runtime.create_box(
+    image="python:3.11-slim",
+    network=True,
+    dns=["8.8.8.8", "1.1.1.1"]  # Custom DNS servers
+)
+```
+
+### Connection Timeout
+
+**Symptom:** Connection to forwarded port times out.
+
+**Troubleshooting:**
+
+1. **Verify service is running inside box:**
+   ```python
+   # Check if service is listening
+   result = await box.exec("ss", "-tlnp")
+   print(result.stdout)
+   ```
+
+2. **Check host firewall:**
+   ```bash
+   # Linux
+   sudo iptables -L
+
+   # macOS
+   sudo pfctl -s all
+   ```
+
+3. **Verify port is not in use:**
+   ```bash
+   lsof -i :8080
+   ```
+
+## Port Forward Configuration
+
+### Basic Port Forwarding
+
+```python
+# Forward host port 8080 to guest port 80
+box = await runtime.create_box(
+    image="nginx:latest",
+    ports=[(8080, 80, "tcp")]
+)
+```
+
+### Multiple Ports
+
+```python
+# Forward multiple ports
+box = await runtime.create_box(
+    image="myapp:latest",
+    ports=[
+        (8080, 80, "tcp"),   # HTTP
+        (8443, 443, "tcp"),  # HTTPS
+        (2222, 22, "tcp"),   # SSH
+    ]
+)
+```
+
+### UDP Ports
+
+```python
+# UDP port forwarding (e.g., for DNS, VoIP)
+box = await runtime.create_box(
+    image="dns-server:latest",
+    ports=[
+        (53, 53, "udp"),
+    ]
+)
+```
+
+## Network Modes
+
+### NAT Mode (Default)
+
+In NAT mode, the box shares the host's network connection but cannot be reached from the outside.
+
+```python
+box = await runtime.create_box(
+    image="python:3.11-slim",
+    network=True  # NAT mode
+)
+```
+
+### Bridge Mode
+
+Bridge mode gives the box its own IP address on the network.
+
+```python
+# Bridge mode requires additional network configuration
+box = await runtime.create_box(
+    image="python:3.11-slim",
+    network_bridge=True  # Requires network setup
+)
+```
+
+<Warning>
+Bridge mode requires root privileges and additional network configuration.
+</Warning>
+
+## Debugging Network Issues
+
+### Enable Debug Logging
+
+```bash
+RUST_LOG=debug python your_script.py 2>&1 | tee network_debug.log
+```
+
+### Check Network Status
+
+```python
+# Get box network information
+box_info = await box.info()
+print(box_info.network)
+```
+
+### Verify Host Routing
+
+```bash
+# Linux
+ip route
+
+# macOS
+netstat -rn
+```
+
+## Related Documentation
+
+- [Architecture: Networking & Storage](/architecture/networking-storage) - Detailed networking architecture
+- [BoxRun Configuration](/boxrun/configuration) - Network configuration options
+- [Troubleshooting Index](/troubleshooting/index) - All troubleshooting guides

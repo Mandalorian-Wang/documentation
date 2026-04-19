@@ -1,0 +1,425 @@
+---
+title: "Stream Output"
+sidebarTitle: "Stream Output"
+description: "Real-time stdout/stderr streaming for long-running commands in BoxLite."
+---
+
+BoxLite supports streaming output from commands, enabling real-time processing of stdout and stderr streams. This is essential for long-running commands, progress updates, and interactive applications.
+
+## Overview
+
+When executing commands, you can stream output in real-time instead of waiting for the entire command to complete. This is achieved through:
+
+- **stdout stream**: Async iterator for standard output
+- **stderr stream**: Async iterator for standard error
+- **stdin stream**: Writer for sending input to processes
+
+<Note>
+  Streaming requires using the lower-level execution API. The `SimpleBox.exec()` method returns results directly, while `box._box.exec()` (accessed via the internal box object) returns an Execution handle that supports streaming.
+</Note>
+
+## Basic Streaming
+
+### Stream stdout
+
+```python
+import boxlite
+
+async with boxlite.SimpleBox(image="python:slim") as box:
+    # Execute command
+    execution = await box._box.exec(
+        "python", ["-c", """
+import time
+for i in range(5):
+    print(f'Progress: {i+1}/5')
+    time.sleep(1)
+"""]
+    )
+
+    # Stream stdout in real-time
+    async for line in execution.stdout():
+        print(f"[stdout] {line}", end="")
+
+    # Wait for completion
+    result = await execution.wait()
+    print(f"Exit code: {result.exit_code}")
+```
+
+### Stream stderr
+
+```python
+async with boxlite.SimpleBox(image="python:slim") as box:
+    execution = await box._box.exec(
+        "python", ["-c", """
+import sys
+import time
+for i in range(3):
+    print(f'Log: {i}', file=sys.stderr)
+    time.sleep(1)
+"""]
+    )
+
+    # Stream stderr
+    async for line in execution.stderr():
+        print(f"[stderr] {line}", end="")
+
+    result = await execution.wait()
+```
+
+## Concurrent Stream Reading
+
+### Read stdout and stderr simultaneously
+
+```python
+import asyncio
+
+async def stream_output(box, cmd, *args):
+    """Stream both stdout and stderr concurrently."""
+    execution = await box._box.exec(cmd, list(args))
+
+    async def read_stdout():
+        async for line in execution.stdout():
+            print(f"[stdout] {line}", end="")
+
+    async def read_stderr():
+        async for line in execution.stderr():
+            print(f"[stderr] {line}", end="")
+
+    # Run both readers concurrently
+    await asyncio.gather(read_stdout(), read_stderr())
+
+    # Wait for command to complete
+    result = await execution.wait()
+    return result
+
+async with boxlite.SimpleBox(image="python:slim") as box:
+    result = await stream_output(
+        box._box,
+        "python", "-c", """
+import sys
+import time
+for i in range(5):
+    print(f'Output line {i}')
+    print(f'Error line {i}', file=sys.stderr)
+    time.sleep(0.5)
+"""
+    )
+    print(f"Exit code: {result.exit_code}")
+```
+
+### Differentiate output streams
+
+```python
+async with boxlite.SimpleBox(image="python:slim") as box:
+    execution = await box._box.exec(
+        "sh", ["-c", """
+echo "This is stdout"
+echo "This is stderr" >&2
+echo "More stdout"
+echo "More stderr" >&2
+"""
+        ]
+    )
+
+    # Collect streams separately
+    stdout_lines = []
+    stderr_lines = []
+
+    async for line in execution.stdout():
+        stdout_lines.append(line)
+
+    async for line in execution.stderr():
+        stderr_lines.append(line)
+
+    result = await execution.wait()
+
+    print("STDOUT:")
+    print("".join(stdout_lines))
+
+    print("STDERR:")
+    print("".join(stderr_lines))
+```
+
+## Interactive Input/Output
+
+### Send input while streaming output
+
+```python
+async with boxlite.SimpleBox(image="python:slim") as box:
+    # Start an interactive process
+    execution = await box._box.exec("cat")
+
+    # Get stdin writer
+    stdin = execution.stdin()
+
+    # Send input
+    await stdin.send_input(b"Hello\n")
+    await stdin.send_input(b"World\n")
+
+    # Close stdin to signal EOF
+    await stdin.close()
+
+    # Stream output
+    async for line in execution.stdout():
+        print(f"Received: {line}", end="")
+
+    result = await execution.wait()
+```
+
+### Interactive shell session
+
+```python
+async def interactive_shell(box):
+    """Run an interactive shell with full I/O streaming."""
+    # Start bash with TTY
+    execution = await box._box.exec(
+        "bash",
+        tty=True  # Enable PTY for interactive shell
+    )
+
+    stdin = execution.stdin()
+
+    # Send commands and stream output
+    await stdin.send_input(b"echo 'Hello from interactive shell'\n")
+    await asyncio.sleep(0.5)
+
+    await stdin.send_input(b"ls -la\n")
+    await asyncio.sleep(0.5)
+
+    # Stream remaining output
+    async for line in execution.stdout():
+        print(line, end="")
+
+    await execution.wait()
+
+async with boxlite.SimpleBox(image="python:slim") as box:
+    await interactive_shell(box._box)
+```
+
+## Progress Monitoring
+
+### Monitor long-running process
+
+```python
+import time
+
+async def monitor_progress(box, task_id):
+    """Monitor progress of a long-running task."""
+    execution = await box._box.exec(
+        "python", ["-c", f"""
+import time
+import sys
+for i in range(100):
+    time.sleep(0.1)
+    print(f'{{"task": "{task_id}", "progress": {i+1}}}')
+    sys.stdout.flush()
+"""]
+    )
+
+    progress_data = []
+
+    async for line in execution.stdout():
+        # Parse JSON progress
+        try:
+            import json
+            data = json.loads(line.strip())
+            progress_data.append(data)
+            print(f"Progress: {data['progress']}%")
+        except:
+            print(f"Output: {line}", end="")
+
+    result = await execution.wait()
+    return progress_data
+
+async with boxlite.SimpleBox(image="python:slim") as box:
+    data = await monitor_progress(box._box, "task-001")
+    print(f"Collected {len(data)} progress updates")
+```
+
+### Real-time log streaming
+
+```python
+async def stream_logs(box, log_file):
+    """Stream logs from a file in real-time."""
+    # Start tail -f in background
+    execution = await box._box.exec(
+        "tail", ["-f", log_file]
+    )
+
+    try:
+        async for line in execution.stdout():
+            print(f"[LOG] {line}", end="")
+    except asyncio.CancelledError:
+        # Clean up on cancel
+        await execution.kill()
+        raise
+
+async with boxlite.SimpleBox(image="python:slim") as box:
+    # Create log file
+    await box._box.exec(
+        "bash", ["-c", "echo 'Log 1' > /workspace/app.log && sleep 1 && echo 'Log 2' >> /workspace/app.log"]
+    )
+
+    # Start streaming
+    await stream_logs(box._box, "/workspace/app.log")
+```
+
+## Streaming with Timeout
+
+### Timeout handling for streams
+
+```python
+import asyncio
+
+async def stream_with_timeout(box, cmd, timeout=30):
+    """Stream output with timeout."""
+    execution = await box._box.exec(cmd)
+
+    try:
+        # Read output with timeout
+        output = []
+        start_time = time.time()
+
+        async for line in execution.stdout():
+            output.append(line)
+
+            # Check elapsed time
+            if time.time() - start_time > timeout:
+                await execution.kill()
+                raise asyncio.TimeoutError(f"Command timed out after {timeout}s")
+
+        result = await execution.wait()
+        return result, "".join(output)
+
+    except asyncio.TimeoutError:
+        print("Command timed out - killing process")
+        await execution.kill()
+        raise
+
+async with boxlite.SimpleBox(image="python:slim") as box:
+    try:
+        result, output = await stream_with_timeout(
+            box._box,
+            ["python", "-c", "import time; [print(i) or time.sleep(1) for i in range(100)]"],
+            timeout=5
+        )
+    except asyncio.TimeoutError:
+        print("Successfully handled timeout")
+```
+
+## Best Practices
+
+### Stream consumption
+
+1. **Always consume both streams**: If you only read stdout, stderr can fill the buffer and block the process
+2. **Use concurrent reading**: Read stdout and stderr concurrently to avoid deadlocks
+3. **Handle exceptions**: Wrap stream iteration in try/except for graceful error handling
+
+```python
+# Good pattern - concurrent stream reading
+async def execute_and_stream(box, cmd, args):
+    execution = await box._box.exec(cmd, args)
+
+    async def read_stdout():
+        try:
+            async for line in execution.stdout():
+                process_stdout(line)
+        except Exception as e:
+            print(f"stdout error: {e}")
+
+    async def read_stderr():
+        try:
+            async for line in execution.stderr():
+                process_stderr(line)
+        except Exception as e:
+            print(f"stderr error: {e}")
+
+    # Run concurrently
+    await asyncio.gather(read_stdout(), read_stderr())
+
+    return await execution.wait()
+```
+
+### Buffer management
+
+- Streams use internal buffers; large outputs should be processed incrementally
+- For very large outputs, consider writing to files instead of memory
+
+## Complete Example
+
+```python
+import asyncio
+import boxlite
+
+async def run_build_with_logs(box):
+    """Run a build process with real-time log streaming."""
+    # Create a mock build script in the box
+    await box.exec("bash", "-c", """
+cat > /workspace/build.sh << 'EOF'
+#!/bin/bash
+for i in {1..10}; do
+    echo "[BUILD] Compiling module $i..."
+    sleep 0.5
+    if [ $i -eq 5 ]; then
+        echo "[WARNING] Deprecated API used in module $i" >&2
+    fi
+    echo "[BUILD] Module $i complete"
+done
+echo "[BUILD] Build finished successfully"
+EOF
+chmod +x /workspace/build.sh
+""")
+
+    # Execute with streaming
+    execution = await box._box.exec("/workspace/build.sh", [])
+
+    print("Starting build...")
+    print("-" * 40)
+
+    async def stream_output():
+        # Read both streams concurrently
+        stdout_task = asyncio.create_task(
+            self._stream_lines(execution.stdout(), "[OUT] ")
+        )
+        stderr_task = asyncio.create_task(
+            self._stream_lines(execution.stderr(), "[ERR] ")
+        )
+
+        await asyncio.gather(stdout_task, stderr_task)
+
+    async def stream_lines(stream, prefix):
+        async for line in stream:
+            print(f"{prefix}{line}", end="")
+
+    await stream_output()
+
+    result = await execution.wait()
+    print("-" * 40)
+    print(f"Build completed with exit code: {result.exit_code}")
+
+# Helper function
+async def _stream_lines(stream, prefix):
+    async for line in stream:
+        print(f"{prefix}{line}", end="")
+
+async def main():
+    async with boxlite.SimpleBox(image="python:slim") as box:
+        await run_build_with_logs(box)
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Run Commands" icon="play" href="/commands/run-command">
+    Execute commands and handle results.
+  </Card>
+  <Card title="Exit Codes & Retries" icon="rotate" href="/commands/exit-codes-and-retries">
+    Handle errors and implement retry logic.
+  </Card>
+  <Card title="Commands Overview" icon="info" href="/commands/overview">
+    Command execution concepts.
+  </Card>
+</CardGroup>

@@ -1,103 +1,69 @@
 ---
 title: "Introduction"
-description: "Sandboxes for every agent. Embeddable, stateful, snapshots, and hardware isolation."
+description: "Start with BoxLite, choose the right product path, and find the next document to read."
 icon: "house"
 ---
 
-BoxLite lets you spin up lightweight Linux VMs and run OCI containers inside them — in milliseconds, from your own code, with no daemon and no root. Unlike ephemeral sandboxes that destroy state after each execution, BoxLite Boxes are **stateful workspaces** — install packages, create files, build up environment state, then come back later and pick up where you left off.
+BoxLite is an embeddable sandbox runtime for creating isolated Linux boxes from your own application code. This documentation is organized around one onboarding path:
 
-Runs on macOS (Apple Silicon), Linux (KVM), and Windows (WSL2).
+1. Understand what BoxLite is.
+2. Decide whether you need BoxLite or BoxRun.
+3. Pick a language quickstart.
+4. Move into tutorials, guides, and reference.
 
-## Why BoxLite?
+Use this page as the routing point, not as the full product explanation.
+
+## Start here
 
 <CardGroup cols={2}>
-  <Card title="Embeddable" icon="cube">
-    A library you import — no daemon, no cloud account, no root. Local first, cloud when you're ready.
+  <Card title="What is BoxLite?" icon="compass" href="/getting-started/what-is-boxlite">
+    Learn what BoxLite owns, what a box is, and how the product boundary is defined.
   </Card>
-  <Card title="Stateful" icon="database">
-    Boxes retain packages, files, and environment across stop/restart. No rebuilding on every interaction.
+  <Card title="Choose BoxLite or BoxRun" icon="shuffle" href="/getting-started/choose-sdk-or-boxrun">
+    Decide whether to embed BoxLite directly or move to the BoxRun management path.
   </Card>
-  <Card title="Snapshots" icon="camera">
-    Fork, checkpoint, and restore full sandbox state. Branch execution like `git branch` for environments.
+  <Card title="Install and system requirements" icon="download" href="/getting-started/install">
+    Check platform support, virtualization requirements, and the right quickstart for your language.
   </Card>
-  <Card title="Hardware isolation" icon="shield-halved">
-    Each sandbox is a real micro-VM with its own Linux kernel. VM-level security with container-level ergonomics.
+  <Card title="Core concepts" icon="lightbulb" href="/core-concepts">
+    Continue into concepts for lifecycle, images, and resource behavior.
   </Card>
 </CardGroup>
 
-## Quick start
+## Product paths
 
-<Tabs>
-  <Tab title="Python">
-    ```python
-    # pip install boxlite
-    import asyncio
-    import boxlite
+| Path | Use it when | Start here |
+|---|---|---|
+| BoxLite SDK | Your application should create and manage boxes directly. | [/getting-started/install](/getting-started/install) |
+| BoxRun | You need a separate management layer with its own CLI, API, and operational workflows. | [/boxrun/index](/boxrun/index) |
 
-    async def main():
-        async with boxlite.SimpleBox(image="alpine:latest") as box:
-            result = await box.exec("echo", "Hello from BoxLite!")
-            print(result.stdout)
+## Recommended reading order
 
-    asyncio.run(main())
-    ```
-  </Tab>
-  <Tab title="Node.js">
-    ```typescript
-    // npm install @boxlite-ai/boxlite
-    import { SimpleBox } from '@boxlite-ai/boxlite';
-
-    const box = new SimpleBox({ image: 'alpine:latest' });
-    try {
-      const result = await box.exec('echo', 'Hello from BoxLite!');
-      console.log(result.stdout);
-    } finally {
-      await box.stop();
-    }
-    ```
-  </Tab>
-</Tabs>
-
-## BoxRun — sandbox management
-
-**BoxRun** is the management layer for BoxLite sandboxes. Create, list, stop, and delete boxes through a CLI, REST API, Python SDK, or web dashboard — all in a single binary.
-
-```bash
-curl -fsSL https://boxlite.ai/boxrun/install | sh
-boxrun shell ubuntu
-```
-
-BoxLite creates and runs micro-VMs. BoxRun manages them — tracking state, persisting data, and exposing operations over HTTP and CLI.
-
-## SDKs and platforms
-
-| SDK | Install |
-|-----|---------|
-| Python | `pip install boxlite` |
-| Node.js | `npm install @boxlite-ai/boxlite` |
-| Rust | Git dependency |
-| C | Link `libboxlite` |
-
-| Platform | Architecture | Requirements |
-|----------|-------------|-------------|
-| macOS | Apple Silicon | macOS 12+ |
-| Linux | x86_64 / ARM64 | KVM enabled |
-| Windows | WSL2 | KVM support |
+1. [What is BoxLite?](/getting-started/what-is-boxlite)
+2. [Choose BoxLite or BoxRun](/getting-started/choose-sdk-or-boxrun)
+3. [Install and system requirements](/getting-started/install)
+4. One language quickstart
+5. [Tutorials](/tutorials/index)
+6. [Guides](/guides/index)
+7. [Reference](/reference/index)
 
 ## Next steps
 
 <CardGroup cols={2}>
   <Card title="Tutorials" icon="graduation-cap" href="/tutorials/index">
-    Execute code, connect LLMs, transfer files, and automate browsers — step-by-step.
+    Learn BoxLite by task: code execution, file movement, services, terminals, browser automation, and debugging.
   </Card>
   <Card title="Guides" icon="book-open" href="/guides/index">
-    AI agent integration, security configuration, and production patterns.
+    Move into tuning, networking, advanced integration patterns, and production topics.
   </Card>
-  <Card title="SDK reference" icon="book" href="/reference/index">
-    Full API reference for the Python, Node.js, Rust, and C SDKs.
+  <Card title="Integrations" icon="plug" href="/integrations/overview">
+    Browse framework-specific entry points for Anthropic, OpenAI Agents, LangChain, Vercel AI SDK, and MCP patterns.
   </Card>
-  <Card title="Architecture" icon="sitemap" href="/architecture/index">
-    How BoxLite works under the hood — microVMs, the jailer, networking, and storage.
+  <Card title="Reference" icon="book" href="/reference/index">
+    Use the API reference when you already know which SDK or surface you need.
+  </Card>
+  <Card title="Release notes" icon="clock-rotate-left" href="/community/release-notes">
+    Follow one authoritative release page instead of multiple overlapping version-history pages.
   </Card>
   <Card title="Join the community" icon="discord" href="https://go.boxlite.ai/discord">
     Ask questions, share projects, and chat with the BoxLite team on Discord.

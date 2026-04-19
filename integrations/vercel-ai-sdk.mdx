@@ -1,0 +1,397 @@
+---
+title: "Vercel AI SDK Integration"
+description: "Integrate BoxLite with Vercel AI SDK for building AI-powered applications with secure code execution"
+---
+
+Integrate BoxLite with the Vercel AI SDK to build AI-powered applications with secure code execution capabilities. This guide covers streaming patterns, tool definitions, and best practices for production deployments.
+
+## Overview
+
+The Vercel AI SDK provides a unified API for building AI applications with streaming support, tool calling, and multi-provider compatibility. By integrating BoxLite, you can give your AI applications the ability to:
+
+- Execute Python code with streaming output support
+- Run scripts with the full Python standard library
+- Process data with full stateful session support
+- Build reactive UIs with real-time code execution feedback
+
+## Tool Definition with the AI SDK
+
+The Vercel AI SDK provides a unified `tool()` helper that handles schema validation and execution in one place:
+
+```typescript title="vercel_tool_definition.ts"
+import { tool } from 'ai';
+import { z } from 'zod';
+import { CodeBox } from '@boxlite-ai/boxlite';
+
+const executePythonTool = tool({
+  description: 'Execute Python code in a secure sandbox. Use this to run calculations, data analysis, or any Python code.',
+  parameters: z.object({
+    code: z.string().describe('Python code to execute. Use print() to output results.'),
+  }),
+  execute: async ({ code }) => {
+    const codebox = new CodeBox();
+    try {
+      await codebox.start();
+      const result = await codebox.run(code);
+      return result;
+    } finally {
+      await codebox.stop();
+    }
+  },
+});
+```
+
+## Basic Implementation
+
+Here's a complete implementation using Vercel AI SDK with BoxLite:
+
+```typescript title="vercel_ai_sandbox.ts"
+import { generateText, tool } from 'ai';
+import { openai } from '@ai-sdk/openai';
+import { z } from 'zod';
+import { CodeBox } from '@boxlite-ai/boxlite';
+
+async function runAgent(question: string) {
+  const codebox = new CodeBox();
+
+  try {
+    await codebox.start();
+
+    const { text } = await generateText({
+      model: openai('gpt-4o'),
+      system: 'You are a helpful assistant. When you need to compute something, write Python code using the execute_python tool. Always print() your results.',
+      prompt: question,
+      tools: {
+        execute_python: tool({
+          description: 'Execute Python code in a secure sandbox. Use this to run calculations, data analysis, or any Python code.',
+          parameters: z.object({
+            code: z.string().describe('Python code to execute. Use print() to output results.'),
+          }),
+          execute: async ({ code }) => {
+            console.log(`--- Executing code ---\n${code}\n---`);
+            const result = await codebox.run(code);
+            console.log(`Output: ${result}`);
+            return result;
+          },
+        }),
+      },
+      maxSteps: 5,
+    });
+
+    console.log(`\nAnswer: ${text}`);
+  } finally {
+    await codebox.stop();
+  }
+}
+
+runAgent("What's the 50th Fibonacci number?");
+```
+
+## Streaming Implementation
+
+For applications that benefit from streaming responses:
+
+```typescript title="vercel_streaming.ts"
+import { streamText, tool } from 'ai';
+import { openai } from '@ai-sdk/openai';
+import { z } from 'zod';
+import { CodeBox } from '@boxlite-ai/boxlite';
+
+async function streamAgent(question: string) {
+  const codebox = new CodeBox();
+
+  try {
+    await codebox.start();
+
+    const result = streamText({
+      model: openai('gpt-4o'),
+      system: 'You are a helpful assistant. When you need to compute something, write Python code using the execute_python tool. Always print() your results.',
+      prompt: question,
+      tools: {
+        execute_python: tool({
+          description: 'Execute Python code in a secure sandbox.',
+          parameters: z.object({
+            code: z.string().describe('Python code to execute.'),
+          }),
+          execute: async ({ code }) => {
+            const output = await codebox.run(code);
+            return output;
+          },
+        }),
+      },
+      maxSteps: 5,
+    });
+
+    // Stream the response to the console
+    for await (const chunk of result.textStream) {
+      process.stdout.write(chunk);
+    }
+    console.log('\n');
+  } finally {
+    await codebox.stop();
+  }
+}
+
+streamAgent("Calculate the sum of numbers from 1 to 100");
+```
+
+## Using with React/Next.js
+
+For web applications using React or Next.js:
+
+```tsx title="vercel_nextjs.tsx"
+'use client';
+
+import { useState } from 'react';
+import { useChat } from 'ai/react';
+import { generateText } from 'ai';
+import { openai } from '@ai-sdk/openai';
+import { tool } from 'ai';
+import { z } from 'zod';
+import { CodeBox } from '@boxlite-ai/boxlite';
+
+export default function ChatInterface() {
+  const { messages, input, handleInputChange, handleSubmit } = useChat({
+    api: '/api/chat',
+  });
+
+  return (
+    <div className="chat-container">
+      <div className="messages">
+        {messages.map((m) => (
+          <div key={m.id} className={`message ${m.role}`}>
+            {m.content}
+          </div>
+        ))}
+      </div>
+      <form onSubmit={handleSubmit}>
+        <input
+          value={input}
+          onChange={handleInputChange}
+          placeholder="Ask a question..."
+        />
+      </form>
+    </div>
+  );
+}
+
+// API Route (app/api/chat/route.ts)
+import { NextRequest, NextResponse } from 'next/server';
+import { generateText } from 'ai';
+import { openai } from '@ai-sdk/openai';
+import { tool } from 'ai';
+import { z } from 'zod';
+
+export async function POST(req: NextRequest) {
+  const { messages } = await req.json();
+  const codebox = new CodeBox();
+
+  try {
+    await codebox.start();
+
+    const result = await generateText({
+      model: openai('gpt-4o'),
+      messages,
+      tools: {
+        execute_python: tool({
+          description: 'Execute Python code in a secure sandbox.',
+          parameters: z.object({
+            code: z.string(),
+          }),
+          execute: async ({ code }) => {
+            return await codebox.run(code);
+          },
+        }),
+      },
+    });
+
+    return NextResponse.json({
+      messages: result.text,
+    });
+  } finally {
+    await codebox.stop();
+  }
+}
+```
+
+## Multi-Provider Support
+
+The Vercel AI SDK supports many model providers. Here's how to use BoxLite with different providers:
+
+```typescript title="vercel_providers.ts"
+import { generateText, tool } from 'ai';
+import { anthropic } from '@ai-sdk/anthropic';
+import { google } from '@ai-sdk/google';
+import { z } from 'zod';
+import { CodeBox } from '@boxlite-ai/boxlite';
+
+const codebox = new CodeBox();
+await codebox.start();
+
+// Using Anthropic
+const anthropicResult = await generateText({
+  model: anthropic('claude-sonnet-4-5-20250929'),
+  system: 'You are a helpful assistant that can execute Python code.',
+  prompt: 'What is 25 * 48?',
+  tools: {
+    execute_python: tool({
+      description: 'Execute Python code in a secure sandbox.',
+      parameters: z.object({ code: z.string() }),
+      execute: async ({ code }) => await codebox.run(code),
+    }),
+  },
+});
+
+// Using Google Gemini
+const googleResult = await generateText({
+  model: google('gemini-2.0-flash'),
+  system: 'You are a helpful assistant that can execute Python code.',
+  prompt: 'Calculate the square root of 144.',
+  tools: {
+    execute_python: tool({
+      description: 'Execute Python code in a secure sandbox.',
+      parameters: z.object({ code: z.string() }),
+      execute: async ({ code }) => await codebox.run(code),
+    }),
+  },
+});
+
+await codebox.stop();
+```
+
+## Tool with Max Steps
+
+Control the maximum number of tool invocations:
+
+```typescript title="vercel_max_steps.ts"
+import { generateText, tool } from 'ai';
+import { openai } from '@ai-sdk/openai';
+import { z } from 'zod';
+import { CodeBox } from '@boxlite-ai/boxlite';
+
+async function runWithMaxSteps(question: string, maxSteps: number = 10) {
+  const codebox = new CodeBox();
+
+  try {
+    await codebox.start();
+
+    const { text, steps } = await generateText({
+      model: openai('gpt-4o'),
+      prompt: question,
+      tools: {
+        execute_python: tool({
+          description: 'Execute Python code in a secure sandbox.',
+          parameters: z.object({ code: z.string() }),
+          execute: async ({ code }) => {
+            return await codebox.run(code);
+          },
+        }),
+      },
+      maxSteps,
+    });
+
+    console.log(`Final answer: ${text}`);
+    console.log(`Total tool invocations: ${steps.length}`);
+
+    return text;
+  } finally {
+    await codebox.stop();
+  }
+}
+
+runWithMaxSteps("Find all prime numbers between 1 and 50", 5);
+```
+
+## Best Practices
+
+### 1. Use Context Managers
+
+Always properly initialize and clean up the code box:
+
+```typescript
+const codebox = new CodeBox();
+try {
+  await codebox.start();
+  // Use codebox here
+} finally {
+  await codebox.stop();
+}
+```
+
+### 2. Set Appropriate Max Steps
+
+Prevent infinite loops with `maxSteps`:
+
+```typescript
+const { text } = await generateText({
+  model: openai('gpt-4o'),
+  prompt: question,
+  tools: { execute_python: tool(...) },
+  maxSteps: 5, // Limit tool invocations
+});
+```
+
+### 3. Handle Tool Errors Gracefully
+
+Implement proper error handling:
+
+```typescript
+execute: async ({ code }) => {
+  try {
+    return await codebox.run(code, { timeout: 30000 });
+  } catch (error) {
+    return `Error executing code: ${error.message}`;
+  }
+},
+```
+
+### 4. Reuse Box Instance
+
+For better performance, reuse the CodeBox instance:
+
+```typescript
+// Create once, reuse across calls
+const codebox = new CodeBox();
+await codebox.start();
+
+// Multiple tool calls will reuse the same environment
+const result1 = await codebox.run('pip install numpy');
+const result2 = await codebox.run('import numpy as np; ...');
+```
+
+### 5. Use Zod for Type Safety
+
+Leverage Zod for input validation:
+
+```typescript
+parameters: z.object({
+  code: z.string().describe('Python code to execute'),
+  timeout: z.number().optional().default(30),
+}),
+```
+
+## Production Considerations
+
+For production Vercel AI SDK deployments:
+
+1. **Connection pooling**: Reuse codebox instances where possible
+2. **Timeout handling**: Set appropriate timeouts for long-running code
+3. **Error recovery**: Implement proper error handling and recovery
+4. **Resource management**: Configure CPU and memory limits
+5. **Logging**: Add comprehensive logging for debugging
+
+```typescript
+const codebox = new CodeBox({
+  cpuCount: 2,
+  memoryMB: 512,
+  diskMB: 1024,
+  timeout: 60,
+  networking: false,
+});
+```
+
+## Next Steps
+
+- [MCP Gateway Pattern](/integrations/mcp-gateway-pattern) — Use BoxLite as MCP gateway
+- [AI Agent Integration Guide](/guides/ai-agent-integration) — Production patterns
+- [Vercel AI SDK Documentation](https://sdk.vercel.ai) — Full AI SDK reference

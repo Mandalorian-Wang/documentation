@@ -1,0 +1,421 @@
+---
+title: "Debugging Playbook"
+description: "Common issues, debugging commands, and troubleshooting procedures for BoxRun."
+---
+
+This playbook provides systematic approaches to diagnose and resolve common BoxRun issues. Use this when encountering problems in development or production.
+
+## Overview
+
+This guide covers:
+- Log analysis techniques
+- Diagnostic commands
+- Common issue patterns
+- Resolution procedures
+
+## Quick Diagnostics
+
+### System Health Check
+
+Run these commands first when troubleshooting:
+
+```bash
+# 1. Check BoxRun server status
+curl http://localhost:9090/v1/info
+
+# 2. List all boxes and their states
+boxrun list
+
+# 3. Check system resources
+df -h           # Disk space
+free -h         # Memory
+nproc           # CPU cores
+
+# 4. Check for running processes
+ps aux | grep boxrun
+ps aux | grep gvproxy
+
+# 5. Check logs for errors
+journalctl -u boxrun -p err --since "10 minutes ago"
+```
+
+### Network Diagnostics
+
+```bash
+# Check if ports are listening
+ss -tlnp | grep 9090
+lsof -i :9090
+
+# Test local connectivity
+curl -v http://localhost:9090/v1/info
+```
+
+## Common Issues
+
+### Issue 1: BoxRun Server Won't Start
+
+**Symptoms**: `boxrun serve` fails or exits immediately
+
+**Diagnosis**:
+```bash
+# Check for port conflicts
+lsof -i :9090
+
+# Check for socket conflicts
+ls -la ~/.boxrun/boxrun.sock
+
+# Check database integrity
+sqlite3 ~/.boxrun/boxrun.db "PRAGMA integrity_check;"
+
+# Check permissions
+ls -la ~/.boxrun/
+```
+
+**Solutions**:
+
+| Cause | Solution |
+|-------|----------|
+| Port in use | Stop conflicting service or change port: `export BOXRUN_PORT=9091` |
+| Database locked | Remove stale lock: `rm ~/.boxrun/boxrun.db.lock` |
+| Permission denied | Fix ownership: `chown -R $(whoami) ~/.boxrun` |
+| Disk full | Clean up: `rm -rf ~/.boxrun/runtime/images/*` |
+
+### Issue 2: Box Creation Fails
+
+**Symptoms**: `boxrun create` times out or returns error
+
+**Diagnosis**:
+```bash
+# Check available resources
+curl http://localhost:9090/v1/info
+
+# Check if image is available
+boxrun images
+
+# Check image pull logs
+journalctl -u boxrun --since "5 minutes ago" | grep -i "pull\|image"
+
+# Check gvproxy status
+ps aux | grep gvproxy
+
+# Verify KVM/hypervisor
+ls -la /dev/kvm        # Linux
+sysctl kern.hv_support # macOS
+```
+
+**Solutions**:
+
+| Cause | Solution |
+|-------|----------|
+| No resources | Stop some boxes or increase limits |
+| Image pull failing | Check network, use `--pull-policy always` |
+| KVM not available | Enable virtualization in BIOS/boot args |
+| gvproxy crashed | Restart networking: `pkill gvproxy; boxrun serve &` |
+
+### Issue 3: Command Execution Timeout
+
+**Symptoms**: `boxrun exec` hangs or times out
+
+**Diagnosis**:
+```bash
+# Check box state
+boxrun list
+
+# Try with verbose output
+boxrun exec mybox -- ls -la
+
+# Check if box is responsive
+boxrun exec mybox -- echo "ping"
+
+# Check resource usage of box
+# (no native support, check host processes)
+ps aux | grep -i box
+```
+
+**Solutions**:
+
+| Cause | Solution |
+|-------|----------|
+| Box in error state | Restart box: `boxrun stop mybox && boxrun start mybox` |
+| Process hanging | Force stop: `boxrun stop mybox` and recreate |
+| Resource exhaustion | Check host memory/CPU |
+| Network blocked | Verify gvproxy is running |
+
+### Issue 4: Box Can't Connect to Network
+
+**Symptoms**: Commands inside box fail with network errors
+
+**Diagnosis**:
+```bash
+# Check gvproxy process
+ps aux | grep gvproxy
+
+# Test from inside box
+boxrun exec mybox -- ping -c 3 8.8.8.8
+boxrun exec mybox -- nslookup google.com
+
+# Check DNS configuration
+boxrun exec mybox -- cat /etc/resolv.conf
+
+# Check routing table
+boxrun exec mybox -- ip route
+```
+
+**Solutions**:
+
+| Cause | Solution |
+|-------|----------|
+| gvproxy not running | Restart: `pkill gvproxy; boxrun serve &` |
+| DNS not configured | Check resolv.conf inside box |
+| Firewall blocking | Allow gvproxy ports (10080-10092) |
+| Network namespace issue | Restart box to reset network |
+
+### Issue 5: High Resource Usage
+
+**Symptoms**: System becomes slow, boxes unresponsive
+
+**Diagnosis**:
+```bash
+# Check host CPU/memory
+top -o %CPU
+free -h
+
+# Check disk I/O
+iostat -x 1 5
+
+# Check box processes
+ps aux | grep -E "qemu|boxlite" | head -20
+
+# Check for zombie processes
+ps aux | grep Z
+```
+
+**Solutions**:
+
+| Cause | Solution |
+|-------|----------|
+| Too many boxes | Stop unused boxes: `boxrun stop --all` |
+| Memory leak | Restart affected boxes |
+| Disk I/O bound | Use SSD, clean up old images |
+| Zombie processes | Kill parent processes |
+
+## Debug Commands
+
+### Enable Debug Logging
+
+```bash
+# Start with debug logging
+BOXRUN_LOG_LEVEL=debug boxrun serve
+
+# Or set environment permanently
+export BOXRUN_LOG_LEVEL=debug
+```
+
+### Inspect Box Internals
+
+```bash
+# List box processes on host
+ps aux | grep $(boxrun list --format '{{.ID}}')
+
+# View box filesystem (from host)
+ls ~/.boxrun/runtime/boxes/<box-id>/rootfs/
+
+# Check box disk usage
+du -sh ~/.boxrun/runtime/boxes/<box-id>/
+```
+
+### Network Debugging
+
+```bash
+# Capture gvproxy traffic (Linux)
+sudo tcpdump -i gvpn0 -w /tmp/gvproxy.pcap
+
+# Check DNS queries
+boxrun exec mybox -- strace -e network -f nslookup google.com 2>&1 | head -50
+
+# Check port forwarding
+boxrun forward list
+```
+
+### Database Inspection
+
+```bash
+# Query database directly
+sqlite3 ~/.boxrun/boxrun.db
+
+# View boxes table
+sqlite3 ~/.boxrun/boxrun.db "SELECT * FROM boxes;"
+
+# View exec history
+sqlite3 ~/.boxrun/boxrun.db "SELECT * FROM execs ORDER BY started_at DESC LIMIT 10;"
+
+# View events
+sqlite3 ~/.boxrun/boxrun.db "SELECT * FROM events ORDER BY timestamp DESC LIMIT 20;"
+```
+
+## Advanced Debugging
+
+### Attach to Running Box
+
+```bash
+# Get box PID
+box_id=$(boxrun list --format '{{.ID}}')
+ps aux | grep $box_id | grep -v grep
+
+# Attach strace (Linux only)
+sudo strace -p <qemu-pid> -f
+
+# View qemu monitor
+# (requires custom qemu args)
+```
+
+### Core Dump Analysis
+
+```bash
+# Enable core dumps
+ulimit -c unlimited
+
+# Find core dumps
+find /var/crash -name "core.*" 2>/dev/null
+find ~/.boxrun -name "core.*" 2>/dev/null
+
+# Analyze with gdb
+gdb /path/to/boxrun /path/to/core
+```
+
+### Performance Profiling
+
+```bash
+# CPU profiling (Linux)
+perf record -g -p <boxrun-pid> -- sleep 10
+perf report
+
+# Memory profiling
+# Use pmap to see memory layout
+pmap -x <boxrun-pid>
+```
+
+## Recovery Procedures
+
+### Service Recovery
+
+```bash
+# 1. Stop all boxes
+boxrun stop --all
+
+# 2. Stop BoxRun
+sudo systemctl stop boxrun
+
+# 3. Clean up
+rm -f ~/.boxrun/boxrun.sock
+
+# 4. Start BoxRun
+sudo systemctl start boxrun
+
+# 5. Verify
+curl http://localhost:9090/v1/info
+```
+
+### Database Recovery
+
+```bash
+# 1. Stop service
+sudo systemctl stop boxrun
+
+# 2. Check integrity
+sqlite3 ~/.boxrun/boxrun.db "PRAGMA integrity_check;"
+
+# 3. If corrupted, restore from backup
+cp /var/backups/boxrun/boxrun-20240415.db ~/.boxrun/boxrun.db
+
+# 4. Fix permissions
+chmod 600 ~/.boxrun/boxrun.db
+
+# 5. Restart
+sudo systemctl start boxrun
+```
+
+### Complete Reset
+
+<Warning>
+  This destroys all boxes and data. Use as last resort.
+</Warning>
+
+```bash
+# 1. Stop everything
+sudo systemctl stop boxrun
+boxrun stop --all
+
+# 2. Remove state
+rm -rf ~/.boxrun/runtime/*
+rm -f ~/.boxrun/boxrun.db
+rm -f ~/.boxrun/boxrun.sock
+
+# 3. Reinitialize
+boxrun serve
+
+# 4. Recreate boxes
+boxrun create ubuntu --name mybox
+```
+
+## Debug Mode Checklist
+
+Use this checklist when asked to debug:
+
+- [ ] Check `boxrun list` for box states
+- [ ] Verify `curl localhost:9090/v1/info` responds
+- [ ] Review recent logs: `journalctl -u boxrun -n 100`
+- [ ] Check resource availability: `df -h`, `free -h`
+- [ ] Verify gvproxy running: `ps aux | grep gvproxy`
+- [ ] Test network from box: `boxrun exec mybox -- ping 8.8.8.8`
+- [ ] Enable debug logging if needed
+- [ ] Check database integrity
+
+## Gathering Information for Support
+
+When reporting issues, collect:
+
+```bash
+# System information
+uname -a
+boxrun --version
+
+# Configuration
+env | grep BOXRUN
+
+# Logs (last 100 lines)
+journalctl -u boxrun -n 100 > boxrun-logs.txt
+
+# BoxRun state
+boxrun list > boxrun-list.txt
+
+# Resource info
+curl http://localhost:9090/v1/info > boxrun-info.txt
+```
+
+Package these into a zip for support requests.
+
+## Common Error Messages
+
+| Error | Meaning | Resolution |
+|-------|---------|------------|
+| `connection refused` | Server not running | Start server: `boxrun serve` |
+| `connection timeout` | Network/blocker issue | Check gvproxy |
+| `no such box` | Box doesn't exist | Recreate box |
+| `box in error state` | Box failed to start | Check logs, recreate |
+| `resource not available` | Out of CPU/memory | Stop some boxes |
+| `image not found` | Image pull failed | Check network, try again |
+
+## Prevention
+
+Best practices to avoid issues:
+
+1. **Monitor resources** - Set up alerts for CPU/memory/disk
+2. **Regular backups** - Backup database regularly
+3. **Log rotation** - Configure logrotate for BoxRun logs
+4. **Update regularly** - Keep BoxRun and BoxLite updated
+5. **Capacity planning** - Don't over-provision boxes
+
+<Info>
+  For persistent issues, check the [Troubleshooting](/troubleshooting/index) section for platform-specific guides.
+</Info>

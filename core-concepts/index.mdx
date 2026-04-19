@@ -1,0 +1,79 @@
+---
+title: "Core Concepts"
+sidebarTitle: "Concept map"
+description: "Use this page as the map for BoxLite box types, lifecycle, images, and resource sizing."
+---
+
+BoxLite is easiest to learn if you separate four decisions:
+
+1. Which box type matches the job
+2. How long that box should live
+3. Which image defines the guest environment
+4. How much CPU, memory, and disk the box needs
+
+This page is the entry point for those concepts. It only links to pages that exist in this docs set today.
+
+## Concept Map
+
+<CardGroup cols={2}>
+  <Card title="Lifecycle" icon="refresh" href="/core-concepts/lifecycle">
+    Create, start, reuse, stop, and remove boxes safely.
+  </Card>
+  <Card title="Images" icon="image" href="/core-concepts/images">
+    Choose the OCI image that defines the environment inside the box.
+  </Card>
+  <Card title="Resource model" icon="cpu" href="/core-concepts/resource-model">
+    Understand CPUs, memory, disk, and persistence tradeoffs.
+  </Card>
+  <Card title="Choose SDK or BoxRun" icon="shuffle" href="/getting-started/choose-sdk-or-boxrun">
+    Decide whether you want an embedded SDK workflow or the BoxRun control plane.
+  </Card>
+</CardGroup>
+
+## Box Types
+
+The SDK surfaces a small set of box types. Start with the smallest abstraction that fits your use case.
+
+| Box type | Best for | What you control |
+|---|---|---|
+| `SimpleBox` | Run commands in a specific image | Image, resources, env, files, lifecycle |
+| `CodeBox` | Run generated Python code safely | Python execution flow, package installation, lifecycle |
+| `BrowserBox` | Browser automation workflows | Browser session lifecycle and automation client |
+| `ComputerBox` | Full desktop automation | GUI session lifecycle and desktop controls |
+| `InteractiveBox` | Terminal-style interactive sessions | Shell lifecycle and streamed input/output |
+
+### Choosing the right box
+
+- Start with `SimpleBox` when you already know the command you want to run.
+- Start with `CodeBox` when an agent needs to generate and execute Python code.
+- Use `BrowserBox` when your automation target is a web page.
+- Use `ComputerBox` when the task requires a full desktop or GUI surface.
+- Use `InteractiveBox` when you need a long-lived shell session instead of one-shot commands.
+
+## How These Concepts Fit Together
+
+The typical path looks like this:
+
+1. Pick a box type.
+2. Pick an image or accept the box type's built-in environment.
+3. Set resources for the workload.
+4. Decide whether the box is disposable or persistent.
+
+That is the core BoxLite mental model. Most task-focused tutorials build on the same sequence.
+
+## Recommended Next Reads
+
+<CardGroup cols={2}>
+  <Card title="Lifecycle details" icon="refresh" href="/core-concepts/lifecycle">
+    Understand `auto_remove`, manual start/stop, and reuse patterns.
+  </Card>
+  <Card title="Image selection" icon="image" href="/core-concepts/images">
+    Learn when to use your own image and when a box type provides one for you.
+  </Card>
+  <Card title="Resource sizing" icon="gauge" href="/core-concepts/resource-model">
+    Tune CPU, memory, and disk for real workloads.
+  </Card>
+  <Card title="Tutorials" icon="rocket" href="/tutorials/index">
+    Move from concepts into concrete task-based guides.
+  </Card>
+</CardGroup>

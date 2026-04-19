@@ -1,0 +1,277 @@
+---
+title: "Production Deployment Overview"
+description: "Architecture overview for deploying BoxRun in production environments."
+sidebarTitle: "Production Deploy"
+---
+
+This document provides a comprehensive architecture overview for deploying BoxRun in production. It covers the system components, deployment architectures, and key considerations for running BoxRun as a production service.
+
+## What is BoxRun in Production?
+
+BoxRun is a management layer for BoxLite micro-VMs. In production deployments, it runs as a long-lived server process that provides:
+
+- **HTTP/REST API** — Full API for box lifecycle management, command execution, and file transfers
+- **Python SDK** — Async client for programmatic access
+- **Web Dashboard** — Built-in UI at `/ui` for visual management
+- **SQLite Persistence** — All state stored in a single database file
+
+Unlike development mode where BoxRun starts automatically on first use, production deployments require explicit server management, proper security configuration, and integration with existing infrastructure.
+
+## System Architecture
+
+### Components
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                         Production Host                             │
+│  ┌─────────────────────────────────────────────────────────────────┐│
+│  │                    boxrun serve                                 ││
+│  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────┐ ││
+│  │  │  REST API   │  │  Web UI     │  │  Unix Socket Interface  │ ││
+│  │  │  :9090      │  │  /ui        │  │  ~/.boxrun/boxrun.sock  │ ││
+│  │  └─────────────┘  └─────────────┘  └─────────────────────────┘ ││
+│  │         │                │                     │               ││
+│  │         └────────────────┼─────────────────────┘               ││
+│  │                          ▼                                      ││
+│  │  ┌───────────────────────────────────────────────────────────┐ ││
+│  │  │              Lifecycle Manager (Rust)                     │ ││
+│  │  │  - Box CRUD operations                                      │ ││
+│  │  │  - State machine transitions                                │ ││
+│  │  │  - Execution orchestration                                  │ ││
+│  │  └───────────────────────────────────────────────────────────┘ ││
+│  │                          │                                      ││
+│  │         ┌───────────────┼───────────────┐                      ││
+│  │         ▼               ▼               ▼                      ││
+│  │  ┌───────────┐   ┌───────────┐   ┌───────────────┐           ││
+│  │  │  SQLite   │   │  BoxLite  │   │   Image       │           ││
+│  │  │  Database │   │  Runtime  │   │   Cache       │           ││
+│  │  └───────────┘   └───────────┘   └───────────────┘           ││
+│  └─────────────────────────────────────────────────────────────────┘│
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### Data Flow
+
+1. **Client Request** — Clients (CLI, SDK, REST) send requests to BoxRun server
+2. **API Handler** — Server processes request, validates inputs
+3. **Lifecycle Manager** — Orchestrates box operations through BoxLite
+4. **BoxLite Runtime** — Creates/manages micro-VMs using KVM/libkrun
+5. **Persistence** — State changes written to SQLite database
+
+## Deployment Modes
+
+### Standalone Mode
+
+The simplest production deployment:
+
+```
+┌──────────────────┐
+│   boxrun serve   │
+│   - TCP :9090    │
+│   - Web UI       │
+└──────────────────┘
+```
+
+**Use cases:**
+- Single-node development/staging
+- Small-scale production with limited users
+- Testing and evaluation
+
+**Configuration:**
+```bash
+boxrun serve --host 127.0.0.1 --port 9090
+```
+
+### Reverse Proxy Mode
+
+Production deployments behind a reverse proxy:
+
+```
+┌─────────────┐     ┌──────────────────┐     ┌──────────────────┐
+│   Clients   │────▶│  Reverse Proxy   │────▶│   boxrun serve   │
+│             │     │  (nginx/Caddy)   │     │   - Unix socket  │
+└─────────────┘     └──────────────────┘     └──────────────────┘
+```
+
+**Use cases:**
+- High availability requirements
+- TLS termination
+- Load balancing across multiple BoxRun instances
+- Exposing REST API to users
+
+See [Reverse Proxy Deployment](/boxrun/deploy-reverse-proxy) for detailed configuration.
+
+### Systemd Service Mode
+
+Long-running production server managed by systemd:
+
+```
+┌──────────────────┐
+│  systemd        │
+│  ┌────────────┐ │
+│  │ boxrun.service │
+│  └────────────┘ │
+│       │         │
+│       ▼         │
+│  ┌────────────┐ │
+│  │ boxrun     │ │
+│  │ serve      │ │
+│  └────────────┘ │
+└──────────────────┘
+```
+
+**Use cases:**
+- Production servers requiring automatic restarts
+- Log management via journald
+- Start-on-boot configuration
+
+See [systemd Deployment](/boxrun/deploy-systemd-linux) for setup instructions.
+
+## State Management
+
+### Directory Layout
+
+```
+~/.boxrun/
+├── boxrun                    # Binary (installed)
+├── boxrun.db                 # SQLite database
+├── runtime/                  # BoxLite runtime
+│   ├── kernel/              # MicroVM kernel
+│   ├── shim/                # Shim binary
+│   └── images/              # Cached OCI images
+└── logs/                    # Server logs (if enabled)
+```
+
+### Database Schema
+
+The SQLite database stores:
+
+- **boxes** — Box metadata, state, Resource Configuration
+- **executions** — Command execution history
+- **events** — Audit log of operations
+
+```bash
+# Inspect database
+sqlite3 ~/.boxrun/boxrun.db ".schema"
+```
+
+### Backup Considerations
+
+- **Database** — Copy `boxrun.db` periodically (small, ~MB range)
+- **Runtime** — Do not backup; regenerated on restart
+- **Images** — Can be pre-cached on new hosts
+
+See [Database & Backup](/boxrun/database-and-backup) for detailed backup strategies.
+
+## Resource Planning
+
+### Hardware Requirements
+
+| Component | Minimum | Recommended |
+|-----------|---------|-------------|
+| CPU | 4 cores | 8+ cores |
+| Memory | 8 GB | 16+ GB |
+| Disk | 20 GB | 100+ GB (for boxes) |
+| KVM support | Required | Required |
+
+### Capacity Planning
+
+BoxRun's capacity depends on:
+
+- **Total CPU** — Divided among running boxes
+- **Total Memory** — Sum of all box memory allocations
+- **Disk I/O** — Based on box workloads
+- **Network** — If boxes have networking enabled
+
+See [Capacity Planning](/boxrun/capacity-planning) for detailed sizing guidance.
+
+## Security Considerations
+
+### Network Security
+
+- **Listen address** — Default to `127.0.0.1`; use reverse proxy for external access
+- **TLS** — Terminate TLS at reverse proxy
+- **Firewall** — Restrict access to BoxRun port
+
+### Isolation
+
+BoxRun leverages BoxLite's security features:
+
+- **Hardware virtualization** — KVM-based micro-VMs
+- **Jailer** — OS-level process isolation
+- **Seccomp** — Syscall filtering on Linux
+- **cgroups** — Resource limits
+
+See [Security](/architecture/security) for detailed security architecture.
+
+### Authentication
+
+Production deployments should implement:
+
+- **API authentication** — Token-based or OAuth
+- **Rate limiting** — Prevent abuse
+- **Access logging** — Audit trail
+
+See [Auth & Access Control](/boxrun/auth-and-access-control) for implementation options.
+
+## Observability
+
+### Metrics
+
+BoxRun exposes metrics at:
+
+```
+GET http://localhost:9090/v1/metrics
+```
+
+Key metrics include:
+- Box count by state
+- Execution success/failure rates
+- Resource utilization
+- API request latency
+
+See [Observability](/observability/overview) for detailed metrics reference.
+
+### Logging
+
+- **Server logs** — Written to stderr/stdout when run in foreground
+- **systemd** — Managed via journald
+- **Log levels** — Configurable via `RUST_LOG` environment variable
+
+### Health Checks
+
+```
+GET http://localhost:9090/v1/health
+```
+
+Returns `{"status": "ok"}` when server is healthy.
+
+## High Availability
+
+For HA deployments:
+
+1. **Multiple instances** — Run behind load balancer
+2. **Shared state** — Not supported; each instance has own database
+3. **Stateless design** — No shared state required
+4. **Health checks** — Use `/v1/health` for instance health
+
+<Warning>
+  BoxRun does not support shared state or clustering. Each instance maintains its own database. Design your deployment accordingly.
+</Warning>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="systemd Deployment" icon="linux" href="/boxrun/deploy-systemd-linux">
+    Deploy BoxRun as a systemd service on Linux.
+  </Card>
+  <Card title="Reverse Proxy" icon="server" href="/boxrun/deploy-reverse-proxy">
+    Configure nginx or Caddy in front of BoxRun.
+  </Card>
+  <Card title="Auth & Access Control" icon="lock" href="/boxrun/auth-and-access-control">
+    Implement authentication and authorization.
+  </Card>
+  <Card title="Capacity Planning" icon="chart-line" href="/boxrun/capacity-planning">
+    Plan resources for your workload.
+  </Card>
+</CardGroup>

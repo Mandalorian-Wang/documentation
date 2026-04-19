@@ -1,0 +1,428 @@
+---
+title: "Metrics and Alerts"
+description: "BoxRun metrics exposure, alerting rules, and monitoring setup."
+---
+
+This guide covers how to monitor BoxRun using metrics and set up alerts for production deployments.
+
+## Overview
+
+BoxRun exposes metrics through its REST API and supports integration with external monitoring systems. This document explains how to collect, visualize, and alert on BoxRun metrics.
+
+## Available Metrics
+
+### System Metrics
+
+Query system-wide metrics via the info endpoint:
+
+```bash
+curl http://localhost:9090/v1/info
+```
+
+Response:
+```json
+{
+  "max_cpu": 8,
+  "max_memory_mb": 16384
+}
+```
+
+### Box Metrics
+
+List all boxes with their states:
+
+```bash
+boxrun list
+```
+
+Output:
+```
+NAME    STATE    CPU    MEMORY    IMAGE
+test1   running  2      1024      ubuntu:24.04
+test2   stopped  2      1024      ubuntu:24.04
+```
+
+### Execution Metrics
+
+Query execution history:
+
+```bash
+# Via REST API
+curl http://localhost:9090/v1/execs
+
+# Via CLI (if supported)
+boxrun execs list
+```
+
+## Prometheus Integration
+
+### Exporting to Prometheus
+
+Create a simple exporter to scrape BoxRun metrics:
+
+```python
+#!/usr/bin/env python3
+# boxrun-exporter.py
+
+from prometheus_client import start_http_server, Gauge, Counter, Histogram
+import requests
+import time
+
+# Define metrics
+boxes_running = Gauge('boxrun_boxes_running', 'Number of running boxes')
+boxes_total = Gauge('boxrun_boxes_total', 'Total number of boxes')
+max_cpu = Gauge('boxrun_max_cpu', 'Maximum CPU cores available')
+max_memory_mb = Gauge('boxrun_max_memory_mb', 'Maximum memory in MB')
+exec_total = Gauge('boxrun_exec_total', 'Total command executions')
+exec_duration = Histogram('boxrun_exec_duration_seconds', 'Command execution duration')
+
+def collect_metrics():
+    """Collect metrics from BoxRun API."""
+    try:
+        # System info
+        info = requests.get('http://localhost:9090/v1/info').json()
+        max_cpu.set(info['max_cpu'])
+        max_memory_mb.set(info['max_memory_mb'])
+
+        # Box list
+        boxes = requests.get('http://localhost:9090/v1/boxes').json()
+        running = sum(1 for b in boxes if b.get('state') == 'running')
+        boxes_running.set(running)
+        boxes_total.set(len(boxes))
+
+        # Execution stats - use Gauge to track total count
+        execs = requests.get('http://localhost:9090/v1/execs').json()
+        exec_total.set(len(execs))
+
+    except Exception as e:
+        print(f"Error collecting metrics: {e}")
+
+if __name__ == '__main__':
+    start_http_server(9091)
+    while True:
+        collect_metrics()
+        time.sleep(15)
+```
+
+### Prometheus Configuration
+
+Add BoxRun to Prometheus scrape targets:
+
+```yaml
+# prometheus.yml
+scrape_configs:
+  - job_name: 'boxrun'
+    static_configs:
+      - targets: ['localhost:9091']
+    scrape_interval: 15s
+```
+
+## Grafana Dashboard
+
+### Dashboard JSON
+
+Import this dashboard for BoxRun monitoring:
+
+```json
+{
+  "dashboard": {
+    "title": "BoxRun Metrics",
+    "panels": [
+      {
+        "title": "Running Boxes",
+        "type": "stat",
+        "targets": [
+          {"expr": "boxrun_boxes_running", "refId": "A"}
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}
+      },
+      {
+        "title": "Execution Rate",
+        "type": "graph",
+        "targets": [
+          {"expr": "rate(boxrun_exec_total[5m])", "refId": "A"}
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}
+      },
+      {
+        "title": "Execution Duration (p95)",
+        "type": "graph",
+        "targets": [
+          {"expr": "histogram_quantile(0.95, boxrun_exec_duration_seconds_bucket)", "refId": "A"}
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8}
+      },
+      {
+        "title": "Resource Utilization",
+        "type": "gauge",
+        "targets": [
+          {"expr": "(boxrun_boxes_running / boxrun_max_cpu) * 100", "refId": "A"}
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8}
+      }
+    ]
+  }
+}
+```
+
+## Alert Rules
+
+### Prometheus Alert Rules
+
+```yaml
+groups:
+  - name: boxrun
+    rules:
+      # Service down alert
+      - alert: BoxRunDown
+        expr: up{job="boxrun"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "BoxRun server is down"
+          description: "BoxRun has been down for more than 1 minute"
+
+      # High box count alert
+      - alert: HighBoxCount
+        expr: boxrun_boxes_running > (boxrun_max_cpu * 0.8)
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High number of running boxes"
+          description: "Running {{ $value }} boxes, approaching CPU limit"
+
+      # High failure rate alert
+      - alert: HighFailureRate
+        expr: rate(boxrun_exec_failed_total[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High command execution failure rate"
+          description: "More than 5% of commands are failing"
+
+      # Execution timeout alert
+      - alert: ExecutionTimeout
+        expr: histogram_quantile(0.95, boxrun_exec_duration_seconds_bucket) > 30
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Command execution is slow"
+          description: "p95 execution time is {{ $value }}s"
+```
+
+### Alert Manager Configuration
+
+```yaml
+# alertmanager.yml
+route:
+  group_by: ['alertname']
+  group_wait: 10s
+  group_interval: 10s
+  repeat_interval: 12h
+  receiver: 'team-notifications'
+
+receivers:
+  - name: 'team-notifications'
+    email_configs:
+      - to: 'ops-team@example.com'
+        send_resolved: true
+    slack_configs:
+      - channel: '#alerts'
+        send_resolved: true
+
+inhibit_rules:
+  - source_match:
+      severity: 'critical'
+    target_match:
+      severity: 'warning'
+    equal: ['alertname']
+```
+
+## Key Metrics to Monitor
+
+### Operational Metrics
+
+| Metric | Description | Alert Threshold |
+|--------|-------------|-----------------|
+| `up` | BoxRun server availability | = 0 |
+| `boxrun_boxes_running` | Active boxes | > 80% capacity |
+| `boxrun_exec_total` | Total executions | N/A |
+| `boxrun_exec_duration_seconds` | Execution time | p99 > 30s |
+
+### Resource Metrics
+
+| Metric | Description | Alert Threshold |
+|--------|-------------|-----------------|
+| `boxrun_max_cpu` | Total CPU | N/A |
+| `boxrun_max_memory_mb` | Total memory | N/A |
+| `boxrun_boxes_running / boxrun_max_cpu` | CPU utilization | > 80% |
+
+### Health Metrics
+
+| Metric | Description | Alert Threshold |
+|--------|-------------|-----------------|
+| `rate(exec_failed_total[5m])` | Failure rate | > 5% |
+| `boxrun_boxes_in_error` | Error state boxes | > 0 |
+
+## Custom Metrics Collection
+
+### Python Client with Metrics
+
+```python
+import requests
+from prometheus_client import Counter, Histogram
+
+exec_counter = Counter('boxrun_client_exec', 'Client executions', ['box_name', 'exit_code'])
+exec_duration = Histogram('boxrun_client_exec_duration', 'Execution duration')
+
+def execute_command(box_name, command):
+    start = time.time()
+    try:
+        response = requests.post(
+            f'http://localhost:9090/v1/boxes/{box_name}/exec',
+            json={'command': command}
+        )
+        duration = time.time() - start
+        exec_counter.labels(box_name=box_name, exit_code=response.status_code).inc()
+        exec_duration.observe(duration)
+        return response.json()
+    except Exception as e:
+        exec_counter.labels(box_name=box_name, exit_code='error').inc()
+        raise
+```
+
+### Node.js Client with Metrics
+
+```javascript
+const client = new BoxRunClient();
+const execDuration = new Histogram({
+  name: 'boxrun_client_exec_duration',
+  help: 'Execution duration in seconds',
+  labelNames: ['box_name']
+});
+
+async function execute(boxName, command) {
+  const start = Date.now();
+  try {
+    const result = await client.exec(boxName, command);
+    execDuration.observe({ box_name: boxName }, (Date.now() - start) / 1000);
+    return result;
+  } catch (error) {
+    execDuration.observe({ box_name: boxName, error: true }, (Date.now() - start) / 1000);
+    throw error;
+  }
+}
+```
+
+## Monitoring Setup
+
+### Complete Stack
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Monitoring Stack                         │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  BoxRun ──┬──► Metrics Exporter ──► Prometheus ──► Grafana  │
+│           │                              │                  │
+│           └──────► Log Aggregator ───────┘                  │
+│                                                             │
+│  AlertManager ──► PagerDuty / Slack / Email                 │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Docker Compose for Monitoring
+
+```yaml
+# monitoring.yaml
+services:
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+
+  grafana:
+    image: grafana/grafana:latest
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./dashboards:/etc/grafana/provisioning/dashboards
+
+  alertmanager:
+    image: prom/alertmanager:latest
+    ports:
+      - "9093:9093"
+
+  boxrun-exporter:
+    build: ./exporter
+    ports:
+      - "9091:9091"
+```
+
+## Health Checks
+
+### HTTP Health Endpoint
+
+```bash
+# Basic health check
+curl http://localhost:9090/v1/info
+
+# Check database connectivity
+curl http://localhost:9090/v1/boxes
+```
+
+### systemd Health Check
+
+```ini
+[Service]
+# Health check via ExecStartPost
+ExecStartPost=/bin/bash -c 'curl -s http://localhost:9090/v1/info || exit 1'
+```
+
+## Capacity Planning with Metrics
+
+Use metrics for capacity planning:
+
+```python
+# Calculate recommended max boxes
+max_boxes = min(
+    info['max_cpu'] // 2,  # 2 cores per box
+    info['max_memory_mb'] // 1024  # 1GB per box
+)
+
+# Alert threshold at 80% capacity
+alert_threshold = int(max_boxes * 0.8)
+```
+
+<Info>
+  For logging, see [Observability Overview](/observability/overview). For tracing, see [OpenTelemetry Integration](/observability/tracing-otel).
+</Info>
+
+## Maintenance
+
+### Metric Retention
+
+Configure retention in Prometheus:
+
+```yaml
+# prometheus.yml
+storage:
+  tsdb.path: /prometheus
+  tsdb.retention.time: 30d
+```
+
+### Regular Tasks
+
+- Review alert history weekly
+- Update dashboards based on usage patterns
+- Adjust thresholds based on actual load
+- Clean up old metric data

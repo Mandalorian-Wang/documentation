@@ -1,0 +1,324 @@
+---
+title: "Shared Responsibility Model"
+description: "Security responsibility boundaries between BoxLite and users."
+---
+
+This document defines the security responsibilities of BoxLite (the platform) versus users (you). Understanding this boundary is essential for maintaining a secure deployment.
+
+## Overview
+
+Security in BoxLite is a shared responsibility. BoxLite provides the isolation mechanisms, but users must configure and use them correctly. This document outlines what BoxLite handles and what you are responsible for.
+
+## Responsibility Matrix
+
+| Security Aspect | BoxLite Responsibility | User Responsibility |
+|-----------------|------------------------|---------------------|
+| Hardware virtualization | Implementation and maintenance | Proper deployment |
+| VM isolation | Configuration and enforcement | Workload selection |
+| OS-level sandboxing | Implementation and defaults | Security preset selection |
+| Resource limits | Enforcement | Appropriate configuration |
+| Network isolation | Implementation | Port forwarding decisions |
+| Image security | Signature verification | Image source verification |
+| Data at rest | Encryption options | Enable and manage encryption |
+| Access control | Authentication mechanisms | Credential management |
+
+## BoxLite Responsibilities
+
+### 1. Platform Security
+
+BoxLite is responsible for:
+
+- **Hardware virtualization**: KVM (Linux) and Hypervisor.framework (macOS) implementation
+- **Security updates**: Patching virtualization components and dependencies
+- **Isolation mechanisms**: Jailer, seccomp, cgroups implementation
+- **Default configurations**: Secure defaults that work out of the box
+
+### 2. VM Isolation
+
+BoxLite ensures:
+- Each Box runs in an isolated VM
+- VMs cannot access each other's memory or disk
+- VMs cannot escape to access host resources
+- Syscall filtering blocks dangerous operations
+
+### 3. Resource Enforcement
+
+BoxLite enforces:
+- CPU limits via cgroups
+- Memory limits via cgroups and VM configuration
+- Disk quotas via disk image sizes
+- File descriptor limits
+- Process limits
+
+### 4. Network Security
+
+BoxLite provides:
+- gvproxy for network isolation
+- NAT for all outbound traffic
+- Optional network disable
+- Controlled port forwarding
+
+### 5. Image Verification
+
+BoxLite verifies:
+- OCI image format compliance
+- Image manifest validation
+- Optional signature verification (if configured)
+
+## User Responsibilities
+
+### 1. Security Preset Selection
+
+**Your responsibility**: Choose the appropriate SecurityOptions preset
+
+```python
+# For untrusted workloads (REQUIRED in production)
+security = SecurityOptions.maximum()
+
+# NEVER use development mode for untrusted code in production
+```
+
+| Workload Type | Recommended Preset | Rationale |
+|---------------|-------------------|------------|
+| Trusted internal | standard | Balance of security and convenience |
+| Untrusted/external | maximum | Maximum isolation for untrusted code |
+| Development/debugging | development | Only for trusted local development |
+
+### 2. Network Configuration
+
+**Your responsibility**: Configure network access appropriately
+
+```python
+# Disable network for sensitive workloads
+options = BoxOptions(network_enabled=False)
+
+# Or limit to specific ports
+options = BoxOptions(
+    network_enabled=True,
+    allowed_ports=[80, 443],  # Only HTTP/HTTPS
+)
+```
+
+**Best practices**:
+- Disable network when not needed
+- Use whitelisting for allowed ports
+- Don't expose services unnecessarily
+- Implement proper authentication on any exposed services
+
+### 3. Credential Management
+
+**Your responsibility**: Secure all credentials used within Boxes
+
+<Warning>
+  NEVER store long-term credentials inside Boxes. Use environment variables or external secrets management.
+</Warning>
+
+```python
+# GOOD: Pass credentials via environment at runtime
+box.exec("python script.py", env={"API_KEY": "..."})
+
+# GOOD: Use external secrets management
+box.exec("python script.py")  # Fetch secrets from vault
+
+# BAD: Hardcoded credentials in code inside box
+# DON'T DO THIS:
+# box.exec("export API_KEY=mysecret; python script.py")
+```
+
+**Best practices**:
+- Use short-lived tokens when possible
+- Rotate credentials regularly
+- Never commit credentials to code
+- Use secrets management services (AWS Secrets Manager, HashiCorp Vault)
+
+### 4. Image Selection
+
+**Your responsibility**: Use trusted, verified images
+
+```bash
+# Use official images
+boxrun create ubuntu:24.04
+
+# Verify image provenance
+boxrun images --verify
+
+# DON'T use untrusted third-party images
+```
+
+**Best practices**:
+- Use official OCI images when possible
+- Verify image publishers
+- Scan images for vulnerabilities
+- Keep images updated
+
+### 5. Resource Configuration
+
+**Your responsibility**: Set appropriate resource limits
+
+```bash
+# Set reasonable limits for your workload
+boxrun create ubuntu --cpu 2 --memory 1024 --disk 10
+```
+
+**Best practices**:
+- Don't over-provision resources
+- Set limits that match your workload needs
+- Monitor resource usage
+- Implement quotas for multi-user deployments
+
+### 6. Data Protection
+
+**Your responsibility**: Protect sensitive data
+
+```bash
+# Use encrypted volumes for sensitive data
+boxrun create ubuntu --encrypted
+```
+
+**Best practices**:
+- Encrypt sensitive data at rest
+- Use secure deletion when disposing of boxes
+- Implement backup encryption
+- Don't store sensitive data in plain text
+
+### 7. Access Control
+
+**Your responsibility**: Control who can access BoxRun
+
+```bash
+# Restrict network access
+sudo ufw allow 10.0.0.0/8  # Only internal network
+sudo ufw deny all
+
+# Use authentication for API access
+# (Configure external auth proxy)
+```
+
+**Best practices**:
+- Don't expose BoxRun to the public internet
+- Implement network-level access control
+- Use strong authentication
+- Implement rate limiting
+
+## Security Configuration Checklist
+
+Before deploying to production, verify:
+
+- [ ] Using `SecurityOptions.maximum()` for untrusted workloads
+- [ ] Network access configured appropriately
+- [ ] No long-term credentials stored in boxes
+- [ ] Using trusted, verified images
+- [ ] Resource limits configured
+- [ ] Sensitive data encrypted
+- [ ] Access control implemented
+- [ ] Logging and monitoring enabled
+
+## Compliance Considerations
+
+### For Regulated Workloads
+
+| Regulation | User Responsibility |
+|------------|-------------------|
+| HIPAA | Encrypt PHI, access logging, audit trails |
+| PCI-DSS | Network isolation, encryption, access control |
+| SOC 2 | Logging, monitoring, access controls |
+| GDPR | Data encryption, deletion, access logging |
+
+### Audit Readiness
+
+Maintain evidence of:
+- Security configuration settings
+- Access logs
+- Resource usage
+- Incident response procedures
+- Change management
+
+## Incident Response
+
+### If You Suspect a Security Issue
+
+1. **Immediate actions**:
+   - Stop affected boxes
+   - Preserve logs
+   - Check for unauthorized access
+
+2. **Assessment**:
+   - Review BoxLite security logs
+   - Check for privilege escalation
+   - Verify data integrity
+
+3. **Recovery**:
+   - Rebuild affected boxes from trusted images
+   - Rotate all credentials
+   - Apply security updates
+
+4. **Reporting**:
+   - Document incident
+   - Report to security team
+   - Update configurations
+
+<Info>
+  For incident response procedures, see [Incident Response Playbook](/boxrun/incident-response-playbook).
+</Info>
+
+## Common Mistakes to Avoid
+
+### 1. Using Development Mode in Production
+
+```python
+# WRONG: Using development preset in production
+security = SecurityOptions.development()  # Insufficient isolation!
+```
+
+### 2. Storing Credentials in Boxes
+
+```python
+# WRONG: Hardcoded credentials
+box.exec("python app.py --api-key mysecret")
+
+# RIGHT: Use environment variables
+box.exec("python app.py", env={"API_KEY": os.getenv("API_KEY")})
+```
+
+### 3. Exposing BoxRun to Internet
+
+```bash
+# WRONG: Exposed to public internet
+curl http://0.0.0.0:9090/v1/boxes
+
+# RIGHT: Bind to localhost or internal network
+export BOXRUN_HOST=127.0.0.1
+```
+
+### 4. Not Updating Images
+
+```bash
+# WRONG: Using outdated images with known vulnerabilities
+boxrun create ubuntu:20.04  # Outdated!
+
+# RIGHT: Use current LTS versions
+boxrun create ubuntu:24.04  # Current LTS
+```
+
+### 5. Disabling Security Features
+
+```python
+# WRONG: Disabling security features
+security = SecurityOptions(
+    jailer_enabled=False,
+    seccomp_enabled=False,
+)
+```
+
+## Support and Assistance
+
+For security-related questions:
+
+- **Documentation**: See [Security Overview](/security/overview)
+- **Community**: Join the BoxLite community forums
+- **Enterprise**: Contact enterprise support for security assessments
+- **Reporting**: Report security vulnerabilities via the security policy
+
+<Warning>
+  BoxLite provides isolation mechanisms, but the effectiveness depends on correct configuration and usage. Always assume untrusted code can exploit vulnerabilities in your configuration if not properly secured.
+</Warning>

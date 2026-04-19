@@ -1,8 +1,7 @@
 ---
 title: "Python SDK"
-sidebarTitle: "Overview"
+sidebarTitle: "Python SDK"
 description: "BoxLite Python SDK reference"
-icon: "python"
 ---
 
 Complete API reference for the BoxLite Python SDK.
@@ -13,13 +12,13 @@ Complete API reference for the BoxLite Python SDK.
 ## Installation
 
 ```bash
-pip install boxlite
+python3 -m pip install boxlite
 ```
 
 For the sync API (greenlet-based):
 
 ```bash
-pip install boxlite[sync]
+python3 -m pip install 'boxlite[sync]'
 ```
 
 ## Runtime Management
@@ -162,7 +161,7 @@ Detailed state information for a box.
 
 ## Sync API
 
-Synchronous wrappers using greenlet fiber switching. Requires `pip install boxlite[sync]`.
+Synchronous wrappers using greenlet fiber switching. Requires `python3 -m pip install 'boxlite[sync]'`.
 
 ```python
 from boxlite import SyncBoxlite, SyncBox, SyncSimpleBox, SyncCodeBox
@@ -257,5 +256,5 @@ Default values used by BoxLite.
 - [Box Types](/reference/python/box-types) - SimpleBox, CodeBox, BrowserBox, ComputerBox, InteractiveBox
 - [Execution](/reference/python/execution) - Command execution, streaming I/O, stdin/stdout/stderr
 - [Errors & Metrics](/reference/python/errors-metrics) - Exception hierarchy, metrics classes
-- [Getting Started](/getting-started/index) - Installation and quickstart guide
+- [Getting Started](/getting-started/install) - Installation and quickstart guide
 - [Configuration Reference](/reference/index) - BoxOptions details

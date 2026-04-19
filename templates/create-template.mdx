@@ -1,0 +1,325 @@
+---
+title: "Creating Custom Templates"
+description: "Create reusable BoxLite templates from running Boxes or Dockerfiles"
+---
+
+# Creating Custom Templates
+
+BoxLite supports multiple methods for creating custom templates. This guide covers the primary approaches, from capturing a running Box to building from a Dockerfile.
+
+## Method 1: From Running Box
+
+The most straightforward way to create a template is to capture a configured Box environment. This is ideal when you've set up a Box exactly how you need it and want to reuse that configuration.
+
+### Capturing a Running Box
+
+```python
+import boxlite
+
+# Create and configure a Box
+async with boxlite.SimpleBox(image="python:3.11-slim") as box:
+    # Install dependencies
+    await box.exec("pip install numpy pandas requests")
+    await box.exec("pip install black flake8 pytest")
+
+    # Copy your project files
+    await box.upload("./my-project", "/workspace/project")
+
+    # Capture as template
+    template = await box.create_template(
+        name="data-science:v1",
+        description="Python data analysis environment"
+    )
+
+print(f"Template created: {template}")
+```
+
+The `create_template()` method captures the complete Box environment including:
+
+- All installed packages and dependencies
+- Files in the filesystem
+- Environment variables
+- Working directory state
+
+### Template Creation Options
+
+The `create_template()` method supports several options:
+
+| Option | Type | Description |
+|--------|------|-------------|
+| `name` | `str` | Template name with optional tag (e.g., "myenv:v1") |
+| `description` | `str` | Human-readable description |
+| `tags` | `List[str]` | Additional tags for organization |
+
+### Using the Created Template
+
+```python
+# Create a new Box from your template
+async with boxlite.SimpleBox(template="data-science:v1") as box:
+    result = await box.exec("python --version")
+    print(result.output)
+```
+
+## Method 2: Using Dockerfile
+
+For more complex or reproducible templates, you can build from a Dockerfile. This approach is version-controllable and works well with CI/CD pipelines.
+
+### Dockerfile Template
+
+```dockerfile
+# Start with a base image
+FROM python:3.11-slim
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    git \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python packages
+RUN pip install --no-cache-dir \
+    numpy \
+    pandas \
+    requests \
+    black \
+    flake8 \
+    pytest \
+    jupyter
+
+# Set up working directory
+WORKDIR /workspace
+
+# Create a non-root user (recommended)
+RUN useradd -m -u 1000 developer
+USER developer
+
+# Default command
+CMD ["/bin/bash"]
+```
+
+### Building and Importing
+
+```python
+import boxlite
+import subprocess
+
+# Build the Docker image
+image_name = "myorg/data-science-template:v1"
+subprocess.run([
+    "docker", "build", "-t", image_name, "."
+], check=True)
+
+# Import into BoxLite (converts to OCI format)
+runtime = boxlite.Runtime()
+await runtime.import_image(image_name, "data-science:v1")
+
+print("Template imported successfully")
+```
+
+## Template Versioning
+
+Proper versioning helps you track environment changes over time and roll back when needed.
+
+### Using Tags
+
+Tags follow the pattern `name:version`:
+
+```python
+# Create versioned templates
+await box.create_template(name="ml-env:v1", description="Initial ML environment")
+await box.create_template(name="ml-env:v2", description="Added TensorFlow")
+await box.create_template(name="ml-env:v3", description="Updated to Python 3.12")
+```
+
+### Semantic Versioning
+
+For production environments, use semantic versioning:
+
+```python
+template_versions = [
+    ("myapp:1.0.0", "Initial release"),
+    ("myapp:1.0.1", "Bug fix release"),
+    ("myapp:1.1.0", "Added feature"),
+    ("myapp:2.0.0", "Breaking changes"),
+]
+
+for version, description in template_versions:
+    # Create each version
+    await box.create_template(name=version, description=description)
+```
+
+## Listing Templates
+
+### Using Python SDK
+
+```python
+import boxlite
+
+runtime = boxlite.Runtime()
+
+# List all available templates
+templates = await runtime.list_templates()
+
+for template in templates:
+    print(f"{template.name}: {template.description}")
+    print(f"  Created: {template.created_at}")
+    print(f"  Size: {template.size_mb} MB")
+```
+
+### Using BoxRun CLI
+
+```bash
+# List all templates
+boxrun template list
+
+# List templates matching a pattern
+boxrun template list --filter "data-science"
+```
+
+## Using Templates
+
+### Creating a Box from a Template
+
+```python
+# Simple usage
+async with boxlite.SimpleBox(template="my-template:v1") as box:
+    result = await box.exec("python --version")
+    print(result.output)
+
+# Using runtime (for more control)
+runtime = boxlite.Runtime()
+box = await runtime.create(
+    template="ml-env:v2",
+    name="my-ml-box",
+    cpus=4,
+    memory_mib=8192
+)
+
+# Work with the Box
+try:
+    result = await box.exec("python train.py --epochs 100")
+    print(result.output)
+finally:
+    await box.close()
+```
+
+### Template Inheritance
+
+You can create templates from other templates:
+
+```python
+# Create a specialized template from a base template
+async with boxlite.SimpleBox(template="base-env:v1") as box:
+    # Add specialized configuration
+    await box.exec("pip install tensorflow")
+
+    # Save as new template
+    await box.create_template(name="ml-env:v1", description="ML environment")
+```
+
+## Common Errors
+
+Several errors can occur when working with templates. Here's how to handle them.
+
+### Template Name Conflicts
+
+If a template with the same name already exists:
+
+```python
+try:
+    await box.create_template(name="my-template:v1")
+except boxlite.TemplateExistsError:
+    # Option 1: Use a different name
+    await box.create_template(name="my-template:v1.1")
+
+    # Option 2: Force overwrite (if supported)
+    await box.create_template(name="my-template:v1", overwrite=True)
+```
+
+### Insufficient Disk Space
+
+If you don't have enough disk space:
+
+```python
+import boxlite
+
+try:
+    await box.create_template(name="large-template:v1")
+except boxlite.DiskFullError as e:
+    # Check available space
+    runtime = boxlite.Runtime()
+    stats = await runtime.get_storage_stats()
+    print(f"Available: {stats.available_gb} GB")
+
+    # Clean up old templates or Boxes
+    # ...
+```
+
+### Invalid Base Image
+
+If the template references an invalid base image:
+
+```python
+try:
+    await box.create_template(name="bad-template:v1")
+except boxlite.ImageNotFoundError as e:
+    print(f"Base image not found: {e.message}")
+    print("Verify the image is available in your registry")
+```
+
+## Best Practices
+
+Follow these practices for maintainable templates.
+
+### Keep Templates Small
+
+Include only what's necessary:
+
+```dockerfile
+# Good: Minimal base, specific versions
+FROM python:3.11-slim
+
+# Bad: Large base with everything
+FROM python:3.11  # Includes unnecessary packages
+```
+
+### Use Non-Root Users
+
+For security, create non-root users:
+
+```dockerfile
+RUN useradd -m -u 1000 developer
+USER developer
+```
+
+### Document Your Templates
+
+Always include descriptions and metadata:
+
+```python
+await box.create_template(
+    name="ml-training:v1",
+    description="Machine learning training environment with GPU support",
+    tags=["ml", "pytorch", "gpu"]
+)
+```
+
+### Version Your Templates
+
+Maintain clear version history:
+
+```python
+# Document changes in description
+await box.create_template(
+    name="data-analysis:v2",
+    description="Added pandas, numpy (v1 had only numpy)"
+)
+```
+
+## Next Steps
+
+Now that you know how to create templates, explore these related topics:
+
+- [Debug Build Failures](/templates/debug-build-failures) - Troubleshooting template creation issues
+- [Filesystem Operations](/filesystem/overview) - Working with files in Boxes
+- [Snapshot Documentation](/tutorials/snapshots-checkpoint-rollback) - Using snapshots alongside templates

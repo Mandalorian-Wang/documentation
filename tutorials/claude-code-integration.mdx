@@ -2,7 +2,6 @@
 title: "Run Claude Code in a sandbox"
 description: "Run Claude Code on your project inside an isolated BoxLite sandbox — mount your code, let Claude Code work, and get the changes back safely."
 sidebarTitle: "Claude Code"
-icon: "microchip"
 ---
 
 [Claude Code](https://docs.anthropic.com/en/docs/claude-code) is Anthropic's CLI coding agent — it reads your code, writes changes, runs commands, and iterates on errors. That power comes with risk: it has full shell access. Running it inside a BoxLite sandbox means it can do its job without touching your host system.
@@ -12,7 +11,7 @@ icon: "microchip"
 <Tabs>
   <Tab title="Python">
     ```bash
-    pip install boxlite
+    python3 -m pip install boxlite
     ```
     Requires Python 3.10+.
   </Tab>

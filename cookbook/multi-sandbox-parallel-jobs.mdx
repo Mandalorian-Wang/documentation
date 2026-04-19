@@ -1,0 +1,733 @@
+---
+title: "Multi-Sandbox Parallel Jobs"
+sidebarTitle: "Overview"
+description: "Learn how to run parallel jobs across multiple sandboxes for high-throughput workloads like batch processing, web scraping, and distributed computing."
+---
+
+This cookbook demonstrates how to run parallel jobs across multiple BoxLite sandboxes for high-throughput workloads.
+
+## Overview
+
+Running jobs in parallel across multiple sandboxes enables:
+
+- **Batch processing**: Process large datasets concurrently
+- **Web scraping**: Fetch multiple pages simultaneously
+- **Distributed computing**: Split complex tasks across workers
+- **High throughput**: Maximize CPU utilization with parallel execution
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                    Host System                          │
+│  ┌─────────────────────────────────────────────────┐   │
+│  │              Job Coordinator                     │   │
+│  │  - Distributes work                              │   │
+│  │  - Manages concurrency                           │   │
+│  │  - Aggregates results                            │   │
+│  └─────────────────────────────────────────────────┘   │
+│          │              │              │                │
+│          ▼              ▼              ▼                │
+│   ┌──────────┐   ┌──────────┐   ┌──────────┐          │
+│   │  Box 1   │   │  Box 2   │   │  Box N   │          │
+│   │ Worker 1 │   │ Worker 2 │   │ Worker N │          │
+│   └──────────┘   └──────────┘   └──────────┘          │
+└─────────────────────────────────────────────────────────┘
+```
+
+## Basic Parallel Execution
+
+### Simple Parallel Map
+
+Process items in parallel across multiple boxes:
+
+```python
+import asyncio
+from boxlite import SimpleBox
+from typing import TypeVar, List, Callable, Any
+import json
+
+T = TypeVar('T')
+R = TypeVar('R')
+
+async def parallel_map(
+    items: List[T],
+    worker_func: Callable[[T], Any],
+    max_concurrent: int = 5,
+    image: str = "python:3.11-slim"
+) -> List[Any]:
+    """
+    Process items in parallel across multiple sandbox workers.
+
+    Args:
+        items: List of items to process
+        worker_func: Function to apply to each item
+        max_concurrent: Maximum number of concurrent boxes
+        image: Docker image for worker boxes
+
+    Returns:
+        List of results in same order as input items
+    """
+    semaphore = asyncio.Semaphore(max_concurrent)
+
+    async def process_item(item: T, index: int) -> tuple[int, Any]:
+        async with semaphore:
+            async with SimpleBox(
+                image=image,
+                network=True,
+                auto_remove=True
+            ) as box:
+                result = await worker_func(box, item)
+                return (index, result)
+
+    # Process all items concurrently
+    tasks = [process_item(item, i) for i, item in enumerate(items)]
+    completed = await asyncio.gather(*tasks, return_exceptions=True)
+
+    # Sort by original index to maintain order
+    results = [None] * len(items)
+    for item in completed:
+        if isinstance(item, Exception):
+            print(f"Error: {item}")
+            continue
+        index, result = item
+        results[index] = result
+
+    return results
+
+
+# Example: Fetch multiple URLs in parallel
+async def fetch_url(box, url: str) -> dict:
+    """Worker function to fetch a URL."""
+    script = f"""
+import requests
+import json
+try:
+    r = requests.get('{url}', timeout=10)
+    print(json.dumps({{'url': '{url}', 'status': r.status_code, 'len': len(r.text)}}))
+except Exception as e:
+    print(json.dumps({{'url': '{url}', 'error': str(e)}}))
+"""
+    result = await box.exec("python", "-c", script)
+    return json.loads(result.stdout)
+
+
+async def main():
+    urls = [
+        "https://example.com",
+        "https://example.org",
+        "https://example.net",
+    ]
+
+    results = await parallel_map(urls, fetch_url, max_concurrent=3)
+    for r in results:
+        print(r)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+### Batch Processing Pattern
+
+Process data in batches across worker boxes:
+
+```python
+import asyncio
+from boxlite import SimpleBox
+from typing import List, Dict, Any
+import json
+
+async def batch_process(
+    items: List[Dict[str, Any]],
+    batch_size: int = 10,
+    max_workers: int = 4,
+    process_func: callable = None
+) -> List[Dict[str, Any]]:
+    """
+    Process items in batches across multiple worker boxes.
+
+    Args:
+        items: List of items to process
+        batch_size: Number of items per batch
+        max_workers: Maximum number of concurrent boxes
+        process_func: Function to process each batch
+
+    Returns:
+        List of processed results
+    """
+    # Split into batches
+    batches = [
+        items[i:i + batch_size]
+        for i in range(0, len(items), batch_size)
+    ]
+
+    semaphore = asyncio.Semaphore(max_workers)
+
+    async def process_batch(batch: List[Dict], batch_idx: int) -> tuple[int, List]:
+        async with semaphore:
+            async with SimpleBox(
+                image="python:3.11-slim",
+                network=True,
+                auto_remove=True
+            ) as box:
+                # Process batch in the box
+                if process_func:
+                    results = await process_func(box, batch)
+                else:
+                    # Default: just count items
+                    results = [{"batch": batch_idx, "count": len(batch)} for _ in batch]
+                return (batch_idx, results)
+
+    # Process all batches concurrently
+    tasks = [process_batch(batch, i) for i, batch in enumerate(batches)]
+    completed = await asyncio.gather(*tasks, return_exceptions=True)
+
+    # Flatten results
+    all_results = []
+    for item in completed:
+        if isinstance(item, Exception):
+            print(f"Batch error: {item}")
+            continue
+        _, results = item
+        all_results.extend(results)
+
+    return all_results
+
+
+# Example: Transform data in batches
+async def transform_batch(box, items: List[Dict]) -> List[Dict]:
+    """Transform a batch of data items."""
+    # Send items to box as JSON
+    items_json = json.dumps(items)
+    script = f"""
+import json
+
+# Sample transformation: add metadata
+items = {items_json}
+for item in items:
+    item['processed'] = True
+    item['length'] = len(str(item))
+
+print(json.dumps(items))
+"""
+    result = await box.exec("python", "-c", script)
+    return json.loads(result.stdout)
+
+
+async def main():
+    # Sample data
+    data = [
+        {"id": i, "value": f"item_{i}"}
+        for i in range(100)
+    ]
+
+    results = await batch_process(
+        data,
+        batch_size=20,
+        max_workers=5,
+        process_func=transform_batch
+    )
+
+    print(f"Processed {len(results)} items")
+    print(f"Sample: {results[0]}")
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+## Advanced Patterns
+
+### Worker Pool Pattern
+
+Create a reusable pool of worker boxes:
+
+```python
+import asyncio
+from boxlite import SimpleBox
+from typing import Optional, Callable, Any
+from dataclasses import dataclass
+from queue import Queue
+import threading
+
+@dataclass
+class Worker:
+    """Represents a worker box in the pool."""
+    box: SimpleBox
+    busy: bool = False
+    task_id: Optional[str] = None
+
+class WorkerPool:
+    """Manages a pool of reusable worker boxes."""
+
+    def __init__(
+        self,
+        size: int = 5,
+        image: str = "python:3.11-slim",
+        warm_up: bool = True
+    ):
+        self.size = size
+        self.image = image
+        self.workers: list[Worker] = []
+        self.lock = asyncio.Lock()
+        self.warm_up = warm_up
+
+    async def __aenter__(self):
+        """Initialize the worker pool."""
+        if self.warm_up:
+            # Pre-create workers
+            self.workers = [
+                Worker(
+                    box=SimpleBox(
+                        image=self.image,
+                        network=True,
+                        auto_remove=True
+                    )
+                )
+                for _ in range(self.size)
+            ]
+
+            # Warm up all boxes
+            await asyncio.gather(*[
+                worker.box.__aenter__()
+                for worker in self.workers
+            ])
+
+            print(f"Worker pool initialized with {self.size} workers")
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Clean up the worker pool."""
+        for worker in self.workers:
+            try:
+                await worker.box.__aexit__(exc_type, exc_val, exc_tb)
+            except Exception as e:
+                print(f"Error closing worker: {e}")
+
+    async def submit(
+        self,
+        task_id: str,
+        func: Callable[[SimpleBox], Any]
+    ) -> Any:
+        """
+        Submit a task to an available worker.
+
+        Args:
+            task_id: Unique identifier for the task
+            func: Async function to execute in the worker box
+
+        Returns:
+            Result from the worker function
+        """
+        # Find available worker
+        async with self.lock:
+            worker = None
+            for w in self.workers:
+                if not w.busy:
+                    worker = w
+                    break
+
+            if not worker:
+                # Wait for a worker to become available
+                while True:
+                    await asyncio.sleep(0.1)
+                    for w in self.workers:
+                        if not w.busy:
+                            worker = w
+                            break
+                    if worker:
+                        break
+
+            worker.busy = True
+            worker.task_id = task_id
+
+        try:
+            # Execute the task
+            result = await func(worker.box)
+            return result
+        finally:
+            # Mark worker as available
+            async with self.lock:
+                worker.busy = False
+                worker.task_id = None
+
+
+# Usage example
+async def main():
+    async with WorkerPool(size=3, image="python:3.11-slim") as pool:
+        # Submit tasks to the pool
+        tasks = []
+        for i in range(10):
+            task_id = f"task_{i}"
+
+            async def worker_task(box, task_id=task_id):
+                script = f"print('Processing {task_id}')"
+                result = await box.exec("python", "-c", script)
+                return result.stdout
+
+            tasks.append(pool.submit(task_id, worker_task))
+
+        # Wait for all tasks to complete
+        results = await asyncio.gather(*tasks)
+        print("All tasks completed")
+        for r in results:
+            print(r.strip())
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+### Result Aggregation Pattern
+
+Collect and aggregate results from multiple parallel workers:
+
+```python
+import asyncio
+from boxlite import SimpleBox
+from typing import List, Dict, Any, Optional
+from dataclasses import dataclass, field
+from enum import Enum
+import json
+import time
+
+class JobStatus(Enum):
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+@dataclass
+class JobResult:
+    """Result from a single job."""
+    job_id: str
+    status: JobStatus
+    result: Any = None
+    error: Optional[str] = None
+    duration: float = 0.0
+
+@dataclass
+class AggregatedResults:
+    """Aggregated results from all jobs."""
+    total_jobs: int = 0
+    successful: int = 0
+    failed: int = 0
+    total_duration: float = 0.0
+    results: List[JobResult] = field(default_factory=list)
+
+    def add_result(self, result: JobResult):
+        """Add a job result and recalculate aggregations."""
+        self.results.append(result)
+        self.total_jobs += 1
+        if result.status == JobStatus.COMPLETED:
+            self.successful += 1
+        else:
+            self.failed += 1
+        self.total_duration += result.duration
+
+
+class ParallelJobRunner:
+    """Execute jobs in parallel and aggregate results."""
+
+    def __init__(
+        self,
+        max_concurrent: int = 5,
+        image: str = "python:3.11-slim",
+        timeout: int = 60
+    ):
+        self.max_concurrent = max_concurrent
+        self.image = image
+        self.timeout = timeout
+        self.semaphore = asyncio.Semaphore(max_concurrent)
+
+    async def run_jobs(
+        self,
+        job_specs: List[Dict[str, Any]],
+        worker_func: callable
+    ) -> AggregatedResults:
+        """
+        Run multiple jobs in parallel and aggregate results.
+
+        Args:
+            job_specs: List of job specifications
+            worker_func: Function to execute each job
+
+        Returns:
+            Aggregated results from all jobs
+        """
+        aggregated = AggregatedResults()
+
+        async def execute_job(job_spec: Dict) -> JobResult:
+            """Execute a single job."""
+            job_id = job_spec.get("id", "unknown")
+            start_time = time.time()
+
+            async with self.semaphore:
+                try:
+                    async with SimpleBox(
+                        image=self.image,
+                        network=True,
+                        timeout=self.timeout,
+                        auto_remove=True
+                    ) as box:
+                        result = await worker_func(box, job_spec)
+                        duration = time.time() - start_time
+                        return JobResult(
+                            job_id=job_id,
+                            status=JobStatus.COMPLETED,
+                            result=result,
+                            duration=duration
+                        )
+                except Exception as e:
+                    duration = time.time() - start_time
+                    return JobResult(
+                        job_id=job_id,
+                        status=JobStatus.FAILED,
+                        error=str(e),
+                        duration=duration
+                    )
+
+        # Execute all jobs concurrently
+        tasks = [execute_job(spec) for spec in job_specs]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # Aggregate results
+        for result in results:
+            if isinstance(result, Exception):
+                aggregated.add_result(JobResult(
+                    job_id="unknown",
+                    status=JobStatus.FAILED,
+                    error=str(result)
+                ))
+            else:
+                aggregated.add_result(result)
+
+        return aggregated
+
+
+# Example: Aggregate processing results
+async def process_item(box, spec: Dict) -> Dict:
+    """Process a single item."""
+    item_id = spec.get("id")
+    script = f"""
+import json
+import time
+import random
+
+# Simulate processing
+time.sleep(random.uniform(0.1, 0.5))
+
+result = {{
+    'item_id': '{item_id}',
+    'processed': True,
+    'value': random.randint(1, 100)
+}}
+print(json.dumps(result))
+"""
+    result = await box.exec("python", "-c", script)
+    return json.loads(result.stdout)
+
+
+async def main():
+    # Define jobs
+    job_specs = [
+        {"id": f"job_{i}", "data": f"item_{i}"}
+        for i in range(20)
+    ]
+
+    # Run parallel jobs
+    runner = ParallelJobRunner(max_concurrent=5, timeout=30)
+    aggregated = await runner.run_jobs(job_specs, process_item)
+
+    # Print summary
+    print(f"Total jobs: {aggregated.total_jobs}")
+    print(f"Successful: {aggregated.successful}")
+    print(f"Failed: {aggregated.failed}")
+    print(f"Total duration: {aggregated.total_duration:.2f}s")
+    print(f"Average duration: {aggregated.total_duration / aggregated.total_jobs:.2f}s")
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+## Error Handling and Retries
+
+### Automatic Retry Pattern
+
+Implement automatic retries for failed jobs:
+
+```python
+import asyncio
+from boxlite import SimpleBox
+from typing import Optional, Callable, Any
+import logging
+
+logger = logging.getLogger(__name__)
+
+async def retry_with_backoff(
+    func: Callable,
+    max_retries: int = 3,
+    base_delay: float = 1.0,
+    max_delay: float = 30.0,
+    exponential: bool = True
+) -> Any:
+    """
+    Retry a function with exponential backoff.
+
+    Args:
+        func: Async function to retry
+        max_retries: Maximum number of retry attempts
+        base_delay: Initial delay between retries (seconds)
+        max_delay: Maximum delay between retries
+        exponential: Use exponential backoff
+
+    Returns:
+        Result from successful function execution
+
+    Raises:
+        Last exception if all retries fail
+    """
+    last_exception = None
+
+    for attempt in range(max_retries + 1):
+        try:
+            return await func()
+        except Exception as e:
+            last_exception = e
+            if attempt < max_retries:
+                if exponential:
+                    delay = min(base_delay * (2 ** attempt), max_delay)
+                else:
+                    delay = base_delay
+
+                logger.warning(
+                    f"Attempt {attempt + 1} failed: {e}. "
+                    f"Retrying in {delay:.1f}s..."
+                )
+                await asyncio.sleep(delay)
+            else:
+                logger.error(f"All {max_retries + 1} attempts failed")
+
+    raise last_exception
+
+
+async def parallel_map_with_retry(
+    items: list,
+    worker_func: Callable,
+    max_concurrent: int = 5,
+    max_retries: int = 3
+) -> list:
+    """Parallel map with automatic retry for failed items."""
+    semaphore = asyncio.Semaphore(max_concurrent)
+
+    async def process_with_retry(item, index):
+        async with semaphore:
+
+            async def wrapped_func():
+                return await worker_func(item)
+
+            try:
+                result = await retry_with_backoff(
+                    wrapped_func,
+                    max_retries=max_retries
+                )
+                return (index, result, None)
+            except Exception as e:
+                return (index, None, str(e))
+
+    tasks = [process_with_retry(item, i) for i, item in enumerate(items)]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    # Sort by index
+    sorted_results = sorted(
+        [r for r in results if not isinstance(r, Exception)],
+        key=lambda x: x[0]
+    )
+
+    return sorted_results
+```
+
+## Performance Considerations
+
+### Rate Limiting
+
+Prevent overwhelming target services:
+
+```python
+import asyncio
+import time
+from typing import List
+
+class RateLimiter:
+    """Token bucket rate limiter for parallel operations."""
+
+    def __init__(self, rate: float, burst: int = 1):
+        """
+        Initialize rate limiter.
+
+        Args:
+            rate: Number of operations per second
+            burst: Maximum burst size
+        """
+        self.rate = rate
+        self.burst = burst
+        self.tokens = burst
+        self.last_update = time.time()
+        self.lock = asyncio.Lock()
+
+    async def acquire(self):
+        """Acquire a token, waiting if necessary."""
+        async with self.lock:
+            while self.tokens < 1:
+                await self._refill()
+                await asyncio.sleep(0.01)
+
+            self.tokens -= 1
+
+    async def _refill(self):
+        """Refill tokens based on elapsed time."""
+        now = time.time()
+        elapsed = now - self.last_update
+        self.tokens = min(
+            self.burst,
+            self.tokens + elapsed * self.rate
+        )
+        self.last_update = now
+
+
+async def rate_limited_parallel_map(
+    items: List,
+    worker_func: Callable,
+    max_concurrent: int = 5,
+    requests_per_second: float = 10.0
+) -> List:
+    """Parallel map with rate limiting."""
+    limiter = RateLimiter(rate=requests_per_second, burst=max_concurrent)
+    semaphore = asyncio.Semaphore(max_concurrent)
+
+    async def process_with_limit(item, index):
+        async with semaphore:
+            await limiter.acquire()  # Wait for rate limit
+            result = await worker_func(item)
+            return (index, result)
+
+    tasks = [process_with_limit(item, i) for i, item in enumerate(items)]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    # Sort by index
+    sorted_results = sorted(
+        [r for r in results if not isinstance(r, Exception)],
+        key=lambda x: x[0]
+    )
+
+    return [r[1] for r in sorted_results]
+```
+
+## Related Documentation
+
+- [BoxRun Configuration](/boxrun/configuration) — Configuration file reference
+- [Cookbook: Safe Web Scraper](/cookbook/safe-web-scraper) — Isolated web scraping
+- [Cookbook: Data Analyst Agent](/cookbook/data-analyst-agent) — AI agent patterns
+- [Network Configuration](/troubleshooting/network-and-port-forwarding) — Network troubleshooting

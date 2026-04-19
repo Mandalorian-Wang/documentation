@@ -1,0 +1,436 @@
+---
+title: "Cost Control Best Practices"
+description: "Learn how to optimize costs with resource caps, TTL settings, and automatic cleanup strategies for BoxLite sandboxes."
+---
+
+# Overview
+
+Cost control is essential when running sandboxed execution environments at scale. BoxLite provides multiple mechanisms to control resource usage and prevent unexpected cost accumulation from idle or runaway boxes. This guide covers the key strategies for managing costs effectively.
+
+## Why Cost Control Matters
+
+When deploying AI agents that create sandboxes on-demand, costs can accumulate quickly if not properly managed:
+
+- **Idle boxes**: Boxes left running without active workloads continue consuming resources
+- **Resource over-provisioning**: Allocating more CPU/memory than needed increases costs
+- **Missing cleanup**: Forgotten boxes accumulate over time, creating "zombie" resources
+- **Scale multiplication**: Small inefficiencies compound at high volumes
+
+BoxLite provides built-in cost control mechanisms that integrate with your application lifecycle.
+
+## Prerequisites
+
+- BoxLite SDK installed (`python3 -m pip install boxlite`)
+- Basic understanding of Python async programming
+- Familiarity with BoxOptions configuration
+
+## Detailed Content
+
+### Resource Caps and Limits
+
+BoxLite allows you to set explicit resource limits that directly impact cost:
+
+#### TTL (Time-To-Live) Settings
+
+Configure automatic expiration to prevent boxes from running indefinitely:
+
+```python
+import boxlite
+from datetime import timedelta
+
+# Set TTL for ephemeral workloads
+options = boxlite.BoxOptions(
+    cpus=1,
+    memory_mib=512,
+    ttl=timedelta(hours=1),  # Box auto-terminates after 1 hour
+    auto_remove=True  # Clean up disk after termination
+)
+
+async with boxlite.SimpleBox(options) as box:
+    result = await box.exec("python", "task.py")
+    # Box automatically cleaned up after TTL expires
+```
+
+**Use cases:**
+- Short-running agent tasks
+- One-time data processing jobs
+- API response generation
+
+#### Memory Caps
+
+Prevent memory-intensive workloads from consuming excessive resources:
+
+```python
+# Memory-capped configuration
+options = boxlite.BoxOptions(
+    cpus=1,
+    memory_mib=1024,  # Hard limit - 1GB max
+    # OOM killer activates if exceeded
+)
+
+async with boxlite.SimpleBox(options) as box:
+    result = await box.exec("python", "memory_check.py")
+```
+
+#### CPU Limits
+
+Control CPU usage to manage both cost and performance:
+
+```python
+# CPU-limited configuration
+options = boxlite.BoxOptions(
+    cpus=1,  # Single core - reduces cost
+    memory_mib=512,
+    cpu_limit={"period": 100000, "quota": 50000}  # 50% CPU limit
+)
+```
+
+### Automatic Cleanup Strategies
+
+BoxLite provides multiple cleanup mechanisms:
+
+#### Auto-Remove
+
+Automatically remove box and all associated resources after execution:
+
+```python
+# Auto-remove after completion
+options = boxlite.BoxOptions(
+    cpus=1,
+    memory_mib=512,
+    auto_remove=True  # Delete box after context exits
+)
+
+async with boxlite.SimpleBox(options) as box:
+    result = await box.exec("python", "task.py")
+# Box automatically destroyed - no manual cleanup needed
+```
+
+#### Grace Period Cleanup
+
+Handle boxes that fail to respond to shutdown signals:
+
+```python
+# Grace period cleanup
+options = boxlite.BoxOptions(
+    cpus=1,
+    memory_mib=512,
+    auto_remove=True,
+    shutdown_timeout=30,  # Seconds to wait before force kill
+    force_cleanup_after=60  # Max seconds before guarantee cleanup
+)
+```
+
+#### TTL with Auto-Remove
+
+Combine TTL and auto-remove for comprehensive cleanup:
+
+```python
+# Comprehensive cleanup policy
+options = boxlite.BoxOptions(
+    cpus=1,
+    memory_mib=512,
+    ttl=timedelta(minutes=30),
+    auto_remove=True,
+    shutdown_timeout=10
+)
+```
+
+### Monitoring and Alerting
+
+Track resource usage to identify cost issues early:
+
+#### Runtime Metrics
+
+Monitor runtime-wide resource consumption:
+
+```python
+import boxlite
+
+runtime = boxlite.BoxliteRuntime()
+
+# Get runtime metrics
+metrics = runtime.metrics()
+print(f"Total boxes created: {metrics.boxes_created}")
+print(f"Total boxes destroyed: {metrics.boxes_destroyed}")
+print(f"Total exec calls: {metrics.total_exec_calls}")
+```
+
+#### Per-Box Metrics
+
+Track individual box resource usage:
+
+```python
+async with boxlite.SimpleBox(
+    image="python:3.11-slim",
+    network=True
+) as box:
+    # Execute workload
+    result = await box.exec("python", "workload.py")
+
+    # Get box-specific metrics
+    metrics = await box.metrics()
+    print(f"CPU time: {metrics.cpu_time_ms}ms")
+    print(f"Memory peak: {metrics.memory_usage_bytes / 1024 / 1024:.2f} MiB")
+    print(f"Exec count: {metrics.exec_count}")
+    print(f"Network sent: {metrics.network_bytes_sent}")
+    print(f"Network received: {metrics.network_bytes_received}")
+```
+
+#### Cost Attribution
+
+Tag boxes for cost tracking:
+
+```python
+# Tag boxes for cost attribution
+options = boxlite.BoxOptions(
+    cpus=1,
+    memory_mib=512,
+    tags={
+        "environment": "production",
+        "team": "ai-agents",
+        "cost-center": "Eng-R&D"
+    }
+)
+
+async with boxlite.SimpleBox(options) as box:
+    result = await box.exec("python", "task.py")
+    # Tags included in metrics for billing
+```
+
+### Best Practices Checklist
+
+Use this checklist when deploying BoxLite at scale:
+
+<Steps>
+  <Step title="Set TTL for all boxes">
+    Always configure a TTL appropriate for your workload duration. Default to 1 hour for short-running tasks.
+  </Step>
+  <Step title="Enable auto-remove">
+    Set `auto_remove=True` for ephemeral workloads to ensure cleanup happens automatically.
+  </Step>
+  <Step title="Right-size resources">
+    Start with minimal resources (1 CPU, 512 MiB) and scale up only when needed. Monitor metrics to find the right size.
+  </Step>
+  <Step title="Monitor idle boxes">
+    Implement monitoring to detect and alert on boxes that have been idle for extended periods.
+  </Step>
+  <Step title="Usegracefulshutdown">
+    Configure appropriate shutdown timeouts to allow clean shutdown before force cleanup.
+  </Step>
+  <Step title="Tag for attribution">
+    Add tags to boxes for cost tracking and billing by team or project.
+  </Step>
+  <Step title="Set up alerting">
+    Configure alerts for unusual resource usage patterns or cost thresholds.
+  </Step>
+</Steps>
+
+## Common Mistakes
+
+### 1. Missing TTL on Long-Running Tasks
+
+**Problem:** Boxes run indefinitely, accumulating costs.
+
+**Solution:** Always set TTL regardless of expected duration:
+
+```python
+# Always set TTL - even for seemingly short tasks
+options = boxlite.BoxOptions(
+    cpus=1,
+    memory_mib=512,
+    ttl=timedelta(hours=2)
+)
+```
+
+### 2. Forgetting Auto-Remove
+
+**Problem:** Box fails to clean up on error, leaving orphaned resources.
+
+**Solution:** Always enable auto-remove for ephemeral workloads:
+
+```python
+# Auto-remove ensures cleanup even on errors
+options = boxlite.BoxOptions(
+    cpus=1,
+    memory_mib=512,
+    auto_remove=True,
+    ttl=timedelta(minutes=30)
+)
+```
+
+### 3. Over-Provisioning Resources
+
+**Problem:** Default or high resources used unnecessarily increase costs.
+
+**Solution:** Start small, scale based on actual metrics:
+
+```python
+# Start with minimal resources
+options = boxlite.BoxOptions(
+    cpus=1,
+    memory_mib=512  # Start minimal
+)
+
+# Scale only if metrics show need
+if metrics.memory_usage_bytes > 400 * 1024 * 1024:  # >400MB used
+    # Consider larger config for next run
+```
+
+### 4. No Monitoring or Alerting
+
+**Problem:** Cost issues go unnoticed until they become significant.
+
+**Solution:** Implement metrics collection and alerting:
+
+```python
+# Monitor and alert on resource usage
+async def monitor_boxes(runtime):
+    boxes = await runtime.list_boxes()
+    total_cost = 0
+
+    for box in boxes:
+        metrics = await box.metrics()
+        # Calculate cost based on runtime and resources
+        cost = calculate_cost(metrics)
+        total_cost += cost
+
+        if cost > threshold:
+            alert(f"High cost detected: {cost}")
+
+    return total_cost
+```
+
+## Cost Optimization Examples
+
+### Example 1: Cost-Effective Agent Execution
+
+```python
+import asyncio
+import boxlite
+from datetime import timedelta
+
+async def run_agent_task(code: str) -> str:
+    """Run agent code with cost controls."""
+    options = boxlite.BoxOptions(
+        cpus=1,
+        memory_mib=1024,
+        ttl=timedelta(minutes=5),
+        auto_remove=True
+    )
+
+    async with boxlite.CodeBox(options) as box:
+        result = await box.exec("python", "-c", code)
+        return result.stdout
+
+# Usage
+result = asyncio.run(run_agent_task("print('hello')"))
+print(result)
+```
+
+### Example 2: Batch Processing with Cost Controls
+
+```python
+import asyncio
+import boxlite
+from datetime import timedelta
+
+async def process_batch(items: list, max_parallel: int = 5):
+    """Process items in parallel with cost controls."""
+    semaphore = asyncio.Semaphore(max_parallel)
+
+    async def process_item(item):
+        async with semaphore:
+            options = boxlite.BoxOptions(
+                cpus=1,
+                memory_mib=512,
+                ttl=timedelta(minutes=10),
+                auto_remove=True
+            )
+
+            async with boxlite.SimpleBox(options) as box:
+                result = await box.exec("python", "process.py", str(item))
+                return result.stdout
+
+    return await asyncio.gather(*[process_item(i) for i in items])
+
+# Usage
+results = asyncio.run(process_batch(range(100)))
+```
+
+### Example 3: Cost-Tracking Wrapper
+
+```python
+import asyncio
+import boxlite
+from datetime import datetime, timedelta
+from typing import Optional
+
+class CostTrackedBox:
+    """Wrapper that tracks box costs."""
+
+    def __init__(self, options: boxlite.BoxOptions, cost_center: Optional[str] = None):
+        self.options = options
+        self.cost_center = cost_center
+        self.box: Optional[boxlite.LiteBox] = None
+        self.start_time: Optional[datetime] = None
+
+    async def __aenter__(self):
+        self.box = await boxlite.SimpleBox.create(self.options)
+        self.start_time = datetime.now()
+        return self.box
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        if self.box:
+            # Calculate cost
+            duration = datetime.now() - self.start_time
+            cost = self.calculate_cost(duration)
+
+            print(f"Box runtime: {duration}")
+            print(f"Estimated cost: ${cost:.4f}")
+
+            # Cleanup
+            if self.options.auto_remove:
+                await self.box.remove()
+
+    def calculate_cost(self, duration: timedelta) -> float:
+        """Calculate estimated cost based on resources and duration."""
+        # Cost factors (example rates)
+        cpu_cost_per_hour = 0.02  # per CPU core
+        memory_cost_per_hour = 0.01  # per GB
+
+        hours = duration.total_seconds() / 3600
+        cpus = self.options.cpus
+        memory_gb = self.options.memory_mib / 1024
+
+        return (cpus * cpu_cost_per_hour + memory_gb * memory_cost_per_hour) * hours
+
+# Usage
+async def main():
+    options = boxlite.BoxOptions(
+        cpus=1,
+        memory_mib=512,
+        ttl=timedelta(minutes=5),
+        auto_remove=True
+    )
+
+    async with CostTrackedBox(options, cost_center="ai-agents") as box:
+        result = await box.exec("python", "-c", "print('done')")
+        print(result.stdout)
+
+asyncio.run(main())
+```
+
+## Security Notes
+
+1. **Cost controls are not security boundaries**: Even with resource limits, a compromised box has full guest access
+2. **Tag for auditability**: Use tags to maintain audit trail for compliance
+3. **Monitor for anomalies**: Unusual usage patterns may indicate security issues
+4. **Combine with network controls**: Use network restrictions alongside cost controls for defense in depth
+
+## Related Reading
+
+- [Resource Sizing for Workloads](/guides/resource-sizing-for-workloads) - Sizing recommendations
+- [Performance Tuning](/guides/performance-tuning) - Performance optimization
+- [Configuration Reference](/reference/index) - Full configuration options
+- [Metrics System](/architecture/components) - Metrics architecture

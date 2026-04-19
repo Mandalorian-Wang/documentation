@@ -1,12 +1,13 @@
 ---
 title: "Design principles"
 description: "The ideas behind BoxLite's architecture and API decisions."
-icon: "compass"
 ---
 
 # Design principles
 
-BoxLite is built on a simple belief: AI agents deserve sandboxes that are secure, stateful, and trivially easy to adopt. Every design decision we make traces back to four principles.
+This page is a narrative companion to the concrete docs in [Core concepts](/core-concepts). Read it after you understand box types, lifecycle, images, and resources.
+
+BoxLite is built on a simple belief: AI agents deserve sandboxes that are secure, stateful, and easy to adopt. The principles below explain why the product is shaped the way it is.
 
 ## Embeddable
 
@@ -14,14 +15,7 @@ BoxLite is built on a simple belief: AI agents deserve sandboxes that are secure
 
 Most sandboxing solutions require a cloud account, a daemon, or root privileges before you can run your first sandbox. BoxLite flips this: it is a library you import into your application — no sidecar, no background process, no infrastructure to manage. Everything runs on your machine first. When you need to scale, BoxLite meets you there, but it never forces you to start there.
 
-```python
-import boxlite
-
-async with boxlite.SimpleBox("python:slim") as box:
-    result = await box.exec("python", "-c", "print('Hello!')")
-```
-
-We sometimes describe BoxLite as "the SQLite of sandboxing." SQLite succeeded because it removed the gap between wanting a database and having one — no server to install, no configuration to manage, no port to expose. BoxLite applies the same idea to sandboxing. If you can `pip install` a package, you can run hardware-isolated VMs.
+We sometimes describe BoxLite as "the SQLite of sandboxing." SQLite succeeded because it removed the gap between wanting a database and having one — no server to install, no configuration to manage, no port to expose. BoxLite applies the same idea to sandboxing: add the library to your application, then start a sandbox without introducing a daemon or service layer first.
 
 This principle shapes everything from our packaging (a single binary with no external dependencies) to our API surface (async-first, three lines to get started) to our deployment model (runs wherever your application runs).
 
@@ -74,6 +68,19 @@ Embeddability makes adoption frictionless. Statefulness makes agents productive.
 
 Together they define what we think a sandbox for AI agents should be: something you can embed in three lines of code, that remembers what your agent did, that lets you checkpoint and branch execution, and that you can trust with untrusted code.
 
-```
-$ pip install boxlite
-```
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Core concepts" icon="lightbulb" href="/core-concepts">
+    Use the docs map for box types, lifecycle, images, and resource sizing.
+  </Card>
+  <Card title="Lifecycle" icon="refresh" href="/core-concepts/lifecycle">
+    See how persistence and reuse work in practice.
+  </Card>
+  <Card title="Images" icon="image" href="/core-concepts/images">
+    Understand how OCI images define the guest environment.
+  </Card>
+  <Card title="Resource model" icon="cpu" href="/core-concepts/resource-model">
+    Tune CPU, memory, and disk for your workload.
+  </Card>
+</CardGroup>

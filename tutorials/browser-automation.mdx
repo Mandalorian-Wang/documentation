@@ -2,7 +2,6 @@
 title: "Automate a browser"
 description: "Launch a BrowserBox, connect via Playwright or Puppeteer, take a screenshot, and scrape a web page — all inside an isolated VM."
 sidebarTitle: "Browser automation"
-icon: "globe"
 ---
 
 BrowserBox runs a full browser (Chromium, Firefox, or WebKit) inside an isolated VM and exposes it via Playwright Server or Chrome DevTools Protocol. You connect with Playwright or Puppeteer from your host — no browser install needed on the host.
@@ -20,7 +19,7 @@ A script that:
 <Tabs>
   <Tab title="Python (Playwright)">
     ```bash
-    pip install boxlite playwright
+    python3 -m pip install boxlite playwright
     ```
   </Tab>
   <Tab title="Node.js (Puppeteer)">

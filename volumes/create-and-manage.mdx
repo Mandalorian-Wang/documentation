@@ -1,0 +1,370 @@
+---
+title: "Create and Manage Volumes"
+sidebarTitle: "Create & Manage"
+description: "Create and manage volumes in BoxLite using Python SDK and CLI commands."
+---
+
+This guide covers creating and managing both virtiofs mounts and QCOW2 disk images using the Python SDK and BoxRun CLI.
+
+## Overview
+
+BoxLite provides two methods for volume management:
+
+- **Python SDK**: Programmatic volume creation and management
+- **BoxRun CLI**: Command-line interface for volume operations
+
+## Python SDK
+
+### Creating a Box with QCOW2 Disk
+
+```python
+import boxlite
+
+# Create a Box with persistent QCOW2 disk
+async with boxlite.SimpleBox(
+    image="python:slim",
+    disk_size_gb=50  # 50 GB persistent disk
+) as box:
+    # Data in /data persists across restarts
+    await box.exec("bash", "-c", "echo 'persistent data' > /data/info.txt")
+
+# Box is closed, but data persists in QCOW2 image
+```
+
+### Creating a Box with virtiofs Mount
+
+```python
+import boxlite
+
+# Mount host directory into Box
+async with boxlite.SimpleBox(
+    image="python:slim",
+    volumes=[
+        ("/host/path/to/data", "/workspace/data", "rw"),  # Read-write
+        ("/host/path/to/config", "/workspace/config", "ro"),  # Read-only
+    ]
+) as box:
+    # Files in /host/path/to/data are immediately visible
+    result = await box.exec("ls", "/workspace/data/")
+    print(result.stdout)
+```
+
+### Volume Format Options
+
+```python
+# Tuple format (host_path, guest_path, mode)
+volumes = [
+    ("/home/user/data", "/workspace/data", "rw"),
+]
+
+# Dictionary format
+volumes = [
+    {
+        "host_path": "/home/user/data",
+        "guest_path": "/workspace/data",
+        "mode": "rw"
+    },
+]
+
+# Mixed format
+volumes = [
+    ("/host/shared", "/shared", "rw"),
+    {"host_path": "/host/config", "guest_path": "/config", "mode": "ro"},
+]
+
+async with boxlite.SimpleBox(
+    image="python:slim",
+    volumes=volumes
+) as box:
+    pass
+```
+
+### Persistent Storage Example
+
+```python
+import boxlite
+
+async def setup_persistent_workspace():
+    """Set up a Box with persistent storage for a project."""
+    async with boxlite.SimpleBox(
+        image="python:3.11-slim",
+        name="my-project-box",  # Named box for persistence
+        auto_remove=False,  # Keep box for reuse
+        disk_size_gb=20,  # Persistent disk
+        volumes=[
+            ("/home/user/projects/myproject", "/workspace/project", "rw"),
+        ]
+    ) as box:
+        # Install dependencies (persists on disk)
+        await box.exec("pip", "install", "numpy", "pandas")
+
+        # Copy project files
+        await box.copy_in("./src/", "/workspace/project/src/")
+
+        # Work with project - data persists
+        result = await box.exec("python", "/workspace/project/main.py")
+
+        return result
+
+    # Box is stopped but not removed
+    # Disk data persists for next session
+
+# Later, resume work with the same box
+async def resume_work():
+    async with boxlite.SimpleBox(
+        image="python:3.11-slim",
+        name="my-project-box",
+        auto_remove=False,
+        reuse_existing=True  # Reuse existing named box
+    ) as box:
+        result = await box.exec("python", "/workspace/project/main.py")
+        return result
+```
+
+### Multiple Volumes
+
+```python
+async with boxlite.SimpleBox(
+    image="python:slim",
+    disk_size_gb=30,  # QCOW2 for database
+    volumes=[
+        # Development files (shared with host)
+        ("./dev", "/workspace/dev", "rw"),
+        # Read-only config
+        ("/etc/app-config", "/config", "ro"),
+        # Shared output
+        ("./output", "/workspace/output", "rw"),
+    ]
+) as box:
+    # /workspace/dev - shared with host (virtiofs)
+    # /config - read-only (virtiofs)
+    # /workspace/output - shared with host (virtiofs)
+    # /data - persistent (QCOW2)
+    pass
+```
+
+## BoxRun CLI
+
+### Volume Mounts
+
+```bash
+# Mount host directory
+boxrun create python:slim --volume /host/path:/workspace/data
+
+# Read-only mount
+boxrun create python:slim --volume /host/config:/config:ro
+
+# Multiple volumes
+boxrun create python:slim \
+  --volume /host/data:/workspace/data:rw \
+  --volume /host/output:/output:rw
+```
+
+### Disk Size
+
+```bash
+# Create with persistent disk
+boxrun create python:slim --disk-size 20
+
+# Specify disk size in GB
+boxrun create python:slim --disk-size 50
+
+# Check disk usage
+boxrun exec <box-name> -- df -h
+```
+
+## Volume Management Operations
+
+### Listing Volumes
+
+```python
+# List boxes (shows disk info)
+runtime = boxlite.Boxlite.default()
+boxes = await runtime.list_boxes()
+
+for box in boxes:
+    print(f"Box: {box.id}")
+    print(f"  Has disk: {box.disk_size is not None}")
+    if box.disk_size:
+        print(f"  Disk size: {box.disk_size} GB")
+```
+
+### Checking Disk Usage
+
+```python
+async with boxlite.SimpleBox(
+    image="python:slim",
+    disk_size_gb=20
+) as box:
+    # Check disk space inside Box
+    result = await box.exec("df", "-h")
+    print(result.stdout)
+
+    # Check specific directory
+    result = await box.exec("du", "-sh", "/data")
+    print(f"/data size: {result.stdout}")
+```
+
+### Managing Volume Data
+
+```python
+import os
+
+async def backup_volume_data(box, guest_path, host_dest):
+    """Backup data from Box volume to host."""
+    # Create host directory
+    os.makedirs(host_dest, exist_ok=True)
+
+    # Copy data out
+    await box.copy_out(f"{guest_path}/", host_dest)
+
+    print(f"Backed up {guest_path} to {host_dest}")
+
+async def restore_volume_data(box, host_source, guest_path):
+    """Restore data from host to Box volume."""
+    # Ensure guest directory exists
+    await box.exec("mkdir", "-p", guest_path)
+
+    # Copy data in
+    await box.copy_in(f"{host_source}/", f"{guest_path}/")
+
+    print(f"Restored {host_source} to {guest_path}")
+```
+
+## Advanced Configuration
+
+### Disk Options
+
+```python
+# Box with optimized disk settings
+async with boxlite.SimpleBox(
+    image="python:slim",
+    disk_size_gb=100,  # Large disk for data processing
+    # Note: Additional disk options may be available
+    # through BoxOptions in the full API
+) as box:
+    # Format disk if needed
+    result = await box.exec("ls", "/data")
+    if result.exit_code != 0:
+        # Data directory may need initialization
+        await box.exec("mkdir", "-p", "/data")
+```
+
+### virtiofs Options
+
+```python
+# virtiofs mount with specific options
+async with boxlite.SimpleBox(
+    image="python:slim",
+    volumes=[
+        # Custom mount options via special syntax
+        ("/host/path", "/guest/path", "rw"),
+    ]
+) as box:
+    # Verify mount
+    result = await box.exec("mount")
+    print(result.stdout)
+```
+
+## Error Handling
+
+### Common Volume Errors
+
+```python
+async def create_box_with_volumes(image, volumes, disk_size_gb=None):
+    """Create Box with volumes and handle errors."""
+    try:
+        async with boxlite.SimpleBox(
+            image=image,
+            disk_size_gb=disk_size_gb,
+            volumes=volumes
+        ) as box:
+            return box
+    except Exception as e:
+        print(f"Failed to create box: {e}")
+
+        # Check for common issues
+        if "volume" in str(e).lower():
+            # Volume-related error
+            print("Check that host paths exist and are accessible")
+        if "disk" in str(e).lower():
+            # Disk-related error
+            print("Check disk space and permissions")
+
+        raise
+
+# Usage
+try:
+    box = await create_box_with_volumes(
+        "python:slim",
+        volumes=[("/nonexistent/path", "/workspace", "rw")],
+        disk_size_gb=10
+    )
+except Exception as e:
+    print(f"Error: {e}")
+```
+
+### Disk Full Handling
+
+```python
+import shutil
+
+async def check_disk_space(box):
+    """Check available disk space in Box."""
+    result = await box.exec("df", "-h", "/data")
+    print(result.stdout)
+
+    # Check from host
+    total, used, free = shutil.disk_usage("/")
+    print(f"Host free space: {free // (2**30)} GB")
+
+async with boxlite.SimpleBox(
+    image="python:slim",
+    disk_size_gb=10
+) as box:
+    # Monitor disk usage
+    await check_disk_space(box)
+```
+
+## Best Practices
+
+### Volume Organization
+
+1. **Separate concerns**: Use different volumes for different data types
+2. **Use appropriate sizes**: Don't over-provision disk space
+3. **Regular backups**: Copy important data to host
+
+### Performance Tips
+
+- Use virtiofs for I/O-intensive file operations
+- Use QCOW2 for data that needs isolation
+- Consider disk size based on actual needs
+
+### Data Management
+
+```python
+# Good pattern: Separate data types
+async with boxlite.SimpleBox(
+    image="python:slim",
+    disk_size_gb=50,  # QCOW2 for database/cache
+    volumes=[
+        ("./code", "/workspace/code", "rw"),  # virtiofs for code
+        ("./output", "/workspace/output", "rw"),  # virtiofs for output
+    ]
+) as box:
+    # Database in /data (QCOW2) - persistent
+    # Code in /workspace/code (virtiofs) - shared
+    # Output in /workspace/output (virtiofs) - shared
+    pass
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Volumes Overview" icon="database" href="/volumes/overview">
+    Volume type comparison.
+  </Card>
+  <Card title="Filesystem Operations" icon="folder" href="/filesystem/overview">
+    Working with files in Boxes.
+  </Card>
+</CardGroup>

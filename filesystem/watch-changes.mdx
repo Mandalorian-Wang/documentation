@@ -1,0 +1,715 @@
+---
+title: "Watch Changes"
+sidebarTitle: "Watch Changes"
+description: "Watch for file system changes in BoxLite, including file modification monitoring, change detection, and best practices."
+---
+
+This guide covers watching for file system changes in BoxLite.
+
+## Overview
+
+File change watching enables:
+- Detecting file modifications
+- Monitoring directory changes
+- Triggering actions on file events
+- Building reactive file processing pipelines
+
+### Watching Methods
+
+| Method | Description | Use Case |
+|--------|-------------|----------|
+| inotify | Linux kernel file change notification | Production use |
+| Polling | Periodic directory scanning | Cross-platform compatibility |
+| fanotify | Advanced file access monitoring | Audit and security |
+
+## Prerequisites
+
+- BoxLite Python SDK installed
+- Understanding of the `exec` API
+- Linux inotify support (for native watching)
+
+## Using inotify
+
+### Basic File Monitoring
+
+```python
+import asyncio
+import boxlite
+
+async def watch_file_changes():
+    """Watch for file changes using inotify."""
+    async with boxlite.SimpleBox(
+        image="python:slim"
+    ) as box:
+        # Create test directory
+        await box.exec("bash", "-c", """
+            mkdir -p /workspace/monitor
+            echo "initial" > /workspace/monitor/file.txt
+        """)
+
+        # Start inotifywait in monitor mode
+        # This runs continuously and outputs changes
+        result = await box.exec("bash", "-c", """
+            # Install inotify-tools if needed
+            apt-get update -qq && apt-get install -y -qq inotify-tools > /dev/null 2>&1
+
+            # Watch for changes
+            inotifywait -m -r /workspace/monitor &
+            INOTIFY_PID=$!
+
+            # Wait for watcher to start
+            sleep 1
+
+            # Make some changes
+            echo "change 1" > /workspace/monitor/file.txt
+            sleep 0.5
+            echo "change 2" > /workspace/monitor/file.txt
+            sleep 0.5
+            touch /workspace/monitor/newfile.txt
+
+            # Wait for events to be captured
+            sleep 1
+
+            # Stop watcher
+            kill $INOTIFY_PID 2>/dev/null
+        """)
+
+        print(f"Monitoring output:\n{result.stdout}")
+
+asyncio.run(watch_file_changes())
+```
+
+### Watch Specific Events
+
+```python
+import boxlite
+
+async def watch_specific_events():
+    """Watch for specific file events."""
+    async with boxlite.SimpleBox(
+        image="python:slim"
+    ) as box:
+        await box.exec("apt-get", "install", "-y", "inotify-tools")
+
+        # Create watch script
+        watch_script = """#!/bin/bash
+# Watch for modify, create, delete, and move events
+inotifywait -m -e modify -e create -e delete -e move /workspace/monitor &
+PID=$!
+
+# Make changes
+sleep 1
+echo "test" > /workspace/monitor/file.txt
+sleep 0.5
+rm /workspace/monitor/file.txt
+sleep 0.5
+touch /workspace/monitor/new.txt
+
+# Wait and cleanup
+sleep 1
+kill $PID 2>/dev/null
+"""
+        await box.exec("bash", "-c", f"cat > /tmp/watch.sh << 'EOF'\n{watch_script}\nEOF")
+        await box.exec("chmod", "+x", "/tmp/watch.sh")
+
+        # Run watch
+        result = await box.exec("bash", "-c", """
+            mkdir -p /workspace/monitor
+            /tmp/watch.sh
+        """)
+
+        print(f"Events captured:\n{result.stdout}")
+
+asyncio.run(watch_specific_events())
+```
+
+### Recursive Directory Watch
+
+```python
+import boxlite
+
+async def watch_recursive():
+    """Watch directory tree recursively."""
+    async with boxlite.SimpleBox(
+        image="python:slim"
+    ) as box:
+        await box.exec("apt-get", "install", "-y", "inotify-tools")
+
+        # Create nested structure
+        await box.exec("bash", "-c", """
+            mkdir -p /workspace/project/src/utils
+            touch /workspace/project/src/main.py
+            touch /workspace/project/src/utils/helpers.py
+        """)
+
+        # Watch recursively
+        result = await box.exec("bash", "-c", """
+            inotifywait -m -r /workspace/project &
+            PID=$!
+
+            sleep 1
+            echo "# main" > /workspace/project/src/main.py
+            sleep 0.5
+            echo "# helpers" > /workspace/project/src/utils/helpers.py
+            sleep 0.5
+            touch /workspace/project/src/new_file.py
+
+            sleep 1
+            kill $PID
+        """)
+
+        print(f"Recursive watch:\n{result.stdout}")
+
+asyncio.run(watch_recursive())
+```
+
+## Using Polling
+
+### Polling-Based Watch
+
+```python
+import boxlite
+import asyncio
+
+async def poll_for_changes():
+    """Poll for file changes."""
+    async with boxlite.SimpleBox(
+        image="python:slim"
+    ) as box:
+        # Create test directory
+        await box.exec("bash", "-c", """
+            mkdir -p /workspace/monitor
+            echo "initial" > /workspace/monitor/file.txt
+        """)
+
+        # Get initial state
+        result = await box.exec("stat", "--format=%Y", "/workspace/monitor/file.txt")
+        last_mtime = result.stdout.strip()
+
+        # Poll for changes
+        async def check_for_changes():
+            nonlocal last_mtime
+            result = await box.exec("stat", "--format=%Y", "/workspace/monitor/file.txt")
+            current_mtime = result.stdout.strip()
+
+            if current_mtime != last_mtime:
+                print(f"Change detected! Old: {last_mtime}, New: {current_mtime}")
+                last_mtime = current_mtime
+                return True
+            return False
+
+        # Make changes and check
+        await asyncio.sleep(0.5)
+        await box.exec("bash", "-c", "echo 'changed' > /workspace/monitor/file.txt")
+        await check_for_changes()
+
+        await asyncio.sleep(0.5)
+        await box.exec("bash", "-c", "echo 'changed again' > /workspace/monitor/file.txt")
+        await check_for_changes()
+
+asyncio.run(poll_for_changes())
+```
+
+### Polling Directory Scan
+
+```python
+import boxlite
+import asyncio
+
+async def poll_directory():
+    """Poll directory for changes."""
+    async with boxlite.SimpleBox(
+        image="python:slim"
+    ) as box:
+        # Create test directory
+        await box.exec("bash", "-c", """
+            mkdir -p /workspace/monitor
+        """)
+
+        # Track file states
+        file_states = {}
+
+        async def scan_directory():
+            """Scan directory and detect changes."""
+            result = await box.exec("find", "/workspace/monitor", "-type", "f")
+            current_files = set()
+
+            for line in result.stdout.strip().split("\n"):
+                if not line:
+                    continue
+
+                # Get file info
+                stat_result = await box.exec("stat", "--format=%s %Y", line)
+                if stat_result.exit_code == 0:
+                    info = stat_result.stdout.strip()
+                    current_files.add(line)
+                    if line not in file_states:
+                        print(f"NEW: {line}")
+                    elif file_states[line] != info:
+                        print(f"MODIFIED: {line}")
+                    file_states[line] = info
+
+            # Check for deleted files
+            for old_file in list(file_states.keys()):
+                if old_file not in current_files:
+                    print(f"DELETED: {old_file}")
+                    del file_states[old_file]
+
+        # Initial scan
+        await scan_directory()
+
+        # Make some changes
+        await asyncio.sleep(0.5)
+        await box.exec("bash", "-c", "echo 'file1' > /workspace/monitor/file1.txt")
+
+        await scan_directory()
+
+        await asyncio.sleep(0.5)
+        await box.exec("bash", "-c", "echo 'file2' > /workspace/monitor/file2.txt")
+
+        await scan_directory()
+
+asyncio.run(poll_directory())
+```
+
+## Event Processing Patterns
+
+### File Change Handler
+
+```python
+import boxlite
+
+async def file_change_handler():
+    """Handle file change events."""
+    handler_script = """#!/bin/bash
+WATCH_DIR="/workspace/monitor"
+
+# Event handler function
+handle_event() {
+    EVENT=$1
+    FILE=$2
+    echo "$(date): $EVENT - $FILE"
+}
+
+# Watch loop
+inotifywait -m -r -e modify -e create -e delete -e move "$WATCH_DIR" 2>/dev/null |
+while read directory event filename; do
+    FILE="$directory$filename"
+    handle_event "$event" "$FILE"
+done
+"""
+    async with boxlite.SimpleBox(
+        image="python:slim"
+    ) as box:
+        await box.exec("apt-get", "install", "-y", "inotify-tools")
+
+        # Create handler script
+        await box.exec("bash", "-c", f"cat > /tmp/handler.sh << 'EOF'\n{handler_script}\nEOF")
+        await box.exec("chmod", "+x", "/tmp/handler.sh")
+
+        # Run handler in background
+        await box.exec("bash", "-c", """
+            mkdir -p /workspace/monitor
+            nohup /tmp/handler.sh > /tmp/events.log 2>&1 &
+            echo $! > /tmp/handler.pid
+        """)
+
+        # Wait for handler to start
+        import asyncio
+        await asyncio.sleep(1)
+
+        # Make some changes
+        await box.exec("bash", "-c", """
+            echo "test" > /workspace/monitor/file1.txt
+            sleep 0.5
+            echo "test2" > /workspace/monitor/file2.txt
+            sleep 0.5
+            rm /workspace/monitor/file1.txt
+        """)
+
+        await asyncio.sleep(1)
+
+        # Check events
+        result = await box.exec("cat", "/tmp/events.log")
+        print(f"Events:\n{result.stdout}")
+
+asyncio.run(file_change_handler())
+```
+
+### Debounced Watch
+
+```python
+import boxlite
+import asyncio
+
+async def debounced_watch():
+    """Watch with debouncing to avoid multiple rapid events."""
+    async with boxlite.SimpleBox(
+        image="python:slim"
+    ) as box:
+        await box.exec("bash", "-c", """
+            mkdir -p /workspace/monitor
+            echo "initial" > /workspace/monitor/file.txt
+        """)
+
+        debounce_seconds = 0.5
+        last_change_time = 0
+
+        async def debounced_check():
+            nonlocal last_change_time
+
+            result = await box.exec("stat", "--format=%Y", "/workspace/monitor/file.txt")
+            current_time = int(result.stdout.strip())
+
+            if current_time > last_change_time:
+                # Check if enough time has passed
+                if current_time >= last_change_time + debounce_seconds:
+                    print(f"Debounced change detected at {current_time}")
+                    last_change_time = current_time
+                    return True
+            return False
+
+        # Rapid changes
+        await box.exec("bash", "-c", "echo '1' > /workspace/monitor/file.txt")
+        await asyncio.sleep(0.2)
+        await box.exec("bash", "-c", "echo '2' > /workspace/monitor/file.txt")
+        await asyncio.sleep(0.2)
+        await box.exec("bash", "-c", "echo '3' > /workspace/monitor/file.txt")
+
+        # Check after debounce period
+        await asyncio.sleep(1)
+        await debounced_check()
+
+asyncio.run(debounced_watch())
+```
+
+### Batch Event Processing
+
+```python
+import boxlite
+import asyncio
+
+async def batch_events():
+    """Collect and process events in batches."""
+    async with boxlite.SimpleBox(
+        image="python:slim"
+    ) as box:
+        await box.exec("bash", "-c", """
+            mkdir -p /workspace/monitor
+            echo "initial" > /workspace/monitor/file.txt
+        """)
+
+        events = []
+
+        async def collect_event(event_type):
+            """Collect an event."""
+            events.append(event_type)
+            print(f"Collected: {event_type} (total: {len(events)})")
+
+        # Simulate rapid events
+        await collect_event("create:file1.txt")
+        await asyncio.sleep(0.1)
+        await collect_event("modify:file1.txt")
+        await asyncio.sleep(0.1)
+        await collect_event("create:file2.txt")
+        await asyncio.sleep(0.1)
+
+        # Process batch
+        print(f"\nProcessing batch of {len(events)} events:")
+        for event in events:
+            print(f"  - {event}")
+
+        # Clear batch
+        events.clear()
+        print("Batch processed and cleared")
+
+asyncio.run(batch_events())
+```
+
+## Use Cases
+
+### Auto-Reload on File Change
+
+```python
+import boxlite
+
+async def auto_reload_server():
+    """Restart server when files change."""
+    reload_script = """#!/bin/bash
+
+# Start a simple server
+python -m http.server 8080 > /tmp/server.log 2>&1 &
+SERVER_PID=$!
+
+# Watch for changes
+inotifywait -m -e modify -e create -e delete /workspace/public > /tmp/inotify.log 2>&1 &
+INOTIFY_PID=$!
+
+# Reload handler
+while read line; do
+    echo "Change detected: $line"
+    echo "Reloading server..."
+
+    # Kill old server
+    kill $SERVER_PID 2>/dev/null
+    sleep 0.5
+
+    # Restart server
+    python -m http.server 8080 > /tmp/server.log 2>&1 &
+    SERVER_PID=$!
+
+    echo "Server reloaded"
+done < /tmp/inotify.log &
+HANDLER_PID=$!
+
+# Wait for signals
+trap "kill $SERVER_PID $INOTIFY_PID $HANDLER_PID 2>/dev/null; exit" EXIT
+
+# Make some changes to trigger reload
+sleep 1
+echo "change1" > /workspace/public/file1.txt
+sleep 2
+echo "change2" > /workspace/public/file2.txt
+sleep 2
+
+# Cleanup
+kill $SERVER_PID $INOTIFY_PID $HANDLER_PID 2>/dev/null
+"""
+    async with boxlite.SimpleBox(
+        image="python:slim"
+    ) as box:
+        await box.exec("apt-get", "install", "-y", "inotify-tools")
+        await box.exec("bash", "-c", "mkdir -p /workspace/public")
+
+        await box.exec("bash", "-c", f"cat > /tmp/autoreload.sh << 'EOF'\n{reload_script}\nEOF")
+        await box.exec("chmod", "+x", "/tmp/autoreload.sh")
+
+        # Run for a limited time
+        result = await box.exec("bash", "-c", "timeout 10 /tmp/autoreload.sh || true")
+        print(f"Auto-reload output:\n{result.stdout}")
+
+asyncio.run(auto_reload_server())
+```
+
+### Log File Monitoring
+
+```python
+import boxlite
+
+async def monitor_log_file():
+    """Monitor log file for new entries."""
+    async with boxlite.SimpleBox(
+        image="python:slim"
+    ) as box:
+        await box.exec("apt-get", "install", "-y", "inotify-tools")
+
+        # Create log file
+        await box.exec("bash", "-c", """
+            mkdir -p /workspace/logs
+            echo "Log started" > /workspace/logs/app.log
+        """)
+
+        # Monitor log file
+        result = await box.exec("bash", "-c", """
+            inotifywait -m -e modify /workspace/logs/app.log &
+            PID=$!
+
+            sleep 0.5
+            echo "ERROR: Something went wrong" >> /workspace/logs/app.log
+            sleep 0.5
+            echo "INFO: Request processed" >> /workspace/logs/app.log
+            sleep 0.5
+            echo "WARN: Low memory" >> /workspace/logs/app.log
+
+            sleep 0.5
+            kill $PID
+        """)
+
+        print(f"Log monitoring:\n{result.stdout}")
+
+asyncio.run(monitor_log_file())
+```
+
+### File Backup Trigger
+
+```python
+import boxlite
+
+async def backup_on_change():
+    """Trigger backup when files change."""
+    async with boxlite.SimpleBox(
+        image="python:slim"
+    ) as box:
+        await box.exec("apt-get", "install", "-y", "inotify-tools")
+
+        # Create directories
+        await box.exec("bash", "-c", """
+            mkdir -p /workspace/source /workspace/backup
+            echo "content1" > /workspace/source/file1.txt
+        """)
+
+        # Backup trigger
+        result = await box.exec("bash", "-c", """
+            inotifywait -m -e modify -e create -e delete /workspace/source &
+            PID=$!
+
+            sleep 0.5
+
+            # Detect changes
+            echo "change1" > /workspace/source/file1.txt
+            sleep 0.5
+            touch /workspace/source/file2.txt
+            sleep 0.5
+
+            # Backup changed files
+            cp -r /workspace/source/* /workspace/backup/
+
+            # List backup
+            ls -la /workspace/backup/
+
+            kill $PID
+        """)
+
+        print(f"Backup output:\n{result.stdout}")
+
+asyncio.run(backup_on_change())
+```
+
+## Error Handling
+
+### Handle inotify Limits
+
+```python
+import boxlite
+
+async def handle_inotify_limits():
+    """Handle inotify watch limits."""
+    async with boxlite.SimpleBox(
+        image="python:slim"
+    ) as box:
+        # Check inotify limits
+        result = await box.exec("bash", "-c", """
+            cat /proc/sys/fs/inotify/max_user_watches
+            cat /proc/sys/fs/inotify/max_user_instances
+        """)
+        print(f"Inotify limits:\n{result.stdout}")
+
+        # Check current watches
+        result = await box.exec("bash", "-c", """
+            cat /proc/sys/fs/inotify/max_user_instances
+        """)
+        print(f"Current instances: {result.stdout.strip()}")
+
+asyncio.run(handle_inotify_limits())
+```
+
+### Fallback to Polling
+
+```python
+import boxlite
+import asyncio
+
+async def fallback_watch():
+    """Fallback to polling if inotify unavailable."""
+    async with boxlite.SimpleBox(
+        image="python:slim"
+    ) as box:
+        # Check if inotify is available
+        result = await box.exec("which", "inotifywait")
+
+        if result.exit_code == 0:
+            print("Using inotify for file watching")
+            # Use inotify
+            result = await box.exec("bash", "-c", """
+                inotifywait -m /workspace/ &
+                PID=$!
+                sleep 1
+                kill $PID
+            """)
+        else:
+            print("Using polling for file watching")
+            # Use polling fallback
+            await box.exec("bash", "-c", """
+                while true; do
+                    ls -la /workspace/
+                    sleep 5
+                done &
+                POLL_PID=$!
+                sleep 6
+                kill $POLL_PID
+            """)
+
+asyncio.run(fallback_watch())
+```
+
+## Common Errors
+
+### Error 1: inotify Not Available
+
+**Symptom**: inotifywait not found
+
+**Cause**: inotify-tools not installed
+
+**Solution**:
+```python
+# Install inotify-tools
+await box.exec("apt-get", "install", "-y", "inotify-tools")
+```
+
+### Error 2: Too Many Watches
+
+**Symptom**: "No space left on device" or "Too many open files"
+
+**Cause**: Exceeded inotify watch limits
+
+**Solution**:
+```python
+# Increase limits (requires root)
+# echo 524288 > /proc/sys/fs/inotify/max_user_watches
+
+# Or reduce number of watched items
+# Watch specific directories instead of recursive
+```
+
+### Error 3: Missed Events
+
+**Symptom**: Some file changes not detected
+
+**Cause**: Events processed too slowly
+
+**Solution**:
+```python
+# Use background processing
+# Increase buffer size
+# inotifywait -m -r -o /path/to/logfile /workspace
+```
+
+## Best Practices
+
+1. **Use Native Watching**: Prefer inotify over polling for Linux
+2. **Handle Overflows**: Watch for IN_Q_OVERFLOW events
+3. **Resource Management**: Clean up watches when done
+4. **Error Handling**: Fall back to polling if needed
+
+## Security Notes
+
+1. **Limit Watch Scope**: Don't watch unnecessary directories
+2. **Audit Access**: Log file access for security monitoring
+3. **Sensitive Data**: Be careful watching directories with sensitive data
+
+## Related Topics
+
+<CardGroup cols={2}>
+  <Card title="Filesystem Overview" icon="folder" href="/filesystem/overview">
+    Filesystem operations overview.
+  </Card>
+  <Card title="List and Stat" icon="list" href="/filesystem/list-and-stat">
+    List files and get metadata.
+  </Card>
+  <Card title="Read and Write Files" icon="file-arrow-up" href="/filesystem/read-write-files">
+    Copy files in and out of Boxes.
+  </Card>
+  <Card title="Upload Files" icon="upload" href="/filesystem/upload-files">
+    Upload files to Boxes.
+  </Card>
+</CardGroup>

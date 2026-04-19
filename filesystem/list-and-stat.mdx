@@ -1,0 +1,627 @@
+---
+title: "List and Stat Files"
+sidebarTitle: "List & Stat"
+description: "List directory contents and retrieve file metadata in BoxLite, including file sizes, timestamps, permissions, and best practices."
+---
+
+This guide covers listing directory contents and retrieving file metadata in BoxLite.
+
+## Overview
+
+File listing and stat operations are essential for:
+- Exploring directory structures
+- Getting file metadata (size, timestamps, permissions)
+- Building file browsers and explorers
+- Implementing file management operations
+
+### Available Operations
+
+| Operation | Description |
+|-----------|-------------|
+| `ls` | List directory contents |
+| `stat` | Get file metadata |
+| `find` | Search for files |
+| `du` | Calculate disk usage |
+
+## Prerequisites
+
+- BoxLite Python SDK installed
+- Understanding of the `exec` API
+- `import asyncio` for async operations
+
+## Directory Listing
+
+### Basic Directory Listing
+
+```python
+import asyncio
+import boxlite
+
+async def list_directory():
+    """List directory contents."""
+    async with boxlite.SimpleBox(
+        image="python:slim"
+    ) as box:
+        # Create test files
+        await box.exec("bash", "-c", """
+            mkdir -p /workspace/testdir
+            touch /workspace/testdir/file1.txt
+            touch /workspace/testdir/file2.txt
+            touch /workspace/testdir/file3.txt
+        """)
+
+        # List directory
+        result = await box.exec("ls", "/workspace/testdir/")
+        print(f"Directory contents:\n{result.stdout}")
+
+asyncio.run(list_directory())
+```
+
+### Detailed Listing
+
+```python
+import asyncio
+import boxlite
+
+async def detailed_listing():
+    """List directory with detailed information."""
+    async with boxlite.SimpleBox(
+        image="python:slim"
+    ) as box:
+        # Create test files with different timestamps
+        await box.exec("bash", "-c", """
+            mkdir -p /workspace/testdir
+            echo "file1" > /workspace/testdir/file1.txt
+            echo "file2" > /workspace/testdir/file2.txt
+            echo "file3" > /workspace/testdir/file3.log
+        """)
+
+        # Detailed listing with -l
+        result = await box.exec("ls", "-la", "/workspace/testdir/")
+        print(f"Detailed listing:\n{result.stdout}")
+
+        # Human-readable sizes
+        result = await box.exec("ls", "-lh", "/workspace/testdir/")
+        print(f"Human-readable:\n{result.stdout}")
+
+asyncio.run(detailed_listing())
+```
+
+### Recursive Listing
+
+```python
+import asyncio
+import boxlite
+
+async def recursive_listing():
+    """List directory recursively."""
+    async with boxlite.SimpleBox(
+        image="python:slim"
+    ) as box:
+        # Create nested directory structure
+        await box.exec("bash", "-c", """
+            mkdir -p /workspace/project/src/utils
+            mkdir -p /workspace/project/tests
+            echo "main" > /workspace/project/src/main.py
+            echo "utils" > /workspace/project/src/utils/helpers.py
+            echo "test" > /workspace/project/tests/test_main.py
+        """)
+
+        # Recursive listing with -R
+        result = await box.exec("ls", "-R", "/workspace/project/")
+        print(f"Recursive listing:\n{result.stdout}")
+
+asyncio.run(recursive_listing())
+```
+
+## File Metadata (stat)
+
+### Get File Statistics
+
+```python
+import asyncio
+import boxlite
+
+async def get_file_stats():
+    """Get detailed file statistics."""
+    async with boxlite.SimpleBox(
+        image="python:slim"
+    ) as box:
+        # Create test file
+        await box.exec("bash", "-c", """
+            echo "test content" > /workspace/test.txt
+        """)
+
+        # Get stat information
+        result = await box.exec("stat", "/workspace/test.txt")
+        print(f"Stat output:\n{result.stdout}")
+
+asyncio.run(get_file_stats())
+```
+
+### Parse Stat Output
+
+```python
+import asyncio
+import boxlite
+
+async def parse_stat_output():
+    """Parse stat output for specific fields."""
+    async with boxlite.SimpleBox(
+        image="python:slim"
+    ) as box:
+        await box.exec("bash", "-c", "echo 'data' > /workspace/file.txt")
+
+        # Get specific stat fields
+        result = await box.exec(
+            "stat",
+            "--format=%s %Y %y %h %u %g %a %F",
+            "/workspace/file.txt"
+        )
+
+        # Parse output
+        fields = result.stdout.strip().split()
+        print(f"Size: {fields[0]} bytes")
+        print(f"Modified (unix): {fields[1]}")
+        print(f"Modified (readable): {fields[2]}")
+        print(f"Hard links: {fields[3]}")
+        print(f"UID: {fields[4]}")
+        print(f"GID: {fields[5]}")
+        print(f"Permissions (octal): {fields[6]}")
+        print(f"File type: {fields[7]}")
+
+asyncio.run(parse_stat_output())
+```
+
+### Multiple Files Stat
+
+```python
+import asyncio
+import boxlite
+
+async def stat_multiple_files():
+    """Get stat for multiple files."""
+    async with boxlite.SimpleBox(
+        image="python:slim"
+    ) as box:
+        # Create multiple files
+        await box.exec("bash", "-c", """
+            echo "file1" > /workspace/file1.txt
+            echo "file2" > /workspace/file2.txt
+            echo "file3" > /workspace/file3.txt
+        """)
+
+        # Stat multiple files
+        result = await box.exec(
+            "stat",
+            "--format=%n: %s bytes",
+            "/workspace/file1.txt",
+            "/workspace/file2.txt",
+            "/workspace/file3.txt"
+        )
+        print(f"Multiple stat:\n{result.stdout}")
+
+asyncio.run(stat_multiple_files())
+```
+
+## Finding Files
+
+### Basic Find
+
+```python
+import asyncio
+import boxlite
+
+async def find_files():
+    """Find files in directory tree."""
+    async with boxlite.SimpleBox(
+        image="python:slim"
+    ) as box:
+        # Create test structure
+        await box.exec("bash", "-c", """
+            mkdir -p /workspace/project/src
+            mkdir -p /workspace/project/docs
+            touch /workspace/project/src/main.py
+            touch /workspace/project/src/utils.py
+            touch /workspace/project/docs/readme.txt
+        """)
+
+        # Find all files
+        result = await box.exec("find", "/workspace/project", "-type", "f")
+        print(f"Found files:\n{result.stdout}")
+
+        # Find by name pattern
+        result = await box.exec("find", "/workspace/project", "-name", "*.py")
+        print(f"Python files:\n{result.stdout}")
+
+asyncio.run(find_files())
+```
+
+### Find with Metadata
+
+```python
+import asyncio
+import boxlite
+
+async def find_files_with_stats():
+    """Find files and get their stats."""
+    async with boxlite.SimpleBox(
+        image="python:slim"
+    ) as box:
+        await box.exec("bash", "-c", """
+            echo "test" > /workspace/file1.txt
+            echo "test" > /workspace/file2.txt
+        """)
+
+        # Find and stat in one command
+        result = await box.exec(
+            "find",
+            "/workspace",
+            "-type",
+            "f",
+            "-exec",
+            "stat",
+            "--format=%n %s",
+            "{}",
+            ";"
+        )
+        print(f"Files with sizes:\n{result.stdout}")
+
+asyncio.run(find_files_with_stats())
+```
+
+### Find by Time
+
+```python
+import asyncio
+import boxlite
+
+async def find_by_time():
+    """Find files by modification time."""
+    async with boxlite.SimpleBox(
+        image="python:slim"
+    ) as box:
+        # Create files with different ages
+        await box.exec("bash", "-c", """
+            touch /workspace/old.txt
+            sleep 2
+            touch /workspace/new.txt
+        """)
+
+        # Find files modified in last minute
+        result = await box.exec(
+            "find",
+            "/workspace",
+            "-mmin",
+            "-1",
+            "-type",
+            "f"
+        )
+        print(f"Recently modified:\n{result.stdout}")
+
+        # Find files modified more than 1 minute ago
+        result = await box.exec(
+            "find",
+            "/workspace",
+            "-mmin",
+            "+1",
+            "-type",
+            "f"
+        )
+        print(f"Older files:\n{result.stdout}")
+
+asyncio.run(find_by_time())
+```
+
+## Disk Usage
+
+### Directory Size
+
+```python
+import asyncio
+import boxlite
+
+async def get_directory_size():
+    """Get directory size."""
+    async with boxlite.SimpleBox(
+        image="python:slim"
+    ) as box:
+        # Create test files
+        await box.exec("bash", "-c", """
+            mkdir -p /workspace/data
+            dd if=/dev/zero of=/workspace/data/file1.txt bs=1024 count=100 2>/dev/null
+            dd if=/dev/zero of=/workspace/data/file2.txt bs=1024 count=50 2>/dev/null
+        """)
+
+        # Get total size with du
+        result = await box.exec("du", "-sh", "/workspace/data")
+        print(f"Directory size: {result.stdout}")
+
+        # Detailed breakdown
+        result = await box.exec("du", "-h", "--max-depth=1", "/workspace/data")
+        print(f"Detailed:\n{result.stdout}")
+
+asyncio.run(get_directory_size())
+```
+
+### Disk Space
+
+```python
+import asyncio
+import boxlite
+
+async def check_disk_space():
+    """Check available disk space."""
+    async with boxlite.SimpleBox(
+        image="python:slim",
+        disk_size_gb=10
+    ) as box:
+        # Check disk space
+        result = await box.exec("df", "-h")
+        print(f"Disk usage:\n{result.stdout}")
+
+        # Check specific mount point
+        result = await box.exec("df", "-h", "/data")
+        print(f"/data usage:\n{result.stdout}")
+
+asyncio.run(check_disk_space())
+```
+
+### File Count
+
+```python
+import asyncio
+import boxlite
+
+async def count_files():
+    """Count files in directory."""
+    async with boxlite.SimpleBox(
+        image="python:slim"
+    ) as box:
+        # Create test structure
+        await box.exec("bash", "-c", """
+            mkdir -p /workspace/dir1 /workspace/dir2
+            touch /workspace/file1.txt
+            touch /workspace/dir1/file2.txt
+            touch /workspace/dir2/file3.txt
+        """)
+
+        # Count all files
+        result = await box.exec("find", "/workspace", "-type", "f", "|", "wc", "-l")
+        print(f"Total files: {result.stdout.strip()}")
+
+        # Count by type
+        result = await box.exec("find", "/workspace", "-type", "f", "-name", "*.txt", "|", "wc", "-l")
+        print(f"Text files: {result.stdout.strip()}")
+
+asyncio.run(count_files())
+```
+
+## Advanced Operations
+
+### File Type Detection
+
+```python
+import asyncio
+import boxlite
+
+async def detect_file_types():
+    """Detect file types."""
+    async with boxlite.SimpleBox(
+        image="python:slim"
+    ) as box:
+        # Create different file types
+        await box.exec("bash", "-c", """
+            echo "text" > /workspace/text.txt
+            dd if=/dev/urandom of=/workspace/binary bs=1024 count=1 2>/dev/null
+            ln -s /workspace/text.txt /workspace/symlink
+            mkdir /workspace/dir
+        """)
+
+        # Detect file types
+        files = ["text.txt", "binary", "symlink", "dir"]
+
+        for f in files:
+            path = f"/workspace/{f}"
+            result = await box.exec("file", path)
+            print(f"{f}: {result.stdout.strip()}")
+
+asyncio.run(detect_file_types())
+```
+
+### Permission Checking
+
+```python
+import asyncio
+import boxlite
+
+async def check_permissions():
+    """Check file permissions."""
+    async with boxlite.SimpleBox(
+        image="python:slim"
+    ) as box:
+        # Create files with different permissions
+        await box.exec("bash", "-c", """
+            echo "public" > /workspace/public.txt
+            echo "private" > /workspace/private.txt
+            chmod 644 /workspace/public.txt
+            chmod 600 /workspace/private.txt
+        """)
+
+        # Check permissions
+        result = await box.exec("ls", "-l", "/workspace/")
+        print(f"Permissions:\n{result.stdout}")
+
+        # Check specific permission
+        result = await box.exec("test", "-r", "/workspace/public.txt", "&&", "echo readable", "||", "echo not readable")
+        print(f"public.txt: {result.stdout.strip()}")
+
+        result = await box.exec("test", "-r", "/workspace/private.txt", "&&", "echo readable", "||", "echo not readable")
+        print(f"private.txt: {result.stdout.strip()}")
+
+asyncio.run(check_permissions())
+```
+
+### Symbolic Link Handling
+
+```python
+import asyncio
+import boxlite
+
+async def handle_symlinks():
+    """Handle symbolic links."""
+    async with boxlite.SimpleBox(
+        image="python:slim"
+    ) as box:
+        # Create files and symlinks
+        await box.exec("bash", "-c", """
+            echo "target" > /workspace/target.txt
+            ln -s /workspace/target.txt /workspace/link.txt
+            ln -s /workspace/nonexistent.txt /workspace/brokenlink.txt
+        """)
+
+        # List with symlink info
+        result = await box.exec("ls", "-la", "/workspace/")
+        print(f"Symlink listing:\n{result.stdout}")
+
+        # Read symlink target
+        result = await box.exec("readlink", "/workspace/link.txt")
+        print(f"Link points to: {result.stdout.strip()}")
+
+        # Check if symlink exists
+        result = await box.exec("test", "-L", "/workspace/link.txt", "&&", "echo is link", "||", "echo not link")
+        print(f"Is link: {result.stdout.strip()}")
+
+asyncio.run(handle_symlinks())
+```
+
+## Error Handling
+
+### Handle Missing Files
+
+```python
+import asyncio
+import boxlite
+
+async def handle_missing_files():
+    """Handle missing file errors."""
+    async with boxlite.SimpleBox(
+        image="python:slim"
+    ) as box:
+        try:
+            result = await box.exec("stat", "/nonexistent/file.txt")
+        except Exception as e:
+            print(f"Error: {e}")
+
+        # Check if file exists first
+        result = await box.exec("test", "-e", "/nonexistent/file.txt")
+        if result.exit_code == 0:
+            print("File exists")
+        else:
+            print("File does not exist")
+
+asyncio.run(handle_missing_files())
+```
+
+### Handle Permission Errors
+
+```python
+import asyncio
+import boxlite
+
+async def handle_permission_errors():
+    """Handle permission errors."""
+    async with boxlite.SimpleBox(
+        image="python:slim"
+    ) as box:
+        # Check read permission
+        result = await box.exec("test", "-r", "/etc/passwd")
+        print(f"Readable: {result.exit_code == 0}")
+
+        # Check write permission
+        result = await box.exec("test", "-w", "/etc/passwd")
+        print(f"Writable: {result.exit_code == 0}")
+
+        # Check execute permission
+        result = await box.exec("test", "-x", "/bin/ls")
+        print(f"Executable: {result.exit_code == 0}")
+
+asyncio.run(handle_permission_errors())
+```
+
+## Common Errors
+
+### Error 1: No Such File or Directory
+
+**Symptom**: File or directory not found
+
+**Cause**: Path does not exist
+
+**Solution**:
+```python
+# Check if path exists first
+result = await box.exec("test", "-e", "/path/to/file")
+if result.exit_code == 0:
+    # File exists, proceed
+    pass
+```
+
+### Error 2: Permission Denied
+
+**Symptom**: Permission denied errors
+
+**Cause**: Insufficient permissions
+
+**Solution**:
+```python
+# Check permissions before access
+result = await box.exec("test", "-r", "/path/to/file", "&&", "echo OK")
+if result.exit_code != 0:
+    print("No read permission")
+```
+
+### Error 3: Not a Directory
+
+**Symptom**: Expected directory but got file
+
+**Cause**: Using directory operations on files
+
+**Solution**:
+```python
+# Check if path is a directory
+result = await box.exec("test", "-d", "/path")
+if result.exit_code == 0:
+    # It's a directory
+    pass
+```
+
+## Best Practices
+
+1. **Check Before Access**: Always verify existence before operations
+2. **Use Appropriate Flags**: Use `-f` for files, `-d` for directories
+3. **Handle Errors Gracefully**: Check exit codes and handle exceptions
+4. **Optimize Queries**: Use specific patterns to reduce search space
+
+## Security Notes
+
+1. **Validate Paths**: Prevent path traversal attacks
+2. **Check Permissions**: Verify access before operations
+3. **Audit Access**: Log file access operations
+4. **Limit Visibility**: Restrict directory listings to authorized paths
+
+## Related Topics
+
+<CardGroup cols={2}>
+  <Card title="Filesystem Overview" icon="folder" href="/filesystem/overview">
+    Filesystem operations overview.
+  </Card>
+  <Card title="Read and Write Files" icon="file-arrow-up" href="/filesystem/read-write-files">
+    Copy files in and out of Boxes.
+  </Card>
+  <Card title="Watch Changes" icon="eye" href="/filesystem/watch-changes">
+    Monitor file system changes.
+  </Card>
+  <Card title="Upload Files" icon="upload" href="/filesystem/upload-files">
+    Upload files to Boxes.
+  </Card>
+</CardGroup>
