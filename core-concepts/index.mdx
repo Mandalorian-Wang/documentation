@@ -1,32 +1,31 @@
 ---
 title: "Core Concepts"
 sidebarTitle: "Concept map"
-description: "Use this page as the map for BoxLite box types, lifecycle, images, and resource sizing."
+description: "Use this page as the map for BoxLite box types, state, execution, images, and resource sizing."
 ---
 
-BoxLite is easiest to learn if you separate four decisions:
+BoxLite is easiest to learn if you separate three layers of decisions:
 
-1. Which box type matches the job
-2. How long that box should live
-3. Which image defines the guest environment
-4. How much CPU, memory, and disk the box needs
+1. What you are creating
+2. How state behaves over time
+3. How execution behaves inside the box
 
-This page is the entry point for those concepts. It only links to pages that exist in this docs set today.
+This page is the entry point for those concepts. Read it as a mental-model map, then continue to the concept page that matches the confusion you are trying to resolve.
 
-## Concept Map
+## What You Choose
 
 <CardGroup cols={2}>
-  <Card title="Lifecycle" icon="refresh" href="/core-concepts/lifecycle">
-    Create, start, reuse, stop, and remove boxes safely.
-  </Card>
   <Card title="Images" icon="image" href="/core-concepts/images">
-    Choose the OCI image that defines the environment inside the box.
+    Choose the OCI image that defines the guest environment inside the box.
   </Card>
   <Card title="Resource model" icon="cpu" href="/core-concepts/resource-model">
-    Understand CPUs, memory, disk, and persistence tradeoffs.
+    Understand CPUs, memory, disk, and workload sizing tradeoffs.
   </Card>
   <Card title="Choose SDK or BoxRun" icon="shuffle" href="/getting-started/choose-sdk-or-boxrun">
     Decide whether you want an embedded SDK workflow or the BoxRun control plane.
+  </Card>
+  <Card title="Tutorials" icon="rocket" href="/tutorials/index">
+    Move from the mental model into concrete task-based workflows.
   </Card>
 </CardGroup>
 
@@ -50,30 +49,53 @@ The SDK surfaces a small set of box types. Start with the smallest abstraction t
 - Use `ComputerBox` when the task requires a full desktop or GUI surface.
 - Use `InteractiveBox` when you need a long-lived shell session instead of one-shot commands.
 
+## How State Behaves
+
+<CardGroup cols={2}>
+  <Card title="Lifecycle" icon="refresh" href="/core-concepts/lifecycle">
+    Understand create, start, reuse, stop, remove, and when a box still exists after stopping.
+  </Card>
+  <Card title="State model" icon="database" href="/core-concepts/state-model">
+    Learn what persists across executions, restarts, volumes, and snapshots.
+  </Card>
+</CardGroup>
+
+## How Execution Works
+
+<CardGroup cols={2}>
+  <Card title="Execution model" icon="terminal" href="/core-concepts/execution-model">
+    Learn the difference between one-shot execution, interactive sessions, and sandbox boundaries.
+  </Card>
+  <Card title="Architecture overview" icon="sitemap" href="/architecture/index">
+    Continue here when you need internal system layers rather than user-facing concepts.
+  </Card>
+</CardGroup>
+
 ## How These Concepts Fit Together
 
 The typical path looks like this:
 
 1. Pick a box type.
 2. Pick an image or accept the box type's built-in environment.
-3. Set resources for the workload.
-4. Decide whether the box is disposable or persistent.
+3. Understand whether the workload is disposable, stateful, or interactive.
+4. Set resources for the workload.
+5. Decide whether the box should be removed, persisted, or snapshotted.
 
-That is the core BoxLite mental model. Most task-focused tutorials build on the same sequence.
+That is the core BoxLite mental model. Most task-focused tutorials build on the same sequence, even when the API surface changes by SDK.
 
 ## Recommended Next Reads
 
 <CardGroup cols={2}>
-  <Card title="Lifecycle details" icon="refresh" href="/core-concepts/lifecycle">
-    Understand `auto_remove`, manual start/stop, and reuse patterns.
+  <Card title="State model" icon="database" href="/core-concepts/state-model">
+    Start here if you are unsure what survives across calls or restarts.
   </Card>
-  <Card title="Image selection" icon="image" href="/core-concepts/images">
-    Learn when to use your own image and when a box type provides one for you.
+  <Card title="Execution model" icon="terminal" href="/core-concepts/execution-model">
+    Start here if you are unsure what `exec()`, `run()`, or an interactive session actually mean.
+  </Card>
+  <Card title="Lifecycle details" icon="refresh" href="/core-concepts/lifecycle">
+    Continue here for create, start, stop, remove, and reuse patterns.
   </Card>
   <Card title="Resource sizing" icon="gauge" href="/core-concepts/resource-model">
-    Tune CPU, memory, and disk for real workloads.
-  </Card>
-  <Card title="Tutorials" icon="rocket" href="/tutorials/index">
-    Move from concepts into concrete task-based guides.
+    Continue here when the workload shape is clear and you need to size it correctly.
   </Card>
 </CardGroup>

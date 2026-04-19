@@ -36,9 +36,11 @@
                 "group": "Core Concepts",
                 "icon": "lightbulb",
                 "pages": [
-                  "core-concepts/resource-model",
                   "core-concepts/lifecycle",
-                  "core-concepts/images"
+                  "core-concepts/state-model",
+                  "core-concepts/execution-model",
+                  "core-concepts/images",
+                  "core-concepts/resource-model"
                 ],
                 "expanded": false,
                 "root": "core-concepts/index"

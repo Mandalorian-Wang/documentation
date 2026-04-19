@@ -1,0 +1,134 @@
+---
+title: "State Model"
+sidebarTitle: "State Model"
+description: "Understand what state persists inside BoxLite, what does not, and how boxes, volumes, and snapshots differ."
+---
+
+The most important BoxLite concept after box type is state.
+
+Many onboarding mistakes come from assuming BoxLite behaves like a stateless command runner, a long-lived interpreter, or a remote container service. It is none of those exactly. BoxLite gives you a stateful box, but different kinds of state persist at different boundaries.
+
+## The three state boundaries
+
+When you work with BoxLite, think about state at three levels:
+
+1. execution state,
+2. box state,
+3. externalized state.
+
+If those boundaries are unclear, lifecycle and persistence decisions become confusing very quickly.
+
+## Execution state
+
+Execution state is the state created inside one `exec()` or `run()` call.
+
+Typical examples:
+
+- in-memory variables,
+- shell process state,
+- Python function definitions created during one call,
+- temporary process-local working state.
+
+This state usually ends when that execution ends.
+
+That means:
+
+- a later call can still see files written to disk in the same box,
+- but it should not assume the earlier process is still alive,
+- and it should not assume in-memory interpreter state is still available.
+
+This is why BoxLite can be stateful without behaving like one continuous interpreter session.
+
+## Box state
+
+Box state is the persistent workspace state inside one box.
+
+Typical examples:
+
+- files written into the box filesystem,
+- packages installed into that box,
+- environment changes stored on disk,
+- configuration created earlier in the same box.
+
+This state can survive multiple executions and, depending on lifecycle choices, can also survive stop and restart.
+
+If your workflow depends on continuity across steps, this is usually the level of state you actually care about.
+
+## Externalized state
+
+Some state does not belong only to one box. It lives outside the box lifecycle and can be shared, reused, or restored through separate mechanisms.
+
+Typical examples:
+
+- host-mounted volumes,
+- exported files,
+- snapshots used for checkpoints or rollback.
+
+Use this level when state needs to outlive one box, be shared intentionally, or be restored later as a known checkpoint.
+
+## What usually persists and what usually does not
+
+The safe default mental model is:
+
+| Kind of state | Typical behavior |
+|---|---|
+| In-memory variables from one execution | Does not persist to the next execution |
+| Files written in the same box | Persists within that box |
+| Installed packages in the same box | Persists within that box |
+| Box metadata after stop | Depends on lifecycle choices such as removal vs persistence |
+| Host-mounted data | Persists outside the box |
+| Snapshot state | Persists as a checkpoint you can restore later |
+
+The goal is not to memorize every API detail here. The goal is to stop mixing execution state with workspace state.
+
+## Boxes, volumes, and snapshots are different tools
+
+These three concepts overlap in practice, but they solve different problems.
+
+### Persistent box
+
+Use a persistent box when the same workspace should continue across multiple steps or sessions.
+
+Good fit:
+
+- long-running agent workflows,
+- development environments,
+- repeated work in the same prepared environment.
+
+### Volume
+
+Use a volume when data should live outside one box instance or be shared intentionally.
+
+Good fit:
+
+- larger datasets,
+- files that need host visibility,
+- workflows where multiple boxes should see the same data.
+
+### Snapshot
+
+Use a snapshot when you need a checkpointed state that can be restored later.
+
+Good fit:
+
+- rollback before risky changes,
+- branching from a known-good environment,
+- reproducible state recovery.
+
+## The most common confusion
+
+A box is not just one command.
+
+A box is a workspace boundary. Commands and code executions happen inside that workspace.
+
+That distinction explains why these two statements can both be true:
+
+- one execution call is disposable,
+- the box itself can still be stateful.
+
+## When to continue to another page
+
+- Read [Lifecycle](/core-concepts/lifecycle) if you need to understand create, start, stop, remove, and reuse.
+- Read [Execution Model](/core-concepts/execution-model) if you need to understand one-shot execution versus interactive sessions.
+- Read [Persistent Workspaces](/guides/persistent-workspaces) if you are designing longer-lived stateful environments.
+- Read [Snapshots and Rollback](/guides/snapshots-and-rollback) if you need checkpoint and recovery patterns.

@@ -1,0 +1,133 @@
+---
+title: "Execution Model"
+sidebarTitle: "Execution Model"
+description: "Understand how BoxLite executes work inside a box, and how one-shot commands differ from longer-lived interactive sessions."
+---
+
+BoxLite is easiest to reason about when you separate the box from the work executed inside the box.
+
+The box is the isolated workspace boundary. Execution is what happens inside that boundary when your application asks the box to do work.
+
+## The core distinction
+
+There are two different questions:
+
+1. Does the box still exist?
+2. Does the process from the last execution still exist?
+
+Those are not the same question.
+
+A box can continue to exist even when the last command has already finished. That is why BoxLite can support stateful workspaces and still run one-shot executions.
+
+## One-shot execution
+
+Most BoxLite workflows start with one-shot execution.
+
+Typical examples:
+
+- run a shell command,
+- execute a Python snippet,
+- start a short task and wait for its output,
+- collect stdout, stderr, and exit status.
+
+This model is best when:
+
+- the host application decides what to run next,
+- you want clear command boundaries,
+- you want explicit failure handling,
+- you do not need a continuously attached session.
+
+This is the default mental model for `SimpleBox` and many `CodeBox` workflows.
+
+## Interactive or longer-lived execution
+
+Some workloads are not just one command at a time.
+
+Examples:
+
+- a PTY-backed terminal session,
+- browser automation with a maintained session,
+- desktop automation with an active GUI session,
+- services that keep running until you stop them.
+
+In those cases, the execution model is session-oriented rather than purely one-shot.
+
+That changes what you need to think about:
+
+- whether a process stays alive,
+- whether input and output are streamed,
+- whether later steps attach to the same session or start a new one.
+
+## Box type influences execution behavior
+
+Different box types package different execution assumptions.
+
+| Box type | Typical execution model |
+|---|---|
+| `SimpleBox` | One-shot commands or explicitly managed processes |
+| `CodeBox` | Code-oriented execution flow, usually step by step |
+| `InteractiveBox` | Long-lived interactive shell session |
+| `BrowserBox` | Session-oriented browser automation |
+| `ComputerBox` | Session-oriented desktop automation |
+
+This is why box type is a concept-level decision, not just a convenience wrapper.
+
+## Host and box boundary
+
+Your application runs on the host. The command or code runs inside the box.
+
+That means:
+
+- the host decides what to send into the box,
+- the box executes that work in isolation,
+- outputs come back across that boundary,
+- files and network behavior belong to the box environment, not automatically to the host.
+
+If a user expects host-shell semantics, host files, or host environment variables to appear automatically inside the box, they usually have the wrong mental model.
+
+## Output and failure semantics
+
+Every execution model has to answer the same operational questions:
+
+- Did the work finish?
+- What output did it produce?
+- Did it fail?
+- Did it time out?
+- Is there still a process or session alive afterward?
+
+Those questions matter more than specific method names. The concept to keep in mind is that execution has its own lifecycle inside the larger box lifecycle.
+
+## Execution model versus state model
+
+These two concepts are related but not identical.
+
+- The execution model tells you how work runs.
+- The state model tells you what remains afterward.
+
+For example:
+
+- a Python code execution may end,
+- but files it wrote inside the same box may remain,
+- while in-memory variables from that execution do not.
+
+If you mix those two concepts together, BoxLite feels inconsistent. If you keep them separate, the behavior becomes predictable.
+
+## Choosing the right model
+
+Use a one-shot execution model when:
+
+- the host application should orchestrate each step explicitly,
+- you want simple failure boundaries,
+- you do not need a continuously attached session.
+
+Use a session-oriented model when:
+
+- the workflow depends on an active shell, browser, or desktop session,
+- later steps must interact with the same live process,
+- streaming input and output are part of the user experience.
+
+## When to continue to another page
+
+- Read [State Model](/core-concepts/state-model) if you need to understand what persists across executions.
+- Read [Lifecycle](/core-concepts/lifecycle) if you need to understand when a box exists, stops, or is removed.
+- Read [Tutorials](/tutorials/index) if the mental model is clear and you want a concrete workflow next.
