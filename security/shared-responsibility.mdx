@@ -129,7 +129,7 @@ box.exec("python script.py")  # Fetch secrets from vault
 - Use short-lived tokens when possible
 - Rotate credentials regularly
 - Never commit credentials to code
-- Use secrets management services (AWS Secrets Manager, HashiCorp Vault)
+- Use a secrets management approach that is already trusted in your environment
 
 ### 4. Image Selection
 
@@ -138,9 +138,6 @@ box.exec("python script.py")  # Fetch secrets from vault
 ```bash
 # Use official images
 boxrun create ubuntu:24.04
-
-# Verify image provenance
-boxrun images --verify
 
 # DON'T use untrusted third-party images
 ```
@@ -171,15 +168,15 @@ boxrun create ubuntu --cpu 2 --memory 1024 --disk 10
 **Your responsibility**: Protect sensitive data
 
 ```bash
-# Use encrypted volumes for sensitive data
-boxrun create ubuntu --encrypted
+# Use a storage approach that fits your data sensitivity
+# and keep sensitive data out of shared host paths when possible
 ```
 
 **Best practices**:
-- Encrypt sensitive data at rest
-- Use secure deletion when disposing of boxes
-- Implement backup encryption
+- Encrypt sensitive data at rest using the controls available in your own environment
+- Encrypt backups if you create them
 - Don't store sensitive data in plain text
+- Treat deletion and media sanitization as an operator responsibility
 
 ### 7. Access Control
 
@@ -212,26 +209,6 @@ Before deploying to production, verify:
 - [ ] Sensitive data encrypted
 - [ ] Access control implemented
 - [ ] Logging and monitoring enabled
-
-## Compliance Considerations
-
-### For Regulated Workloads
-
-| Regulation | User Responsibility |
-|------------|-------------------|
-| HIPAA | Encrypt PHI, access logging, audit trails |
-| PCI-DSS | Network isolation, encryption, access control |
-| SOC 2 | Logging, monitoring, access controls |
-| GDPR | Data encryption, deletion, access logging |
-
-### Audit Readiness
-
-Maintain evidence of:
-- Security configuration settings
-- Access logs
-- Resource usage
-- Incident response procedures
-- Change management
 
 ## Incident Response
 
@@ -314,9 +291,8 @@ security = SecurityOptions(
 
 For security-related questions:
 
-- **Documentation**: See [Security Overview](/security/overview)
-- **Community**: Join the BoxLite community forums
-- **Enterprise**: Contact enterprise support for security assessments
+- **Documentation**: Start with [Security Model and Controls](/security/overview)
+- **Community**: Use the public project community channels
 - **Reporting**: Report security vulnerabilities via the security policy
 
 <Warning>

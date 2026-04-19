@@ -1,36 +1,52 @@
 ---
-title: "Release Notes"
-sidebarTitle: "Release Notes"
-description: "Authoritative release communication for BoxLite documentation."
+title: "Changelog"
+sidebarTitle: "Changelog"
+description: "Product change history and release communication for BoxLite."
 ---
 
-This page is the single release entry point exposed in navigation.
+This page is the in-docs changelog for BoxLite.
 
-Use it for:
+Use it to record:
 
-- release summaries,
-- dated release highlights,
-- upgrade notes,
-- links to canonical source material such as GitHub releases.
+- released versions
+- absolute release dates
+- notable changes
+- breaking changes
+- upgrade notes
+- links to canonical source material such as GitHub releases
 
-## Release publishing standard
+This page should describe what shipped, not what might ship later.
 
-Every release entry on this page should include:
+## Changelog Standard
 
-1. Exact version number.
-2. Release date in absolute form.
-3. Scope of impact.
-4. Breaking changes, if any.
-5. Links to the detailed source of truth.
+Each release entry should include:
 
-## Current status
+1. exact version number
+2. release date in absolute form
+3. summary of the change
+4. breaking changes, if any
+5. upgrade notes when user action is required
+6. link to the canonical source of truth
 
-This IA refresh removed duplicate version-history entry points and keeps release communication here. If you need the full tag-level or artifact-level history, use GitHub Releases.
+## Current Source of Truth
+
+If a detailed tag-by-tag ledger, pre-release artifact list, or signed release asset is needed, use GitHub Releases.
 
 <Note>
-  For the detailed release ledger and pre-release artifacts, see [GitHub Releases](https://github.com/boxlite-ai/boxlite/releases).
+  For tags, artifacts, and pre-releases, see [GitHub Releases](https://github.com/boxlite-ai/boxlite/releases).
 </Note>
 
-## How this page relates to Changelog
+## Publishing Guidance
 
-The old changelog entry now exists only as a compatibility page for existing links. Navigation and future release communication should point here.
+When updating this page:
+
+- prefer short release summaries over long marketing copy
+- use exact dates, not relative phrases like "today" or "recently"
+- call out breaking changes explicitly
+- do not duplicate speculative roadmap content here
+
+## Relationship to Other Pages
+
+- This page replaces the old idea of a separate docs-only "release notes" section.
+- It should be the only changelog-style page exposed in navigation.
+- Roadmap and contribution guidance should live in GitHub or other project-maintained collaboration channels, not in the primary docs navigation.

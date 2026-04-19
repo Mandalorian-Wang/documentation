@@ -30,7 +30,7 @@ BoxLite operates in a hostile environment where untrusted code may execute. Unde
 | Malicious Box | Execute arbitrary code | Escape, exfiltrate | VM isolation, seccomp |
 | External Attacker | Network access | Disrupt, access | Network isolation |
 | Compromised Host | Host-level access | Access VM data | Encryption, minimal trust |
-| Malicious Operator | Administrative access | Data access | RBAC, audit logging |
+| Malicious Operator | Administrative access | Data access | Access control, audit logging |
 
 ## Attack Surface Analysis
 
@@ -235,8 +235,6 @@ Use this checklist to secure your BoxLite deployment.
 
 - [ ] Use `SecurityOptions.maximum()` for production
 - [ ] Enable audit logging
-- [ ] Configure log destination (syslog/SIEM)
-- [ ] Enable disk encryption
 - [ ] Configure network isolation
 - [ ] Set resource limits appropriate for workload
 - [ ] Use trusted OCI images only
@@ -251,18 +249,13 @@ Use this checklist to secure your BoxLite deployment.
 
 ### Access Control Hardening
 
-- [ ] Enable MFA for API access
-- [ ] Configure SSO integration
-- [ ] Implement RBAC
 - [ ] Use short-lived tokens
 - [ ] Rotate credentials regularly
 
 ### Monitoring Hardening
 
-- [ ] Forward security events to SIEM
 - [ ] Set up alerts for security violations
-- [ ] Configure log retention (1 year minimum)
-- [ ] Enable integrity verification for logs
+- [ ] Configure log retention that matches your own operational and legal requirements
 
 ### Template Hardening
 
@@ -272,10 +265,6 @@ await box.create_template(
     name="hardened-base:v1",
     description="Security-hardened base template",
     security=SecurityOptions.maximum(),
-    # Include only necessary packages
-    base_image="ubuntu:24.04-minimal",
-    # No long-term secrets
-    secrets=[],  # Inject at runtime
 )
 ```
 
@@ -294,20 +283,6 @@ sudo setenforce 1
 
 # Verify seccomp is enabled
 grep -i seccomp /proc/$(pgrep -f boxlite)/status
-```
-
-### macOS Hardening
-
-```python
-# Enable all macOS-specific protections
-box_options = BoxOptions(
-    # Use Apple Silicon if available
-    platform="arm64",
-    # Enable hardened runtime (if building from source)
-    hardened_runtime=True,
-    # Use shortest possible timeouts
-    idle_timeout_seconds=300,
-)
 ```
 
 ## Performance vs Security Tradeoffs
@@ -343,12 +318,6 @@ security = SecurityOptions(
     max_open_files=512,
 )
 
-# Audit all operations
-audit_config = AuditConfig(
-    log_all_execution=True,
-    log_all_file_access=True,
-    min_severity="info",
-)
 ```
 
 ### Scenario 2: Multi-Tenant Environment
@@ -357,18 +326,9 @@ audit_config = AuditConfig(
 
 **Hardening**:
 ```python
-# Strict isolation between tenants
+# Keep tenant workloads isolated and apply per-tenant limits
 box_options = BoxOptions(
     network_enabled=True,
-    allowed_sources=[tenant_vpc],  # Per-tenant network
-    cgroup_enabled=True,
-    disk_quota_gb=50,
-)
-
-# Encryption per tenant
-encryption_config = EncryptionConfig(
-    type="luks",
-    key_source="vault",  # Per-tenant keys
 )
 ```
 
@@ -383,13 +343,7 @@ security = SecurityOptions.maximum()
 
 box_options = BoxOptions(
     network_enabled=False,  # Air-gapped
-    encrypted_disk=True,
-    audit_logging=True,
-    data_residency="us-east-1",  # Compliance region
 )
-
-# No secrets in box - inject at runtime
-secrets = vault.get("api-key")  # External secrets only
 ```
 
 ## Validation and Testing
@@ -413,23 +367,9 @@ boxrun exec test-box -- sh -c "curl google.com"  # Should fail if network disabl
 boxrun exec test-box -- sh -c "strace echo test"  # strace should be blocked
 ```
 
-### Compliance Verification
-
-```python
-# Generate compliance report
-audit_report = await boxlite.generate_compliance_report(
-    standards=["soc2", "hipaa"],
-    output_format="json"
-)
-
-print(f"Compliance Score: {audit_report.score}")
-print(f"Passed Controls: {audit_report.passed}")
-print(f"Failed Controls: {audit_report.failed}")
-```
-
 ## Related Documentation
 
-- [Security Overview](/security/overview) - Security architecture
+- [Security Model and Controls](/security/overview) - Product-level security entry point
 - [Shared Responsibility Model](/security/shared-responsibility) - Security responsibilities
 - [Audit Logging](/security/audit-logging) - Security event logging
 - [Secrets Management](/security/secrets-management) - Secure credential handling

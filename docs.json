@@ -132,7 +132,7 @@
                 "root": "filesystem/overview"
               },
               {
-                "group": "Commands",
+                "group": "Command Execution",
                 "icon": "terminal",
                 "pages": [
                   "commands/run-command",
@@ -145,7 +145,7 @@
                 "root": "commands/overview"
               },
               {
-                "group": "Volumes",
+                "group": "Volumes and Mounts",
                 "icon": "database",
                 "pages": [
                   "volumes/create-and-manage",
@@ -157,7 +157,7 @@
                 "root": "volumes/overview"
               },
               {
-                "group": "Networking",
+                "group": "Network Access",
                 "icon": "wifi",
                 "pages": [
                   "networking/egress-control",
@@ -173,9 +173,9 @@
                 "icon": "shield-halved",
                 "pages": [
                   "security/shared-responsibility",
-                  "security/threat-model-and-hardening",
                   "security/secrets-management",
                   "security/audit-logging",
+                  "security/threat-model-and-hardening",
                   "security/security-policy"
                 ],
                 "expanded": false,
@@ -264,16 +264,7 @@
                 ],
                 "expanded": false
               },
-              {
-                "group": "Community",
-                "icon": "users",
-                "pages": [
-                  "community/contributing",
-                  "community/roadmap",
-                  "community/release-notes"
-                ],
-                "expanded": false
-              }
+              "community/release-notes"
             ]
           }
         ]

@@ -1,313 +1,77 @@
 ---
-title: "Network Overview"
-description: "Understanding BoxLite's network topology, communication models, and configuration options."
+title: "Network Access and Service Exposure"
+sidebarTitle: "Overview"
+description: "Choose how BoxLite boxes access networks, expose services, and restrict outbound traffic."
 ---
 
-BoxLite provides flexible networking capabilities that enable isolated sandbox environments to communicate with each other and with external services. This guide covers BoxLite's network architecture, topology options, isolation models, and configuration best practices.
-
-## Network Topology Overview
-
-BoxLite implements a pluggable network backend architecture that supports multiple networking models. Each sandbox runs in an isolated virtual machine with its own network stack, and connectivity is provided through user-space networking proxies.
-
-### Architecture Components
-
-BoxLite's networking is built on several key components working together:
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                      Host Machine                           │
-│                                                             │
-│  ┌─────────────────┐    ┌─────────────────────────────┐   │
-│  │   BoxLite VM 1  │    │       gvproxy                │   │
-│  │  ┌───────────┐  │    │  ┌─────────────────────┐    │   │
-│  │  │  eth0     │◄─┼────┼──│ vsock              │    │   │
-│  │  │  10.0.2.2 │  │    │  │ (AF_VSOCK)         │    │   │
-│  │  └───────────┘  │    │  └─────────────────────┘    │   │
-│  └─────────────────┘    │           │                  │   │
-│                        │           ▼                  │   │
-│  ┌─────────────────┐    │  ┌─────────────────────┐    │   │
-│  │   BoxLite VM 2  │    │  │   NAT / DHCP        │    │   │
-│  │  ┌───────────┐  │    │  │   DNS Resolver     │    │   │
-│  │  │  eth0     │◄─┼────┼──│                     │    │   │
-│  │  │  10.0.2.3 │  │    │  └─────────────────────┘    │   │
-│  │  └───────────┘  │    │           │                  │   │
-│  └─────────────────┘    │           ▼                  │   │
-│                        │  ┌─────────────────────┐    │   │
-│                        │  │   Host Network      │    │   │
-│                        │  │   (eth0/wlan0)      │    │   │
-│                        │  └─────────────────────┘    │   │
-│                        └─────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### Network Backends
-
-BoxLite supports pluggable network backends for flexible connectivity options:
-
-| Backend | Description | Use Case |
-|---------|-------------|----------|
-| **gvproxy (Default)** | User-mode networking based on gVisor's network stack | Default choice for full internet access |
-| **libslirp** | QEMU's user-mode networking stack | Alternative when gvproxy is unavailable |
-
-Both backends provide:
-- Full outbound internet access (NAT)
-- Port forwarding for TCP and UDP
-- Built-in DHCP for IP assignment
-- DNS resolution
-- Network metrics collection
-
-## Sandbox Isolation Model
-
-Each BoxLite sandbox runs in an isolated virtual machine with strong network isolation guarantees.
-
-### VM-Level Isolation
-
-BoxLite uses hardware virtualization (KVM on Linux, Hypervisor.framework on macOS) to provide VM-level isolation:
-
-```
-┌────────────────────────────────────────┐
-│         Host Operating System          │
-├────────────────────────────────────────┤
-│           BoxLite Runtime              │
-├────────────────────────────────────────┤
-│                                        │
-│  ┌─────────────┐  ┌─────────────┐     │
-│  │   VM 1      │  │   VM 2      │     │
-│  │ (Sandbox 1) │  │ (Sandbox 2) │     │
-│  │             │  │             │     │
-│  │ Network     │  │ Network     │     │
-│  │ Namespace   │  │ Namespace   │     │
-│  │ - eth0      │  │ - eth0      │     │
-│  │ - lo        │  │ - lo        │     │
-│  │ - Routes    │  │ - Routes    │     │
-│  └─────────────┘  └─────────────┘     │
-│                                        │
-│  No direct VM-to-VM network access     │
-│  unless explicitly configured          │
-└────────────────────────────────────────┘
-```
-
-### Default Network Behavior
-
-By default, each sandbox:
-
-- Receives an IP address from a virtual subnet (10.0.2.x range)
-- Has full outbound internet access via NAT
-- Cannot be reached directly from external network (no inbound connections)
-- Has isolated network namespace from other sandboxes
-
-## Network Configuration
-
-### Enabling Networking
-
-Networking is disabled by default for security. Enable it explicitly when creating a box:
-
-```python
-from boxlite import SimpleBox
-import asyncio
+Use this page as the decision point for BoxLite networking. Start here when you need to answer three practical questions:
 
-async def main():
-    # Enable networking for internet access
-    async with SimpleBox(
-        image="python:3.11-slim",
-        network=True
-    ) as box:
-        # Now has internet access
-        result = await box.exec("curl", "-s", "https://api.github.com")
-        print(result.stdout)
-
-asyncio.run(main())
-```
+1. Should this box have network access at all?
+2. If it does, does it only need outbound access or should it expose a service back to the host?
+3. Do I need to restrict where it can connect?
 
-### Custom DNS Configuration
+This page stays at the product level. It explains the available models and when to use each child page. Detailed implementation, diagnostics, and production tradeoffs live elsewhere.
 
-Configure custom DNS servers for domains that require specific resolution:
+## Default Behavior
 
-```python
-from boxlite import SimpleBox
+Networking in BoxLite is an explicit choice, not an always-on assumption.
 
-# Use custom DNS servers
-async with SimpleBox(
-    image="python:3.11-slim",
-    network=True,
-    dns=["8.8.8.8", "1.1.1.1"]  # Google and Cloudflare DNS
-) as box:
-    result = await box.exec("nslookup", "example.com")
-    print(result.stdout)
-```
+- Use **no network** when the workload should stay fully isolated.
+- Use **outbound access** when the box needs to call external APIs, download packages, or reach internal services.
+- Add **port forwarding** when a service inside the box must be reachable from the host.
+- Add **egress control** when outbound access should be limited to approved destinations.
+- Use **private connectivity** only when you need internal-only communication patterns that go beyond ordinary outbound access.
 
-### Network Metrics
+## Choose the Right Model
 
-Monitor network usage for each sandbox:
+| Need | Recommended model | Read next |
+|---|---|---|
+| Run code with no external communication | No network | [Troubleshooting](/networking/troubleshooting) if commands unexpectedly fail |
+| Download dependencies or call external APIs | Outbound network access | [Egress Control](/networking/egress-control) if you need restrictions |
+| Reach a web server or API running inside the box from the host | Port forwarding | [Port Forwarding](/networking/port-forwarding) |
+| Keep traffic limited to approved domains or ranges | Outbound access with restrictions | [Egress Control](/networking/egress-control) |
+| Build internal-only service topologies or controlled box-to-box access | Private connectivity | [Private Connectivity](/networking/private-connectivity) |
 
-```python
-from boxlite import SimpleBox
+## Service Exposure Model
 
-async with SimpleBox(
-    image="python:3.11-slim",
-    network=True
-) as box:
-    # Perform network operations
-    await box.exec("curl", "-s", "https://example.com")
-
-    # Get network metrics
-    metrics = await box.network_metrics()
-    print(f"Bytes sent: {metrics.bytes_sent}")
-    print(f"Bytes received: {metrics.bytes_received}")
-    print(f"Packets sent: {metrics.packets_sent}")
-    print(f"Packets received: {metrics.packets_received}")
-```
+The most common mistake in BoxLite networking is to treat ordinary outbound access and service exposure as the same thing. They are different.
 
-## Communication Models
+- **Outbound access** means the box can initiate connections to something else.
+- **Service exposure** means something outside the box can reach a service running inside it.
 
-BoxLite supports different communication models based on your use case:
+For most application workflows:
 
-### NAT Mode (Default)
+- Start with outbound access only.
+- Add port forwarding only for the specific ports you need.
+- Avoid broader network exposure until there is a concrete reason.
 
-In NAT mode, the sandbox shares the host's network connection:
+This keeps the sandbox model easier to reason about and avoids accidental reachability.
 
-```python
-# NAT mode - default behavior
-box = await runtime.create_box(
-    image="python:3.11-slim",
-    network=True  # NAT mode enabled
-)
-
-# Outbound connections work
-result = await box.exec("curl", "https://external-service.com")
+## How This Section Is Organized
 
-# Inbound connections blocked (private network)
-```
+<CardGroup cols={2}>
+  <Card title="Port Forwarding" icon="arrow-up-right-from-square" href="/networking/port-forwarding">
+    Expose services from a box back to the host in a controlled way.
+  </Card>
+  <Card title="Egress Control" icon="shield" href="/networking/egress-control">
+    Restrict outbound traffic with allowlists and deny-by-default patterns.
+  </Card>
+  <Card title="Private Connectivity" icon="network-wired" href="/networking/private-connectivity">
+    Handle internal-only communication patterns and isolated network topologies.
+  </Card>
+  <Card title="Network Troubleshooting" icon="wrench" href="/networking/troubleshooting">
+    Diagnose DNS, reachability, and port mapping failures.
+  </Card>
+</CardGroup>
 
-**Characteristics:**
-- Sandbox can initiate connections to external services
-- External services cannot initiate connections to sandbox
-- Uses NAT (Network Address Translation)
-- IP address from virtual subnet (not publicly routable)
+## Relationship to Other Sections
 
-### Host Network Mode
+- Use [Production Network Design](/guides/networking-modes-and-port-strategy) when you are making production decisions about port allocation, reverse proxies, multi-service layouts, and operational tradeoffs.
+- Use [Architecture: Networking & Storage](/architecture/networking-storage) when you need implementation details about the runtime and networking internals.
+- Use [Volumes and Mounts](/volumes/overview) when the actual requirement is data movement or shared files rather than network reachability.
 
-For scenarios requiring direct network access:
+## Implementation Notes
 
-```python
-box = await runtime.create_box(
-    image="python:3.11-slim",
-    network="host"  # Share host's network namespace
-)
-```
+BoxLite uses user-space networking components to provide outbound access, port mapping, and isolation boundaries between the host and each box. Those details matter when you are debugging the runtime itself, but they are usually not the first thing an application developer needs to choose a working networking model.
 
-<Warning>
-Host network mode provides less isolation. Only use when required for specific use cases like port conflicts.
-</Warning>
-
-### No Network Mode
-
-For maximum isolation with no network connectivity:
-
-```python
-box = await runtime.create_box(
-    image="python:3.11-slim",
-    network=False  # No network connectivity
-)
-```
-
-**Use cases:**
-- Air-gapped execution environments
-- Processing sensitive data requiring no external communication
-- Benchmarking compute-only workloads
-
-## Port Forwarding
-
-Expose services running inside the sandbox to the host or external network:
-
-```python
-from boxlite import SimpleBox
-
-# Forward host port 8080 to sandbox port 80
-async with SimpleBox(
-    image="nginx:latest",
-    network=True,
-    ports=[(8080, 80, "tcp")]
-) as box:
-    # nginx now accessible at http://localhost:8080
-    pass
-```
-
-See [Port Forwarding](/networking/port-forwarding) for detailed configuration.
-
-## Private Connectivity
-
-For sandbox-to-sandbox communication or private network access:
-
-```python
-from boxlite import SimpleBox
-
-# Create sandbox in private network
-async with SimpleBox(
-    image="python:3.11-slim",
-    network=True,
-    network_mode="private",
-    ip="192.168.100.10"
-) as box:
-    pass
-```
-
-See [Private Connectivity](/networking/private-connectivity) for detailed configuration.
-
-## Egress Control
-
-Control outbound traffic with allowlists and restrictions:
-
-```python
-from boxlite import SimpleBox
-
-# Allow only specific domains
-async with SimpleBox(
-    image="python:3.11-slim",
-    network=True,
-    allowed_domains=["api.example.com", "cdn.example.com"]
-) as box:
-    # Can only connect to allowed domains
-    pass
-```
-
-See [Egress Control](/networking/egress-control) for detailed configuration.
-
-## Best Practices
-
-### Security Recommendations
-
-1. **Disable networking by default**: Only enable when necessary for your workload
-2. **Use egress controls**: Implement allowlists for external connectivity
-3. **Avoid host network mode**: Prefer NAT mode for better isolation
-4. **Monitor network metrics**: Track data transfer for unusual patterns
-
-### Performance Optimization
-
-1. **Reuse network connections**: Minimize new connection overhead
-2. **Configure appropriate timeouts**: Prevent resource exhaustion from hung connections
-3. **Use connection pooling**: For high-throughput workloads
-
-### Network Troubleshooting
-
-When experiencing network issues:
-
-```python
-# Enable debug logging
-import logging
-logging.basicConfig(level=logging.DEBUG)
-
-# Get detailed box info
-box_info = await box.info()
-print(box_info.network)
-```
-
-See [Network Troubleshooting](/networking/troubleshooting) for detailed debugging steps.
-
-## See Also
-
-- [Port Forwarding](/networking/port-forwarding) - Exposing services from sandbox
-- [Private Connectivity](/networking/private-connectivity) - Private networking options
-- [Egress Control](/networking/egress-control) - Outbound traffic management
-- [Network Troubleshooting](/networking/troubleshooting) - Debugging network issues
-- [Architecture: Networking & Storage](/architecture/networking-storage) - Detailed networking architecture
+If you are trying to ship an application, start from the access model above. If you are trying to debug internals, continue to [Architecture: Networking & Storage](/architecture/networking-storage).

@@ -1,19 +1,19 @@
 ---
-title: "Volumes Overview"
+title: "Volumes and Mounts"
 sidebarTitle: "Overview"
-description: "Understanding volume types in BoxLite - virtiofs vs QCOW2 disk images."
+description: "Choose between virtiofs mounts and QCOW2 persistent disks in BoxLite."
 ---
 
-BoxLite supports two primary volume types for persistent storage: virtiofs (host directory mounts) and QCOW2 disk images. Understanding when to use each type is essential for building robust applications.
+BoxLite supports two primary storage patterns: virtiofs host mounts and QCOW2 persistent disks. Understanding when to use each type is essential for building robust applications.
 
 ## Overview
 
-Volume types in BoxLite serve different purposes:
+Volumes and mounts in BoxLite serve different purposes:
 
 - **virtiofs**: High-performance host directory sharing
 - **QCOW2**: Persistent block storage with snapshot support
 
-## Volume Type Comparison
+## Volume and Mount Type Comparison
 
 | Feature | virtiofs | QCOW2 Disk |
 |---------|----------|------------|

@@ -1,17 +1,18 @@
 ---
-title: "Networking Modes and Port Strategy"
-description: "Learn how to configure network access, handle port conflicts, and manage multi-service architectures in BoxLite."
+title: "Production Network Design"
+sidebarTitle: "Production network design"
+description: "Choose production defaults for network exposure, port allocation, reverse proxies, and multi-service BoxLite deployments."
 ---
 
-# Overview
+This guide is for production design decisions, not first-run networking setup.
 
-BoxLite provides flexible networking options to support different architecture patterns. Understanding the available networking modes and port strategies is essential for building secure, performant sandbox applications.
+Use [Network Access and Service Exposure](/networking/overview) for the product-level explanation of outbound access, port forwarding, egress control, and private connectivity. Use this page when you need to decide how those capabilities should be applied in a real deployment.
 
-This guide covers:
-- Network modes and their use cases
-- Port forwarding configuration
-- Security considerations
-- Performance implications with code examples
+This guide focuses on:
+- choosing the default network posture for production workloads
+- planning host port allocation and reverse proxy boundaries
+- handling multi-service layouts without accidental exposure
+- applying network controls with operational tradeoffs in mind
 
 ## Prerequisites
 
@@ -19,7 +20,7 @@ This guide covers:
 - Basic understanding of networking concepts
 - Familiarity with BoxOptions configuration
 
-## Detailed Content
+## Decision Framework
 
 ### Network Modes Overview
 
@@ -587,7 +588,7 @@ options = boxlite.BoxOptions(
 
 ## Related Reading
 
-- [Network Overview](/networking/overview) - Full networking documentation
+- [Network Access and Service Exposure](/networking/overview) - Product-level networking entry point
 - [Port Forwarding](/networking/port-forwarding) - Detailed port configuration
 - [Private Connectivity](/networking/private-connectivity) - Private network setup
 - [Egress Control](/networking/egress-control) - Outbound traffic management
