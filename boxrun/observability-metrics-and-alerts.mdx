@@ -322,18 +322,11 @@ async function execute(boxName, command) {
 
 ### Complete Stack
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    Monitoring Stack                         │
-├─────────────────────────────────────────────────────────────┤
-│                                                             │
-│  BoxRun ──┬──► Metrics Exporter ──► Prometheus ──► Grafana  │
-│           │                              │                  │
-│           └──────► Log Aggregator ───────┘                  │
-│                                                             │
-│  AlertManager ──► PagerDuty / Slack / Email                 │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
+```text
+BoxRun
+  ├─ metrics -> exporter -> Prometheus -> Grafana
+  ├─ logs    -> log aggregator
+  └─ alerts  -> AlertManager -> PagerDuty / Slack / Email
 ```
 
 ### Docker Compose for Monitoring

@@ -37,14 +37,15 @@ virtiofs provides high-performance host directory mounting into the Box. It's th
 
 ### How virtiofs Works
 
-```
-Host System                           Box (Guest)
-┌─────────────┐                     ┌─────────────┐
-│ /host/data/ │◄───────────────────▶│ /mnt/data/  │
-│             │    (virtiofs)       │             │
-│ Changes     │◄───────────────────▶│ Changes     │
-│ immediately │                     │ visible     │
-└─────────────┘                     └─────────────┘
+```text
+Host system
+  /host/data/
+     │ virtiofs
+     ▼
+Box guest
+  /mnt/data/
+
+Changes are visible on both sides immediately.
 ```
 
 ### Performance Characteristics
@@ -84,20 +85,15 @@ QCOW2 (QEMU Copy-On-Write v2) provides persistent block storage as disk images. 
 
 ### How QCOW2 Works
 
-```
-┌─────────────────────────────────────────────────────────┐
-│                    QCOW2 Image File                      │
-│  ┌─────────────────────────────────────────────────────┐│
-│  │ Copy-on-Write Layer (per Box)                       ││
-│  │   - Writes go here                                  ││
-│  │   - Changes isolated from base                      ││
-│  └─────────────────────────────────────────────────────┘│
-│  ┌─────────────────────────────────────────────────────┐│
-│  │ Base Image (shared across Boxes)                    ││
-│  │   - Read-only                                       ││
-│  │   - Common base layers                              ││
-│  └─────────────────────────────────────────────────────┘│
-└─────────────────────────────────────────────────────────┘
+```text
+QCOW2 image file
+  ├─ Copy-on-write layer
+  │   - per box
+  │   - writes go here
+  │   - changes stay isolated
+  └─ Base image
+      - shared across boxes
+      - read-only
 ```
 
 ### Use Cases

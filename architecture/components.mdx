@@ -23,13 +23,21 @@ The main entry point for creating and managing Boxes. Holds all runtime state pr
 ```text
 RuntimeInnerImpl
 ├── sync_state (RwLock)
-│   ├── BoxManager      # Tracks all Boxes and their states (Source: boxlite/src/management/box_manager.rs)
-│   └── ImageManager    # OCI image cache and management (Source: boxlite/src/management/image_manager.rs)
-└── non_sync_state (immutable)
-    ├── FilesystemLayout  # Directory structure (~/.boxlite)
-    ├── InitRootfs        # Shared init rootfs for guests
-    └── RuntimeMetrics    # Atomic counters (lock-free)
+│   ├── BoxManager
+│   └── ImageManager
+└── non_sync_state
+    ├── FilesystemLayout
+    ├── InitRootfs
+    └── RuntimeMetrics
 ```
+
+Notes:
+
+- `BoxManager` tracks boxes and their lifecycle state.
+- `ImageManager` owns OCI image caching and retrieval.
+- `FilesystemLayout` defines the runtime directory structure under `~/.boxlite`.
+- `InitRootfs` provides the shared init rootfs used by guests.
+- `RuntimeMetrics` uses atomic counters for low-overhead metrics.
 
 ## LiteBox
 
@@ -87,16 +95,13 @@ gRPC-based communication layer between host and guest.
 ```text
 Host Application
       │
-      │ Unix Socket (/tmp/boxlite-{id}.sock)
+      │ Unix socket
       ▼
-┌─────────────────┐
-│  libkrun vsock  │  (Unix socket ↔ vsock bridge)
-│     bridge      │
-└─────────────────┘
+libkrun vsock bridge
       │
-      │ Vsock (port 2695)
+      │ vsock :2695
       ▼
-Guest Agent (gRPC Server)
+Guest agent
 ```
 
 ### Protocol Definition
@@ -129,20 +134,27 @@ service Execution {
 ```text
 Host                              Guest (Box)
   │                                 │
-  │──── spawn Box subprocess ──────▶│
+  │──── spawn box subprocess ──────▶│
   │                                 │
-  │◀─── ready notification ─────────│ (vsock connect to port 2696)
+  │◀─── ready notification ─────────│
   │                                 │
-  │──── Guest.Init ────────────────▶│ (mounts, rootfs, network)
+  │──── Guest.Init ────────────────▶│
   │◀─── GuestInitResponse ──────────│
   │                                 │
-  │──── Container.Init ────────────▶│ (OCI container setup)
+  │──── Container.Init ────────────▶│
   │◀─── ContainerInitResponse ──────│
   │                                 │
-  │──── Execution.Exec ────────────▶│ (run commands)
+  │──── Execution.Exec ────────────▶│
   │◀─── streaming stdout/stderr ────│
   │                                 │
 ```
+
+Notes:
+
+- The ready notification arrives after the guest agent connects over vsock on port `2696`.
+- `Guest.Init` prepares mounts, rootfs, and networking.
+- `Container.Init` configures the OCI container.
+- `Execution.Exec` starts command execution and begins streaming output.
 
 ## Guest Agent
 
@@ -260,26 +272,19 @@ BoxLite provides comprehensive metrics at runtime and per-Box levels.
 ### Architecture
 
 ```text
-┌─────────────────────────────────────────┐
-│            RuntimeMetrics               │
-│  ┌─────────────────────────────────┐    │
-│  │  AtomicU64 counters (lock-free) │    │
-│  │  - boxes_created                │    │
-│  │  - boxes_destroyed              │    │
-│  │  - total_exec_calls             │    │
-│  │  - total_bytes_transferred      │    │
-│  └─────────────────────────────────┘    │
-└─────────────────────────────────────────┘
-           │
-           ▼
-┌─────────────────────────────────────────┐
-│            BoxMetrics (per-Box)         │
-│  - cpu_time_ms                          │
-│  - memory_usage_bytes                   │
-│  - exec_count                           │
-│  - network_bytes_sent                   │
-│  - network_bytes_received               │
-└─────────────────────────────────────────┘
+RuntimeMetrics
+  - boxes_created
+  - boxes_destroyed
+  - total_exec_calls
+  - total_bytes_transferred
+       │
+       ▼
+BoxMetrics (per box)
+  - cpu_time_ms
+  - memory_usage_bytes
+  - exec_count
+  - network_bytes_sent
+  - network_bytes_received
 ```
 
 ### Design Principles

@@ -17,8 +17,20 @@ BoxLite provides the isolation needed to safely run untrusted code from pull req
 
 ## Architecture
 
-```
-User PR -> Webhook -> Code Review Bot -> BoxLite -> Analysis Results
+```text
+User PR
+  │
+  ▼
+Webhook
+  │
+  ▼
+Code review bot
+  │
+  ▼
+BoxLite
+  │
+  ▼
+Analysis results
 ```
 
 ## Implementation

@@ -20,16 +20,16 @@ BoxLite's command execution model differs from traditional container runtimes:
 BoxLite provides a streaming execution model where commands run asynchronously with separate access to each I/O stream:
 
 ```text
-┌─────────────────────────────────────────────────────────┐
-│                      Execution                          │
-├─────────────────┬─────────────────┬─────────────────────┤
-│    stdout       │     stderr      │       stdin         │
-│  (async iter)   │  (async iter)   │    (writer)         │
-└────────┬────────┴────────┬────────┴──────────┬──────────┘
-         │                 │                    │
-         ▼                 ▼                    ▼
-    Line-by-line      Error output         Input to
-    output stream     stream               process
+Execution
+  ├─ stdout
+  │   - async iterator
+  │   - line-by-line output
+  ├─ stderr
+  │   - async iterator
+  │   - error output stream
+  └─ stdin
+      - writer
+      - input to the process
 ```
 
 ## Key Concepts

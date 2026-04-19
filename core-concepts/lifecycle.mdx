@@ -21,26 +21,25 @@ BoxLite boxes operate in distinct states throughout their existence:
 
 ### State Transition Diagram
 
-```
-                    ┌─────────────────────────────────────────────────────────┐
-                    │                                                         │
-                    ▼                                                         │
-┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐    ┌───────────┐ │
-│  CREATED │───▶│ STARTING │───▶│ RUNNING  │───▶│ STOPPING │───▶│ STOPPED   │ │
-└──────────┘    └──────────┘    └──────────┘    └──────────┘    └───────────┘ │
-     │                                       │                    │           │
-     │                                       │                    │           │
-     │                                       ▼                    ▼           │
-     │                              ┌──────────────────┐    ┌─────────────┐     │
-     │                              │ auto_remove=True │    │ auto_remove │     │
-     │                              │  (cleanup happens) │    │ =False (persist)│ │
-     │                              └──────────────────┘    └─────────────┘     │
-     │                                                                 │        │
-     │                                                                 │        │
-     └─────────────────────────────────────────────────────────────────┘        │
-                              reuse_existing=True                                   │
-                                                                                  │
-                    ◀────────────────────────────────────────────────────────────┘
+```text
+CREATED
+  │
+  ▼
+STARTING
+  │
+  ▼
+RUNNING
+  │
+  ▼
+STOPPING
+  │
+  ▼
+STOPPED
+
+From STOPPED:
+  - `auto_remove=True`  -> removed during cleanup
+  - `auto_remove=False` -> box can persist
+  - `reuse_existing=True` can reconnect to a persisted box
 ```
 
 ## Context Manager Pattern (Recommended)

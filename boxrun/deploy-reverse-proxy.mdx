@@ -281,22 +281,14 @@ add_header X-XSS-Protection "1; mode=block" always;
 
 BoxRun instances are stateless at the API level but maintain separate databases:
 
-```
-┌─────────────┐
-│   Clients   │
-└──────┬──────┘
-       │
-       ▼
-┌─────────────┐
-│ Load Balancer│
-└──────┬──────┘
-       │
-   ┌───┴───┐
-   ▼       ▼
-┌─────┐ ┌─────┐
-│BoxRun│ │BoxRun│
-│ :9090│ │ :9091│
-└─────┘ └─────┘
+```text
+Clients
+  │
+  ▼
+Load balancer
+  │
+  ├─ BoxRun (`:9090`)
+  └─ BoxRun (`:9091`)
 ```
 
 ### Limitations

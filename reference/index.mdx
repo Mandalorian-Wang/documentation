@@ -137,7 +137,7 @@ Base directory for BoxLite runtime data.
 ├── boxes/        # Per-box data (config.json, disk.qcow2)
 ├── init/         # Shared guest rootfs
 ├── logs/         # Runtime logs
-├── gvproxy/      # Network backend binaries
+├── gvproxy/      # Network backend files
 ├── lock          # Filesystem lock file
 └── db/           # SQLite databases (boxes.db, images.db)
 ```
@@ -202,10 +202,10 @@ BoxLite caches OCI images at the layer level for fast starts.
 ~/.boxlite/images/
 ├── blobs/
 │   └── sha256/
-│       ├── abc123...  # Layer blob
-│       ├── def456...  # Layer blob
+│       ├── abc123...
+│       ├── def456...
 │       └── ...
-└── index.json         # Image index
+└── index.json
 ```
 
 <Note>

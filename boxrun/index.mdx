@@ -46,11 +46,13 @@ BoxLite provides the underlying micro-VM runtime. BoxRun adds lifecycle manageme
 ## Box lifecycle
 
 ```text
-creating --> running <--> stopped
-                |              |
-                +--> error     +--> (rm)
-                       |
-                       +--> (rm)
+creating
+  │
+  ▼
+running <-> stopped
+  │          │
+  ▼          ▼
+error      removed
 ```
 
 - **creating** — box is being provisioned by BoxLite

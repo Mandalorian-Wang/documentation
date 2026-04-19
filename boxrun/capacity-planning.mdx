@@ -219,14 +219,10 @@ For large-scale deployments:
 2. **Load balancing** - Distribute requests across instances
 3. **Shared storage** - Use network storage for image caching
 
-```
-┌─────────────┐     ┌─────────────┐
-│   LB/Proxy  │────▶│  BoxRun #1  │
-└─────────────┘     └─────────────┘
-       │                   │
-       │             ┌─────▼─────┐
-       └────────────▶│  BoxRun #2 │
-                     └───────────┘
+```text
+LB / Proxy
+  ├─ BoxRun #1
+  └─ BoxRun #2
 ```
 
 ## Monitoring Capacity

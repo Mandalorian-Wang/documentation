@@ -32,11 +32,15 @@ For **persistent storage** that survives Box restarts, use [Volumes](/volumes/ov
 The `copy_in()` and `copy_out()` methods provide reliable file transfer between host and guest filesystems:
 
 ```text
-Host System                           Box (Guest)
-┌─────────────┐                     ┌─────────────┐
-│ /host/data/ │ ─── copy_in() ───▶ │ /workspace/ │
-│             │ ◀── copy_out() ─── │             │
-└─────────────┘                     └─────────────┘
+Host system
+  /host/data/
+     │ copy_in()
+     ▼
+Box guest
+  /workspace/
+     │ copy_out()
+     ▼
+Host system
 ```
 
 **Key characteristics:**

@@ -21,33 +21,20 @@ Unlike development mode where BoxRun starts automatically on first use, producti
 
 ### Components
 
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                         Production Host                             │
-│  ┌─────────────────────────────────────────────────────────────────┐│
-│  │                    boxrun serve                                 ││
-│  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────┐ ││
-│  │  │  REST API   │  │  Web UI     │  │  Unix Socket Interface  │ ││
-│  │  │  :9090      │  │  /ui        │  │  ~/.boxrun/boxrun.sock  │ ││
-│  │  └─────────────┘  └─────────────┘  └─────────────────────────┘ ││
-│  │         │                │                     │               ││
-│  │         └────────────────┼─────────────────────┘               ││
-│  │                          ▼                                      ││
-│  │  ┌───────────────────────────────────────────────────────────┐ ││
-│  │  │              Lifecycle Manager (Rust)                     │ ││
-│  │  │  - Box CRUD operations                                      │ ││
-│  │  │  - State machine transitions                                │ ││
-│  │  │  - Execution orchestration                                  │ ││
-│  │  └───────────────────────────────────────────────────────────┘ ││
-│  │                          │                                      ││
-│  │         ┌───────────────┼───────────────┐                      ││
-│  │         ▼               ▼               ▼                      ││
-│  │  ┌───────────┐   ┌───────────┐   ┌───────────────┐           ││
-│  │  │  SQLite   │   │  BoxLite  │   │   Image       │           ││
-│  │  │  Database │   │  Runtime  │   │   Cache       │           ││
-│  │  └───────────┘   └───────────┘   └───────────────┘           ││
-│  └─────────────────────────────────────────────────────────────────┘│
-└─────────────────────────────────────────────────────────────────────┘
+```text
+Production host
+  └─ boxrun serve
+       ├─ REST API (`:9090`)
+       ├─ Web UI (`/ui`)
+       ├─ Unix socket (`~/.boxrun/boxrun.sock`)
+       └─ Lifecycle manager
+            - box CRUD operations
+            - state transitions
+            - execution orchestration
+                 │
+                 ├─ SQLite database
+                 ├─ BoxLite runtime
+                 └─ Image cache
 ```
 
 ### Data Flow
@@ -86,11 +73,16 @@ boxrun serve --host 127.0.0.1 --port 9090
 
 Production deployments behind a reverse proxy:
 
-```
-┌─────────────┐     ┌──────────────────┐     ┌──────────────────┐
-│   Clients   │────▶│  Reverse Proxy   │────▶│   boxrun serve   │
-│             │     │  (nginx/Caddy)   │     │   - Unix socket  │
-└─────────────┘     └──────────────────┘     └──────────────────┘
+```text
+Clients
+  │
+  ▼
+Reverse proxy
+  (nginx / Caddy)
+  │
+  ▼
+boxrun serve
+  - Unix socket
 ```
 
 **Use cases:**
@@ -105,19 +97,12 @@ See [Reverse Proxy Deployment](/boxrun/deploy-reverse-proxy) for detailed config
 
 Long-running production server managed by systemd:
 
-```
-┌──────────────────┐
-│  systemd        │
-│  ┌────────────┐ │
-│  │ boxrun.service │
-│  └────────────┘ │
-│       │         │
-│       ▼         │
-│  ┌────────────┐ │
-│  │ boxrun     │ │
-│  │ serve      │ │
-│  └────────────┘ │
-└──────────────────┘
+```text
+systemd
+  └─ boxrun.service
+       │
+       ▼
+     boxrun serve
 ```
 
 **Use cases:**

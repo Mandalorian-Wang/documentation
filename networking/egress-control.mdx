@@ -101,32 +101,23 @@ async with SimpleBox(
 
 BoxLite's egress control is implemented at the network proxy layer using gvproxy's packet filtering capabilities:
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                         Sandbox VM                              │
-│                                                                 │
-│   ┌──────────────┐                                              │
-│   │ Application │                                              │
-│   └──────┬───────┘                                              │
-│          │ TCP/UDP                                             │
-│          ▼                                                      │
-│   ┌──────────────────────────────────────────────────────────┐ │
-│   │              Egress Policy Engine                         │ │
-│   │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐       │ │
-│   │  │   Domain   │  │     IP      │  │   Deny All  │       │ │
-│   │  │ Allowlist  │  │ Allowlist   │  │    Mode     │       │ │
-│   │  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘       │ │
-│   └─────────┼───────────────┼───────────────┼───────────────┘ │
-│             │               │               │                 │
-│             ▼               ▼               ▼                 │
-│   ┌──────────────────────────────────────────────────────────┐ │
-│   │              gvproxy (Network Proxy)                      │ │
-│   │         Packet filtering and forwarding                  │ │
-│   └──────────────────────────┬───────────────────────────────┘ │
-│                              │ vsock                            │
-│                              ▼                                  │
-│                         Host Network                            │
-└─────────────────────────────────────────────────────────────────┘
+```text
+Sandbox VM
+  └─ Application
+       │ TCP / UDP
+       ▼
+Egress policy engine
+  ├─ domain allowlist
+  ├─ IP allowlist
+  └─ deny-all mode
+       │
+       ▼
+gvproxy
+  - packet filtering
+  - connection forwarding
+       │ vsock
+       ▼
+Host network
 ```
 
 ### Policy Evaluation Order

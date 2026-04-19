@@ -13,20 +13,21 @@ BoxLite templates are not simple disk images. They are sophisticated constructs 
 
 Templates in BoxLite are built on a multi-layer architecture:
 
-```
-┌─────────────────────────────────────────┐
-│           TEMPLATE (User Layer)         │
-│  Custom packages, files, configurations│
-├─────────────────────────────────────────┤
-│        LAYER 2 (Template Layer)        │
-│   Base system, runtime, dependencies    │
-├─────────────────────────────────────────┤
-│        LAYER 1 (Image Layer)           │
-│        OCI Image (Read-only)           │
-├─────────────────────────────────────────┤
-│      BASE LAYER (Boot & Kernel)        │
-│        VM boot image (Shared)          │
-└─────────────────────────────────────────┘
+```text
+Template layer
+  user packages, files, config
+        │
+        ▼
+Template base layer
+  runtime and dependencies
+        │
+        ▼
+Image layer
+  OCI image (read-only)
+        │
+        ▼
+Boot layer
+  shared VM boot image
 ```
 
 ### Layer Types
@@ -44,16 +45,23 @@ When you create a template, BoxLite executes a multi-stage build pipeline:
 
 ### Pipeline Stages
 
-```
-┌──────────────┐    ┌──────────────┐    ┌──────────────┐
-│   STAGE 1    │    │   STAGE 2    │    │   STAGE 3    │
-│   Import     │ -> │   Configure  │ -> │   Snapshot   │
-└──────────────┘    └──────────────┘    └──────────────┘
-       │                   │                   │
-       v                   v                   v
-  Load OCI image     Install packages    Create diff
-  Extract layers    Copy files           Snapshot layer
-  Verify manifest    Set env vars         Freeze state
+```text
+STAGE 1: Import
+  - load OCI image
+  - extract layers
+  - verify manifest
+        │
+        ▼
+STAGE 2: Configure
+  - install packages
+  - copy files
+  - set env vars
+        │
+        ▼
+STAGE 3: Snapshot
+  - create diff
+  - snapshot layer
+  - freeze state
 ```
 
 ### Stage 1: Image Import

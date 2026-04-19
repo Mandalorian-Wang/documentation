@@ -31,62 +31,41 @@ BoxLite is built around several key principles:
 The architecture spans multiple layers: host runtime, subprocess isolation, OS-level sandboxing, and guest VM execution.
 
 ```text
-┌────────────────────────────────────────────────────────────────────┐
-│                          Host Application                          │
-│  ┌──────────────────────────────────────────────────────────────┐  │
-│  │                        BoxliteRuntime                        │  │
-│  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────┐       │  │
-│  │  │ BoxManager  │  │ImageManager │  │ RuntimeMetrics  │       │  │
-│  │  └─────────────┘  └─────────────┘  └─────────────────┘       │  │
-│  └──────────────────────────────────────────────────────────────┘  │
-│                              │                                     │
-│                              ▼                                     │
-│  ┌──────────────────────────────────────────────────────────────┐  │
-│  │                           LiteBox                            │  │
-│  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────┐       │  │
-│  │  │  Lifecycle  │  │    Exec     │  │    Metrics      │       │  │
-│  │  └─────────────┘  └─────────────┘  └─────────────────┘       │  │
-│  └──────────────────────────────────────────────────────────────┘  │
-│                              │                                     │
-│                              ▼                                     │
-│  ┌──────────────────────────────────────────────────────────────┐  │
-│  │                        ShimController                        │  │
-│  │        (Spawns shim with jailer isolation)                   │  │
-│  └──────────────────────────────────────────────────────────────┘  │
-└────────────────────────────────────────────────────────────────────┘
-                               │
-                      Spawns subprocess
-                               │
-                               ▼
-┌────────────────────────────────────────────────────────────────────┐
-│                    JAILER BOUNDARY (OS Sandbox)                    │
-│  ╔══════════════════════════════════════════════════════════════╗  │
-│  ║                 Shim Process (boxlite-shim)                  ║  │
-│  ║  - Seccomp filtering (Linux)                                 ║  │
-│  ║  - Namespace isolation (Linux)                               ║  │
-│  ║  - sandbox-exec (macOS)                                      ║  │
-│  ║  - Resource limits (cgroups/rlimits)                         ║  │
-│  ╚══════════════════════════════════════════════════════════════╝  │
-│                              │                                     │
-│                        Unix Socket / Vsock                         │
-│                              │                                     │
-│                              ▼                                     │
-│  ┌──────────────────────────────────────────────────────────────┐  │
-│  │                        Box (Guest VM)                        │  │
-│  │  ┌────────────────────────────────────────────────────────┐  │  │
-│  │  │                      Guest Agent                       │  │  │
-│  │  │  ┌──────────┐  ┌──────────┐  ┌──────────────────┐      │  │  │
-│  │  │  │  Guest   │  │Container │  │   Execution      │      │  │  │
-│  │  │  │  Service │  │  Service │  │    Service       │      │  │  │
-│  │  │  └──────────┘  └──────────┘  └──────────────────┘      │  │  │
-│  │  └────────────────────────────────────────────────────────┘  │  │
-│  │                              │                               │  │
-│  │                              ▼                               │  │
-│  │  ┌────────────────────────────────────────────────────────┐  │  │
-│  │  │                 OCI Container Runtime                  │  │  │
-│  │  └────────────────────────────────────────────────────────┘  │  │
-│  └──────────────────────────────────────────────────────────────┘  │
-└────────────────────────────────────────────────────────────────────┘
+Host application
+  └─ BoxliteRuntime
+       ├─ BoxManager
+       ├─ ImageManager
+       └─ RuntimeMetrics
+              │
+              ▼
+           LiteBox
+       ├─ Lifecycle
+       ├─ Exec
+       └─ Metrics
+              │
+              ▼
+       ShimController
+    (spawns sandboxed shim)
+              │
+              ▼
+Jailer boundary on host OS
+  └─ Shim process
+       ├─ seccomp / namespaces (Linux)
+       ├─ sandbox-exec (macOS)
+       └─ resource limits
+              │
+              ▼
+      Unix socket / vsock
+              │
+              ▼
+         Box (guest VM)
+          └─ Guest agent
+               ├─ Guest service
+               ├─ Container service
+               └─ Execution service
+                      │
+                      ▼
+            OCI container runtime
 ```
 
 ## Concurrency Model
@@ -156,20 +135,14 @@ Default home directory: `~/.boxlite`
 BoxLite provides language-specific SDKs built on the core Rust library.
 
 ```text
-┌─────────────────────────────────────────┐
-│           Host Application              │
-└─────────────────────────────────────────┘
-                    │
-                    ▼
-┌─────────────────────────────────────────┐
-│     Language SDK (Python, Node, C)      │
-│         (Native bindings)               │
-└─────────────────────────────────────────┘
-                    │
-                    ▼
-┌─────────────────────────────────────────┐
-│         BoxLite Core (Rust)             │
-└─────────────────────────────────────────┘
+Host application
+      │
+      ▼
+Language SDK
+(Python / Node / C)
+      │
+      ▼
+BoxLite Core (Rust)
 ```
 
 | SDK         | Technology     | Status      | Location       |

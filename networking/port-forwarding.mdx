@@ -13,40 +13,25 @@ Port forwarding maps network ports from the host machine to ports inside the san
 
 BoxLite uses gvproxy to handle port forwarding through the vsock interface:
 
+```text
+Host machine
+  └─ external request
+       │ `:8080`
+       ▼
+gvproxy
+  - port mapping
+  - protocol handling
+       │ vsock
+       ▼
+Sandbox VM
+  └─ service listening on `:80`
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                         Host Machine                            │
-│                                                                 │
-│  ┌──────────────────┐                                          │
-│  │   External       │                                          │
-│  │   Request        │                                          │
-│  │   :8080          │                                          │
-│  └────────┬─────────┘                                          │
-│           │                                                    │
-│           ▼                                                    │
-│  ┌──────────────────────────────────────────────────────────┐ │
-│  │                    gvproxy                                │ │
-│  │  Port Mapping: 8080 -> 80 (via vsock)                    │ │
-│  │                                                          │ │
-│  │   Host Port   Guest Port   Protocol                      │ │
-│  │   ─────────────────────────────────                      │ │
-│  │     8080    ->    80       TCP                          │ │
-│  │     8443    ->   443       TCP                          │ │
-│  │     2222    ->    22       TCP                          │ │
-│  └──────────────────────────────────────────────────────────┘ │
-│           │                                                    │
-│           ▼ vsock                                             │
-│  ┌──────────────────┐                                          │
-│  │  Sandbox VM      │                                          │
-│  │                  │                                          │
-│  │  ┌────────────┐  │                                          │
-│  │  │ nginx      │  │                                          │
-│  │  │ listening  │  │                                          │
-│  │  │ on :80     │  │                                          │
-│  │  └────────────┘  │                                          │
-│  └──────────────────┘                                          │
-└─────────────────────────────────────────────────────────────────┘
-```
+
+Example mappings:
+
+- `8080 -> 80/tcp`
+- `8443 -> 443/tcp`
+- `2222 -> 22/tcp`
 
 ## Basic Port Forwarding Configuration
 

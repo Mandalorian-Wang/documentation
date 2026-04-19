@@ -15,7 +15,7 @@
 ## Tutorials
 
 - [Tutorials Overview](/tutorials/index.mdx): All tutorials and box type selection guide
-- [Run Claude Code in a sandbox](/tutorials/ai-coding-tools.mdx): Run Claude Code inside an isolated VM
+- [Run a Coding Agent in BoxLite](/tutorials/claude-code-integration.mdx): Run a coding agent inside an isolated BoxLite sandbox, with Claude Code as the example
 - [Execute AI-generated code](/tutorials/code-execution.mdx): Run untrusted Python code safely with CodeBox
 - [Upload & download files](/tutorials/file-transfer.mdx): Move files in and out of a sandbox
 - [LLM Tool Calling with BoxLite](/tutorials/llm-integration.mdx): Learn the framework-agnostic execution loop, then continue to provider-specific integration pages

@@ -46,18 +46,6 @@
                 "root": "core-concepts/index"
               },
               {
-                "group": "Architecture",
-                "icon": "sitemap",
-                "pages": [
-                  "architecture/components",
-                  "architecture/security",
-                  "architecture/networking-storage",
-                  "getting-started/design-principles"
-                ],
-                "expanded": false,
-                "root": "architecture/index"
-              },
-              {
                 "group": "Tutorials",
                 "icon": "graduation-cap",
                 "pages": [
@@ -74,25 +62,6 @@
                 ],
                 "expanded": false,
                 "root": "tutorials/index"
-              },
-              {
-                "group": "Production Guides",
-                "icon": "book-open",
-                "pages": [
-                  "guides/ai-agent-integration",
-                  "guides/persistent-workspaces",
-                  "guides/snapshots-and-rollback",
-                  "guides/cross-sdk-behavior-differences",
-                  "guides/resource-sizing-for-workloads",
-                  "guides/networking-modes-and-port-strategy",
-                  "guides/performance-tuning",
-                  "guides/cost-control-best-practices",
-                  "guides/image-registry-configuration",
-                  "guides/building-from-source",
-                  "guides/macos-sandbox-debugging"
-                ],
-                "expanded": false,
-                "root": "guides/index"
               },
               {
                 "group": "AI Integrations",
@@ -171,29 +140,6 @@
                 "root": "networking/overview"
               },
               {
-                "group": "Security",
-                "icon": "shield-halved",
-                "pages": [
-                  "security/shared-responsibility",
-                  "security/secrets-management",
-                  "security/audit-logging",
-                  "security/threat-model-and-hardening",
-                  "security/security-policy"
-                ],
-                "expanded": false,
-                "root": "security/overview"
-              },
-              {
-                "group": "Observability",
-                "icon": "chart-line",
-                "pages": [
-                  "observability/tracing-otel",
-                  "observability/debugging-playbook"
-                ],
-                "expanded": false,
-                "root": "observability/overview"
-              },
-              {
                 "group": "SDK Reference",
                 "pages": [
                   {
@@ -241,6 +187,60 @@
                 "expanded": false,
                 "icon": "book",
                 "root": "reference/index"
+              },
+              {
+                "group": "Architecture",
+                "icon": "sitemap",
+                "pages": [
+                  "architecture/components",
+                  "architecture/security",
+                  "architecture/networking-storage",
+                  "getting-started/design-principles"
+                ],
+                "expanded": false,
+                "root": "architecture/index"
+              },
+              {
+                "group": "Production Guides",
+                "icon": "book-open",
+                "pages": [
+                  "guides/ai-agent-integration",
+                  "guides/persistent-workspaces",
+                  "guides/snapshots-and-rollback",
+                  "guides/cross-sdk-behavior-differences",
+                  "guides/resource-sizing-for-workloads",
+                  "guides/networking-modes-and-port-strategy",
+                  "guides/performance-tuning",
+                  "guides/cost-control-best-practices",
+                  "guides/image-registry-configuration",
+                  "guides/building-from-source",
+                  "guides/macos-sandbox-debugging"
+                ],
+                "expanded": false,
+                "root": "guides/index"
+              },
+              {
+                "group": "Security",
+                "icon": "shield-halved",
+                "pages": [
+                  "security/shared-responsibility",
+                  "security/secrets-management",
+                  "security/audit-logging",
+                  "security/threat-model-and-hardening",
+                  "security/security-policy"
+                ],
+                "expanded": false,
+                "root": "security/overview"
+              },
+              {
+                "group": "Observability",
+                "icon": "chart-line",
+                "pages": [
+                  "observability/tracing-otel",
+                  "observability/debugging-playbook"
+                ],
+                "expanded": false,
+                "root": "observability/overview"
               },
               {
                 "group": "Troubleshooting",

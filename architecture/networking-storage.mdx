@@ -27,13 +27,17 @@ pub trait NetworkBackend: Send + Sync {
     User-mode networking based on gVisor's network stack.
 
     ```text
-    Box                    gvproxy                  Internet
-    ┌──────┐              ┌───────┐              ┌──────────┐
-    │ eth0 │◄────vsock───▶│       │◄────TCP/UDP─▶│          │
-    └──────┘              │ NAT   │              │ External │
-                          │ DHCP  │              │ Services │
-                          │ DNS   │              └──────────┘
-                          └───────┘
+    Box
+    └─ eth0
+        │ vsock
+        ▼
+    gvproxy
+      ├─ NAT
+      ├─ DHCP
+      └─ DNS
+        │ TCP / UDP
+        ▼
+    External services
     ```
 
     **Features:**
@@ -84,24 +88,20 @@ ImageManager
 Registry (Docker Hub, GHCR, ECR, etc.)
            │
            ▼
-┌─────────────────────┐
-│   OCI Client        │  Pull manifest and layers
-└─────────────────────┘
+OCI client
+  - pull manifest and layers
            │
            ▼
-┌─────────────────────┐
-│   ImageStore        │  Store blobs in ~/.boxlite/images/blobs/
-└─────────────────────┘
+ImageStore
+  - store blobs in ~/.boxlite/images/blobs/
            │
            ▼
-┌─────────────────────┐
-│   Layer Extraction  │  Extract to cached layer directories
-└─────────────────────┘
+Layer extraction
+  - extract into cached layer directories
            │
            ▼
-┌─────────────────────┐
-│   Rootfs Assembly   │  Combine layers for Box rootfs
-└─────────────────────┘
+Rootfs assembly
+  - combine layers for the Box rootfs
 ```
 
 ### Caching Strategy
@@ -117,14 +117,22 @@ Registry (Docker Hub, GHCR, ECR, etc.)
 The rootfs builder assembles a container filesystem from OCI image layers:
 
 ```text
-Image Layers          Rootfs Builder              Box Rootfs
-┌─────────┐          ┌─────────────┐          ┌─────────────┐
-│ Layer 1 │────┐     │             │          │ /bin        │
-├─────────┤    │     │  Extract &  │          │ /etc        │
-│ Layer 2 │────┼────▶│   Overlay   │─────────▶│ /usr        │
-├─────────┤    │     │             │          │ /var        │
-│ Layer N │────┘     └─────────────┘          │ ...         │
-└─────────┘                                   └─────────────┘
+Image layers
+  ├─ Layer 1
+  ├─ Layer 2
+  └─ Layer N
+      │
+      ▼
+Rootfs builder
+  - extract
+  - overlay
+      │
+      ▼
+Box rootfs
+  ├─ /bin
+  ├─ /etc
+  ├─ /usr
+  └─ /var
 ```
 
 **Key operations:**

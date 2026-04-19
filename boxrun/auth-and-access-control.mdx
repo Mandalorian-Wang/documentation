@@ -294,32 +294,24 @@ echo "API key rotated. New key: $NEW_KEY" | mail -s "API Key Update" admin@compa
 
 ### Production Architecture
 
-```
-                        ┌─────────────────────┐
-                        │   Internet          │
-                        └──────────┬──────────┘
-                                   │
-                                   ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    Firewall                                 │
-│  - Allow 443 only                                           │
-│  - Drop all other inbound                                   │
-└──────────────────────────┬──────────────────────────────────┘
-                           │
-                           ▼
-┌─────────────────────────────────────────────────────────────┐
-│  Reverse Proxy (Nginx/Caddy)                                │
-│  - TLS termination                                          │
-│  - Authentication (basic/JWT)                               │
-│  - Access logs                                              │
-└──────────────────────────┬──────────────────────────────────┘
-                           │
-                           ▼
-┌─────────────────────────────────────────────────────────────┐
-│  BoxRun Server                                              │
-│  - Bind: 127.0.0.1:9090                                     │
-│  - No authentication (handled by proxy)                    │
-└─────────────────────────────────────────────────────────────┘
+```text
+Internet
+  │
+  ▼
+Firewall
+  - allow `443` only
+  - drop other inbound traffic
+  │
+  ▼
+Reverse proxy
+  - TLS termination
+  - authentication (basic / JWT)
+  - access logs
+  │
+  ▼
+BoxRun server
+  - bind `127.0.0.1:9090`
+  - auth handled by the proxy
 ```
 
 ## Future Authentication Features

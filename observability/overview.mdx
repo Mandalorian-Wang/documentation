@@ -173,15 +173,10 @@ BoxRun propagates trace context for:
 
 For production deployments:
 
-```
-┌─────────────────────────────────────────────────────┐
-│                  Log Aggregation                    │
-├─────────────────────────────────────────────────────┤
-│  BoxRun Logs ──▶ Fluent Bit ──▶ Elasticsearch       │
-│                      │              │               │
-│                      ▼              ▼               │
-│                 Grafana Loki  or  Kibana           │
-└─────────────────────────────────────────────────────┘
+```text
+Log aggregation
+├─ BoxRun logs -> Fluent Bit -> Elasticsearch -> Kibana
+└─ BoxRun logs -> Fluent Bit -> Grafana Loki -> Grafana
 ```
 
 ### Fluent Bit Configuration

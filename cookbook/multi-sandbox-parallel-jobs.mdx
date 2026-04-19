@@ -17,22 +17,16 @@ Running jobs in parallel across multiple sandboxes enables:
 
 ## Architecture
 
-```
-┌─────────────────────────────────────────────────────────┐
-│                    Host System                          │
-│  ┌─────────────────────────────────────────────────┐   │
-│  │              Job Coordinator                     │   │
-│  │  - Distributes work                              │   │
-│  │  - Manages concurrency                           │   │
-│  │  - Aggregates results                            │   │
-│  └─────────────────────────────────────────────────┘   │
-│          │              │              │                │
-│          ▼              ▼              ▼                │
-│   ┌──────────┐   ┌──────────┐   ┌──────────┐          │
-│   │  Box 1   │   │  Box 2   │   │  Box N   │          │
-│   │ Worker 1 │   │ Worker 2 │   │ Worker N │          │
-│   └──────────┘   └──────────┘   └──────────┘          │
-└─────────────────────────────────────────────────────────┘
+```text
+Host system
+  └─ Job coordinator
+       - distributes work
+       - manages concurrency
+       - aggregates results
+            │
+            ├─ Box 1 / Worker 1
+            ├─ Box 2 / Worker 2
+            └─ Box N / Worker N
 ```
 
 ## Basic Parallel Execution

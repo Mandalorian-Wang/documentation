@@ -17,8 +17,21 @@ BoxLite provides isolation to safely scrape untrusted content.
 
 ## Architecture
 
-```
-Request -> BoxLite (isolated) -> Fetch & Parse -> Clean Data -> Output
+```text
+Request
+  │
+  ▼
+BoxLite
+  (isolated)
+  │
+  ▼
+Fetch and parse
+  │
+  ▼
+Clean data
+  │
+  ▼
+Output
 ```
 
 ## Implementation
