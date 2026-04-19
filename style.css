@@ -13,6 +13,11 @@ li[data-group-tag] > button > div:nth-child(2) {
   font-weight: 700 !important;
 }
 
+/* Keep top-level standalone entries visually aligned with first-level sections. */
+#sidebar-group > li[id] > a span {
+  font-weight: 700 !important;
+}
+
 /* Add clearer separation between expanded first-level sections. */
 li[data-group-tag] > button[aria-expanded="true"] + ul {
   margin-bottom: 0.75rem !important;
