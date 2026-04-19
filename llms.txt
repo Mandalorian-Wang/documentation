@@ -29,7 +29,7 @@
 ## Guides
 
 - [Guides Overview](/guides/index.mdx): Advanced patterns and configuration guides
-- [AI Agent Integration](/guides/ai-agent-integration.mdx): Concurrency, timeouts, security presets
+- [AI Agent Production Patterns](/guides/ai-agent-integration.mdx): Concurrency, timeouts, security presets
 - [Building from Source](/guides/building-from-source.mdx): Compile BoxLite from source
 - [Image Registry Configuration](/guides/image-registry-configuration.mdx): Configure OCI image registries
 - [macOS Sandbox Debugging](/guides/macos-sandbox-debugging.mdx): Debug sandbox issues on macOS

@@ -9,8 +9,13 @@ h2 a[aria-label="Navigate to header"] {
 
 /* Emphasize first-level sidebar section titles without affecting child pages. */
 .sidebar-group-header h5#sidebar-title,
-li[data-group-tag] > button > div:last-child {
+li[data-group-tag] > button > div:nth-child(2) {
   font-weight: 700 !important;
+}
+
+/* Add clearer separation between expanded first-level sections. */
+li[data-group-tag] > button[aria-expanded="true"] + ul {
+  margin-bottom: 0.75rem !important;
 }
 
 /* Hide the technical wrapper header used only to enable collapsible top sections. */

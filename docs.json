@@ -76,7 +76,7 @@
                 "root": "tutorials/index"
               },
               {
-                "group": "Guides",
+                "group": "Production Guides",
                 "icon": "book-open",
                 "pages": [
                   "guides/ai-agent-integration",
@@ -93,7 +93,7 @@
                 "root": "guides/index"
               },
               {
-                "group": "Integrations",
+                "group": "AI Integrations",
                 "icon": "plug",
                 "pages": [
                   "integrations/anthropic",
@@ -192,7 +192,7 @@
                 "root": "observability/overview"
               },
               {
-                "group": "Reference",
+                "group": "SDK Reference",
                 "pages": [
                   {
                     "group": "Python SDK",

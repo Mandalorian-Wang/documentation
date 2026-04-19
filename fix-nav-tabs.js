@@ -74,6 +74,14 @@ function syncTopNavTabs() {
     link.addEventListener('click', (event) => {
       event.preventDefault();
       event.stopPropagation();
+      tabLinks.forEach((tabLink) => {
+        const tabLabel = (tabLink.textContent || '').trim();
+        const tabTarget = getTabTarget(tabLabel);
+        if (!tabTarget) {
+          return;
+        }
+        applyTabState(tabLink, normalizePath(tabTarget) === normalizePath(target));
+      });
 
       if (normalizePath(window.location.pathname) !== normalizePath(target)) {
         window.location.assign(target);
@@ -93,6 +101,12 @@ if (document.readyState === 'loading') {
 
 window.addEventListener('popstate', syncTopNavTabs);
 window.addEventListener('pageshow', syncTopNavTabs);
+window.addEventListener('load', syncTopNavTabs);
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) {
+    syncTopNavTabs();
+  }
+});
 
 const observer = new MutationObserver(() => {
   syncTopNavTabs();
@@ -102,3 +116,12 @@ observer.observe(document.documentElement, {
   childList: true,
   subtree: true,
 });
+
+let syncAttempts = 0;
+const syncTimer = window.setInterval(() => {
+  syncTopNavTabs();
+  syncAttempts += 1;
+  if (syncAttempts >= 20) {
+    window.clearInterval(syncTimer);
+  }
+}, 250);

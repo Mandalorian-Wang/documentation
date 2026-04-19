@@ -1,12 +1,12 @@
 ---
-title: "Integration Patterns Overview"
-description: "Understand the supported BoxLite integration entry points and choose the right framework page."
-sidebarTitle: "Integration Patterns"
+title: "AI Integration Patterns"
+description: "Choose the right BoxLite integration path for AI agent frameworks, orchestration layers, and MCP-based architectures."
+sidebarTitle: "AI Integrations"
 ---
 
-This section is the routing page for framework-specific integration docs. Use it after you already understand the BoxLite product boundary and have chosen the SDK path you want to embed.
+This section is the routing page for AI framework and agent-platform integrations. Use it after you already understand the BoxLite product boundary and have chosen the SDK path you want to embed.
 
-## Integration philosophy
+## AI integration philosophy
 
 BoxLite provides the execution layer. Higher-level agent frameworks decide when to call tools, how to manage conversation state, and how to present results.
 
@@ -17,7 +17,7 @@ The integration model stays the same even when the calling framework changes:
 3. Execute the requested work inside BoxLite.
 4. Return the execution result to the framework.
 
-## Supported framework entry points
+## Supported AI integration entry points
 
 <CardGroup cols={3}>
   <Card title="Anthropic Claude" icon="brain" href="/integrations/anthropic">
@@ -42,7 +42,7 @@ The integration model stays the same even when the calling framework changes:
 
 ## Choosing the right page
 
-- Use a framework page when your agent stack is already chosen.
+- Use a framework page when your AI agent stack is already chosen.
 - Use the direct SDK path when BoxLite itself is the first integration decision.
 - Keep framework-specific code on the framework pages instead of duplicating it here.
 
