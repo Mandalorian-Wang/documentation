@@ -59,28 +59,35 @@ async def copy_in(
 ### Copy In Examples
 
 ```python
-# Copy with explicit options
-await box.copy_in(
-    "./data/",
-    "/workspace/data/",
-    overwrite=True,
-    follow_symlinks=False,
-    include_parent=True
-)
+import boxlite
+import asyncio
 
-# Copy without overwriting (useful for idempotent setups)
-await box.copy_in(
-    "./config/",
-    "/workspace/config/",
-    overwrite=False  # Fails if files exist
-)
+async def main():
+    async with boxlite.SimpleBox(image="python:slim") as box:
+        # Copy with explicit options
+        await box.copy_in(
+            "./data/",
+            "/workspace/data/",
+            overwrite=True,
+            follow_symlinks=False,
+            include_parent=True
+        )
 
-# Copy preserving symlinks
-await box.copy_in(
-    "./project/",
-    "/workspace/project/",
-    follow_symlinks=True  # Follow symlinks during copy
-)
+        # Copy without overwriting (useful for idempotent setups)
+        await box.copy_in(
+            "./config/",
+            "/workspace/config/",
+            overwrite=False  # Fails if files exist
+        )
+
+        # Copy preserving symlinks
+        await box.copy_in(
+            "./project/",
+            "/workspace/project/",
+            follow_symlinks=True  # Follow symlinks during copy
+        )
+
+asyncio.run(main())
 ```
 
 ## Copy Out (Box to Host)
@@ -127,18 +134,25 @@ async def copy_out(
 ### Copy Out Examples
 
 ```python
-# Copy a single file
-await box.copy_out("/workspace/result.csv", "./output/result.csv")
+import boxlite
+import asyncio
 
-# Copy entire directory
-await box.copy_out("/workspace/output/", "./local-backup/")
+async def main():
+    async with boxlite.SimpleBox(image="python:slim") as box:
+        # Copy a single file
+        await box.copy_out("/workspace/result.csv", "./output/result.csv")
 
-# Copy without overwriting
-await box.copy_out(
-    "/workspace/artifacts/",
-    "./backup/",
-    overwrite=False
-)
+        # Copy entire directory
+        await box.copy_out("/workspace/output/", "./local-backup/")
+
+        # Copy without overwriting
+        await box.copy_out(
+            "/workspace/artifacts/",
+            "./backup/",
+            overwrite=False
+        )
+
+asyncio.run(main())
 ```
 
 ## Working with Different File Types
@@ -146,22 +160,37 @@ await box.copy_out(
 ### Binary Files
 
 ```python
-# Copy binary files (works automatically)
-await box.copy_in("./model.bin", "/workspace/model.bin")
-await box.copy_out("/workspace/output.bin", "./result.bin")
+import boxlite
+import asyncio
+
+async def main():
+    async with boxlite.SimpleBox(image="python:slim") as box:
+        # Copy binary files (works automatically)
+        await box.copy_in("./model.bin", "/workspace/model.bin")
+        await box.copy_out("/workspace/output.bin", "./result.bin")
+
+asyncio.run(main())
 ```
 
 ### Hidden Files
 
 ```python
-# Copy hidden files (files starting with .)
-await box.copy_in("./.env", "/workspace/.env")
-await box.copy_in("./.config/", "/workspace/.config/")
+import boxlite
+import asyncio
+
+async def main():
+    async with boxlite.SimpleBox(image="python:slim") as box:
+        # Copy hidden files (files starting with .)
+        await box.copy_in("./.env", "/workspace/.env")
+        await box.copy_in("./.config/", "/workspace/.config/")
+
+asyncio.run(main())
 ```
 
 ### Large Files
 
 ```python
+import boxlite
 import asyncio
 
 async def copy_large_file(box, src, dest, chunk_size=1024*1024):
@@ -171,12 +200,15 @@ async def copy_large_file(box, src, dest, chunk_size=1024*1024):
     await box.copy_out(src, dest)
     print(f"Copied {src} to {dest}")
 
-async with boxlite.SimpleBox(image="python:slim") as box:
-    await copy_large_file(
-        box,
-        "/workspace/large-dataset.csv",
-        "./output/dataset.csv"
-    )
+async def main():
+    async with boxlite.SimpleBox(image="python:slim") as box:
+        await copy_large_file(
+            box,
+            "/workspace/large-dataset.csv",
+            "./output/dataset.csv"
+        )
+
+asyncio.run(main())
 ```
 
 ## Permission Handling
@@ -184,27 +216,41 @@ async with boxlite.SimpleBox(image="python:slim") as box:
 ### Checking File Permissions
 
 ```python
-# Check if file exists
-result = await box.exec("test", "-f", "/workspace/file.txt")
-if result.exit_code == 0:
-    print("File exists")
+import boxlite
+import asyncio
 
-# Check permissions
-result = await box.exec("stat", "-c", "%a", "/workspace/file.txt")
-print(f"Permissions: {result.stdout}")  # e.g., "644"
+async def main():
+    async with boxlite.SimpleBox(image="python:slim") as box:
+        # Check if file exists
+        result = await box.exec("test", "-f", "/workspace/file.txt")
+        if result.exit_code == 0:
+            print("File exists")
+
+        # Check permissions
+        result = await box.exec("stat", "-c", "%a", "/workspace/file.txt")
+        print(f"Permissions: {result.stdout}")  # e.g., "644"
+
+asyncio.run(main())
 ```
 
 ### Modifying Permissions
 
 ```python
-# Change file permissions
-await box.exec("chmod", "644", "/workspace/file.txt")
+import boxlite
+import asyncio
 
-# Change ownership
-await box.exec("chown", "-R", "1000:1000", "/workspace/")
+async def main():
+    async with boxlite.SimpleBox(image="python:slim") as box:
+        # Change file permissions
+        await box.exec("chmod", "644", "/workspace/file.txt")
 
-# Make executable
-await box.exec("chmod", "+x", "/workspace/script.sh")
+        # Change ownership
+        await box.exec("chown", "-R", "1000:1000", "/workspace/")
+
+        # Make executable
+        await box.exec("chmod", "+x", "/workspace/script.sh")
+
+asyncio.run(main())
 ```
 
 ## Error Handling
@@ -213,6 +259,7 @@ await box.exec("chmod", "+x", "/workspace/script.sh")
 
 ```python
 import boxlite
+import asyncio
 
 async def safe_copy_in(box, host_path, container_dest):
     """Copy with error handling."""
@@ -231,8 +278,11 @@ async def safe_copy_in(box, host_path, container_dest):
         print(f"Copy failed: {e}")
         raise
 
-async with boxlite.SimpleBox(image="python:slim") as box:
-    await safe_copy_in(box, "./config.json", "/workspace/config.json")
+async def main():
+    async with boxlite.SimpleBox(image="python:slim") as box:
+        await safe_copy_in(box, "./config.json", "/workspace/config.json")
+
+asyncio.run(main())
 ```
 
 ### Handling tmpfs Limitations
@@ -243,8 +293,10 @@ async with boxlite.SimpleBox(image="python:slim") as box:
 
 ```python
 # Workaround: use exec with tar to copy to tmpfs
+import os
 import tarfile
 import io
+import asyncio
 
 async def copy_to_tmpfs(box, host_path, container_dest):
     """Copy file to tmpfs mount using tar streaming."""
@@ -265,6 +317,43 @@ async def copy_to_tmpfs(box, host_path, container_dest):
 
     if result.exit_code != 0:
         raise RuntimeError(f"Copy failed: {result.stderr}")
+
+asyncio.run(copy_to_tmpfs(box, "./data.txt", "/tmp/"))
+
+where `box` is an existing Box instance. For a complete example:
+
+```python
+import os
+import tarfile
+import io
+import asyncio
+import boxlite
+
+async def copy_to_tmpfs(box, host_path, container_dest):
+    """Copy file to tmpfs mount using tar streaming."""
+    # Read file into tar archive
+    tar_buffer = io.BytesIO()
+    with tarfile.open(fileobj=tar_buffer, mode='w') as tar:
+        tar.add(host_path, arcname=os.path.basename(host_path))
+    tar_buffer.seek(0)
+
+    # Execute tar to extract
+    execution = await box.exec(
+        "tar", "xf", "-", "-C", container_dest
+    )
+    stdin = execution.stdin()
+    await stdin.send_input(tar_buffer.read())
+    await stdin.close()
+    result = await execution.wait()
+
+    if result.exit_code != 0:
+        raise RuntimeError(f"Copy failed: {result.stderr}")
+
+async def main():
+    async with boxlite.SimpleBox(image="python:slim") as box:
+        await copy_to_tmpfs(box, "./data.txt", "/tmp/")
+
+asyncio.run(main())
 ```
 
 ## Complete Example

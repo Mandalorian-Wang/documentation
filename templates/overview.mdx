@@ -1,116 +1,92 @@
 ---
 title: "Templates Overview"
-description: "Learn about BoxLite templates and how to use them"
+description: "Understand what BoxLite templates are, when to use them, and how they differ from images and snapshots."
 ---
 
-Templates are a core concept in BoxLite that enable you to create reusable, pre-configured Box environments. This document provides an overview of what templates are, how they differ from related concepts, and when to use them.
+Templates let you turn a prepared Box environment into a reusable starting point. They are useful when setup takes time and you want future Boxes to start from the same known-good state instead of repeating provisioning work every time.
 
-## What is a Template?
+## What a Template Is
 
-A template is a pre-configured Box environment that serves as a reusable blueprint. It captures not just the base system (like an OCI image), but also any customizations you've made to the environment - installed packages, configured tools, saved files, and environment-specific settings.
+A template is a reusable Box starting point created from a configured environment. It builds on top of a base OCI image and captures the customizations you want new Boxes to inherit, such as installed packages, copied files, tool setup, and environment configuration.
 
-When you create a Box from a template, you get a fresh, independent copy that starts exactly as configured - perfect for standardizing development environments, ensuring consistency across team setups, or quickly provisioning new Boxes with specific toolchains already in place.
+When you create a Box from a template, the new Box starts from that prepared state, but it is still its own independent Box.
 
-### Key Characteristics of Templates
+## Choose Between Image, Template, and Snapshot
 
-Templates are defined by several important properties:
+Use these three concepts for different jobs:
 
-- **Self-contained**: Templates include all dependencies, packages, and configurations needed for a specific task
-- **Reusable**: A single template can be used to create unlimited independent Boxes
-- **Versionable**: Templates support versioning through tags, enabling you to track environment changes over time
-- **Shareable**: Templates can be exported and shared with team members or published to registries
+| Use this | When you need | Best fit |
+|---------|---------------|----------|
+| **OCI image** | A base runtime such as Python, Node.js, or Ubuntu | Start from a standard image and configure from scratch |
+| **Template** | A reusable prepared environment | Pay setup cost once, then reuse it across many Boxes |
+| **Snapshot** | A saved point-in-time state from a Box | Freeze progress, restore later, or branch experiments |
 
-## Template vs Snapshot vs Image
+### The Short Version
 
-Understanding the relationship between these three concepts is essential for working effectively with BoxLite.
+- Use an **image** when you only need a base operating system or language runtime.
+- Use a **template** when you want many Boxes to start from the same prepared environment.
+- Use a **snapshot** when you want to save the current state of a Box and return to it later.
 
-| Concept | Description | Persistence | Use Case |
-|---------|------------|-------------|-----------|
-| **OCI Image** | Base container image (read-only) | Shared, read-only | Providing a base system like Python or Node.js |
-| **Template** | Pre-configured work environment | Reusable, independent copies | Standardized development setups |
-| **Snapshot** | Point-in-time state backup | Writable, independent | Saving/restoring state, branching experiments |
+## Why Templates Matter
 
-### OCI Images
+Templates are most useful when Box setup is non-trivial:
 
-OCI images are the foundation upon which Boxes are built. They are standard container images (like those from Docker Hub) that define the base operating system and pre-installed software. Images are read-only and shared across all Boxes that use them - when you create a new Box, BoxLite uses copy-on-write semantics to provide an independent layer.
+- Installing the same dependencies every time slows down startup
+- Teams need consistent environments for development or automation
+- AI agents or jobs need a known toolchain before they begin work
+- CI or batch workloads should start from a pre-provisioned baseline
 
-Examples of OCI images include:
+If setup is lightweight and only happens once, starting directly from an OCI image is often simpler.
 
-- `python:3.11-slim` - Python 3.11 with minimal system
-- `ubuntu:24.04` - Ubuntu 24.04 LTS
-- `node:20-alpine` - Node.js 20 on Alpine Linux
+## Common Template Scenarios
 
-### Templates
+### AI Agent Environments
 
-Templates build upon OCI images by adding your customizations. Think of a template as "an image plus your configuration." If an image gives you a blank slate with Python installed, a template might give you that same Python plus specific virtual environments, your project dependencies, development tools like linters and formatters, and pre-configured environment variables.
+Prepare a Box once with the packages, tools, and configuration an agent needs, then create many agent Boxes from that same baseline.
 
-Templates are ideal when you want to:
+Examples:
 
-- Standardize your development environment across multiple machines
-- Share a specific toolchain setup with team members
-- Quickly spin up Boxes with complex prerequisites already configured
+- Data analysis agents with pandas, numpy, and plotting libraries
+- Code review agents with linters, formatters, and security tools
+- Automation agents with browser, CLI, or language-specific dependencies
 
-### Snapshots
+### Reusable Team Toolchains
 
-Snapshots capture the complete state of a Box at a specific point in time. Unlike templates, which are about configuration and setup, snapshots are about saving and restoring state. If you spend three hours installing packages and configuring your environment, a snapshot captures all of that - and you can restore it later or fork it into multiple independent Boxes to experiment in parallel.
+When every developer or job needs the same environment, templates reduce setup drift and remove repeated manual provisioning steps.
 
-Snapshots are particularly useful for:
+### CI and Batch Workloads
 
-- Saving progress on long-running setups
-- Creating branches to try different approaches
-- Rolling back to a known-good state after something goes wrong
+Templates work well when jobs should start fast from a consistent prepared environment rather than rebuilding dependencies each run.
 
-## When to Use Templates
+## Template Lifecycle in Practice
 
-Templates shine in several common scenarios where you need consistent, repeatable environments.
+The normal workflow is simple:
 
-### AI Agent Development Environments
+1. Start from an OCI image.
+2. Install dependencies and copy in the files or tools you need.
+3. Create a template from that configured Box.
+4. Create future Boxes from the template instead of reprovisioning from scratch.
 
-When building AI agents that need specific toolchains, packages, or configurations, templates let you define the environment once and reuse it across all your agent instances. Rather than configuring each new agent from scratch, you create a template with all required dependencies and create each agent Box from that template.
+## What Templates Are Not
 
-Example use cases include:
+Templates are not the same thing as:
 
-- Data analysis agents that need pandas, numpy, and visualization libraries
-- Code review agents with linters, formatters, and security scanners
-- Machine learning agents with PyTorch or TensorFlow pre-installed
+- **Volumes**: persistent storage attached to a Box
+- **Snapshots**: saved state from a specific Box at a specific moment
+- **OCI images**: the original base image templates build on top of
 
-### Data Analysis Setups
+Templates solve the “prepared starting point” problem. Snapshots solve the “save current state” problem.
 
-Data analysis often requires complex, consistent environments - specific versions of Python, R, or other tools along with numerous packages. Templates ensure everyone on your team works with identical setups, eliminating "it works on my machine" problems.
+## Related Template Guides
 
-### CI/CD Build Environments
+Use the rest of the Templates section based on what you need next:
 
-Continuous integration and deployment pipelines benefit from consistent, containerized build environments. Templates let you define exactly what's installed in your build environment and create fresh Boxes for each pipeline run.
+- [How Templates Work](/templates/how-it-works): internal model, layering, and caching
+- [Creating Custom Templates](/templates/create-template): build a template from a configured Box
+- [Provisioning Dependencies](/templates/provision-dependencies): install language and system dependencies correctly
+- [Versioning and Rollout](/templates/versioning-and-rollout): manage template versions and rollout patterns
+- [Debug Build Failures](/templates/debug-build-failures): troubleshoot template creation problems
 
-### Pre-configured Toolchains
+## Next Step
 
-If your workflow requires specific toolchains - for example, a Rust development environment with specific Cargo dependencies, or a multi-language setup with Go and Node.js - templates let you define these setups once and reuse them across all your Boxes.
-
-## Template Use Cases
-
-Templates provide three primary benefits that make them valuable for teams and individuals.
-
-### Create Once, Reuse Many Times
-
-The fundamental value of templates is reusability. You invest time in configuring an environment once, then use it as a blueprint for unlimited Boxes. This is especially valuable when the initial setup is complex or time-consuming.
-
-### Share Team-Standard Environments
-
-Teams can use templates to ensure everyone works with the same development environment. Rather than maintaining documentation about how to set up a new developer's machine, you share a template and everyone gets an identical environment with the same packages, tools, and configurations.
-
-### Version Control Your Setups
-
-Templates support versioning through tags, allowing you to track how your environment configurations change over time. You can maintain multiple versions of a template (for example, `myenv:v1`, `myenv:v2`) and roll back or compare as needed.
-
-## Related Concepts
-
-Several other BoxLite concepts relate to templates:
-
-- **Snapshots**: Point-in-time state captures that can be used alongside templates
-- **Images**: OCI-compatible base systems that templates build upon
-- **Volumes**: Persistent storage that can be attached to template-based Boxes
-- **BoxRun**: CLI tool that supports template-based Box creation
-
-## Next Steps
-
-Now that you understand templates, learn how to create custom templates in the [Creating Custom Templates](/templates/create-template) guide.
+If you want to create your first reusable environment, start with [Creating Custom Templates](/templates/create-template).

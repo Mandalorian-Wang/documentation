@@ -37,19 +37,25 @@ async with boxlite.SimpleBox(image="python:slim") as box:
 ### Directory Download
 
 ```python
-async with boxlite.SimpleBox(image="python:slim") as box:
-    # Create multiple files
-    await box.exec("mkdir", "-p", "/workspace/output")
-    await box.exec("bash", "-c", "echo 'file1' > /workspace/output/a.txt")
-    await box.exec("bash", "-c", "echo 'file2' > /workspace/output/b.txt")
+import boxlite
+import os
+import asyncio
 
-    # Download entire directory
-    await box.copy_out("/workspace/output/", "./local-output/")
+async def main():
+    async with boxlite.SimpleBox(image="python:slim") as box:
+        # Create multiple files
+        await box.exec("mkdir", "-p", "/workspace/output")
+        await box.exec("bash", "-c", "echo 'file1' > /workspace/output/a.txt")
+        await box.exec("bash", "-c", "echo 'file2' > /workspace/output/b.txt")
 
-    # Verify
-    import os
-    for f in os.listdir("./local-output"):
-        print(f"Downloaded: {f}")
+        # Download entire directory
+        await box.copy_out("/workspace/output/", "./local-output/")
+
+        # Verify
+        for f in os.listdir("./local-output"):
+            print(f"Downloaded: {f}")
+
+asyncio.run(main())
 ```
 
 ## Path Security
