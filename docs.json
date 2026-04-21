@@ -122,22 +122,6 @@
             ]
           }
         ]
-      },
-      {
-        "tab": "BoxRun",
-        "groups": [
-          {
-            "group": "BoxRun",
-            "pages": [
-              "boxrun/index",
-              "boxrun/quickstart",
-              "boxrun/cli",
-              "boxrun/python-sdk",
-              "boxrun/rest-api",
-              "boxrun/configuration"
-            ]
-          }
-        ]
       }
     ]
   },
