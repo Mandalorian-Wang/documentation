@@ -3,9 +3,9 @@
   "theme": "mint",
   "name": "BoxLite Documentation",
   "colors": {
-    "primary": "#6D28D9",
-    "light": "#8B5CF6",
-    "dark": "#5B21B6"
+    "primary": "#000000",
+    "light": "#FFFFFF",
+    "dark": "#000000"
   },
   "favicon": "/favicon.svg",
   "navigation": {
