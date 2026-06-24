@@ -5,3 +5,8 @@
 # Draft content
 drafts/
 *.draft.mdx
+
+# Tooling — not docs content
+scripts/
+package.json
+package-lock.json

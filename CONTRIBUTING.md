@@ -1,66 +1,72 @@
 # Contribute to the documentation
 
-Thanks for contributing to the BoxLite documentation! This guide covers how to
-make changes locally and the **one** path those changes take to production.
+Thanks for contributing to the BoxLite documentation. This guide is the **single
+source of truth** for how to make changes locally and how to ship them.
 
-## How to contribute
+## Setup (once)
 
-### Option 1 — Edit on GitHub
-
-1. Navigate to the page you want to edit.
-2. Click the pencil (**Edit this file**) icon.
-3. Make your changes and open a pull request.
-
-### Option 2 — Local development
-
-1. Fork and clone this repository.
-2. Install the Mintlify CLI: `npm i -g mint`
-3. Create a branch: `git switch -c your-change`
-4. Edit the `.mdx` pages or `docs.json`.
-5. Preview locally: `mint dev` → http://localhost:3000
-6. Before pushing, check links: `mint broken-links`
-7. Commit and open a pull request.
-
-## Deployment — one standard path
-
-This site is hosted by **Mintlify** (not Vercel) and is **fully Git-driven**.
-There are no deploy scripts and no `vercel` / CLI publish commands in this repo —
-please don't add any. Every change, from everyone, follows the same path:
-
-```
-①  branch from main       git switch -c <branch>
-②  edit + local preview   mint dev              → localhost:3000
-③  push + open a PR        git push -u origin <branch>  (then open the PR)
-                          → Mintlify builds a Preview automatically (~1 min)
-④  review on the Preview   light/dark · desktop/mobile · nav · code blocks
-⑤  merge the PR into main → Mintlify deploys Production → docs.boxlite.ai
+```bash
+git clone https://github.com/boxlite-ai/documentation.git
+cd documentation
+npm i -g mint    # Mintlify CLI (Node 18+)
+brew install gh  # GitHub CLI, used by deploy:preview
 ```
 
-Rules of the road:
+## The four commands
 
-- **`main` is protected — never push to it directly.** Production happens only by
-  merging a PR. There is no "deploy to production" command; the merge *is* the deploy.
-- **Preview = pull request.** Mintlify creates the preview when a PR is opened
-  against `main` (not on a bare branch push). The Mintlify bot posts the
-  `*.mintlify.app` preview link as a PR comment, and it rebuilds on every push to
-  the PR branch.
-- **Quick local look?** Use `mint dev`. There is no "deploy preview" command for
-  docs — open a PR to share a preview.
-- **Pre-review check:** run `mint broken-links` (and optionally `mint validate`)
-  before requesting review.
+The same four `npm` scripts exist in every BoxLite content repo (`documentation`,
+`boxlite-website`, `boxlite-blog`) so the workflow is identical everywhere.
 
-> **Why no CLI deploy here:** Mintlify only publishes through its Git integration —
-> it has no production CLI deploy. The sibling sites `boxlite.ai` and
-> `blog.boxlite.ai` live in separate Vercel repos and follow the *same* mental
-> model (branch → PR → preview → merge → production); those repos additionally keep
-> a `vercel` CLI only for throwaway local previews. This docs repo does not — keep
-> it Git-driven so there is exactly one way to ship.
+| Command | What it does | When to use |
+|---|---|---|
+| `npm run dev` | Local preview at http://localhost:3000 (`mint dev`) | While editing |
+| `npm run check` | `mint validate && mint broken-links` | Before opening / updating a PR |
+| `npm run deploy:preview` | Pushes the current branch and opens (or reuses) a PR; Mintlify auto-builds a `*.mintlify.app` preview tied to that PR | To share work for review |
+| `npm run deploy:production` | Production = `main` only. Guards: must be on `main`, clean worktree, in sync with `origin/main`. Then instructs you to `gh pr merge` — merging a PR is the deploy. | To ship the docs |
+
+### One canonical lifecycle (memorize this)
+
+```
+①  git switch -c your-change         from main
+②  edit pages
+③  npm run dev                       preview locally
+④  git commit -am "..."
+⑤  npm run check                     validate + broken-links
+⑥  npm run deploy:preview            push + open PR; Mintlify builds preview
+⑦  review the *.mintlify.app preview (light/dark, desktop/mobile)
+⑧  npm run deploy:production         on main → prints the merge command
+⑨  gh pr merge <PR#> --merge --delete-branch
+                                     main updates → Mintlify auto-deploys
+                                     https://docs.boxlite.ai
+```
+
+## Rules of the road
+
+- **`main` is protected.** Never push to it directly. Production happens only by
+  **merging a PR**. There is no "deploy to production" command — `npm run deploy:production`
+  guards the preconditions and tells you the merge command to run.
+- **Preview = PR.** Mintlify builds the preview when a PR is opened against `main`
+  (not on a bare branch push). The Mintlify bot posts the `*.mintlify.app` link as a
+  PR comment, and rebuilds on every push to the PR branch.
+- **`deploy:preview` may include just-committed work** that hasn't been reviewed —
+  it is not a review artifact on its own. The *PR review* is.
+- **Why Docs has no `vercel`-style CLI deploy:** Mintlify only publishes through its
+  Git integration; it has no production CLI deploy. The sibling Vercel repos
+  (`boxlite.ai`, `blog.boxlite.ai`) follow the same lifecycle and use the same
+  four script names; their `deploy:preview` shells out to `vercel deploy` because
+  Vercel does have a CLI. The mental model is identical across all three repos.
+
+## Edit on GitHub (no clone)
+
+1. Open the page on github.com/boxlite-ai/documentation.
+2. Click the pencil (**Edit this file**) icon — GitHub forks for you.
+3. Open a pull request. Mintlify will post a preview link on the PR.
 
 ## Writing guidelines
 
-- **Use active voice**: "Run the command" not "The command should be run"
-- **Address the reader directly**: use "you" instead of "the user"
-- **Keep sentences concise**: aim for one idea per sentence
-- **Lead with the goal**: start instructions with what the reader wants to accomplish
-- **Use consistent terminology**: don't alternate between synonyms for the same concept
-- **Include examples**: show, don't just tell
+- **Active voice**: "Run the command", not "The command should be run".
+- **Address the reader directly** with "you".
+- **One idea per sentence.**
+- **Lead with the goal**, then the action.
+- **Use consistent terminology** — don't alternate synonyms for the same concept.
+- **Show, don't just tell** — include realistic examples.
