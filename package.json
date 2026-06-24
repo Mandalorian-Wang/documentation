@@ -1,0 +1,11 @@
+{
+  "name": "boxlite-documentation",
+  "private": true,
+  "description": "BoxLite documentation site (Mintlify). Unified npm scripts mirror the boxlite-website / boxlite-blog repos so contributors learn one workflow.",
+  "scripts": {
+    "dev": "mint dev",
+    "check": "mint validate && mint broken-links",
+    "deploy:preview": "scripts/docs-deploy.sh preview",
+    "deploy:production": "scripts/docs-deploy.sh production"
+  }
+}

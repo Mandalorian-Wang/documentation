@@ -3,124 +3,144 @@
   "theme": "mint",
   "name": "BoxLite Documentation",
   "colors": {
-    "primary": "#000000",
-    "light": "#FFFFFF",
-    "dark": "#000000"
+    "primary": "#00B0F0",
+    "light": "#38C7FF",
+    "dark": "#0090C8"
+  },
+  "appearance": {
+    "default": "dark"
+  },
+  "fonts": {
+    "heading": {
+      "family": "IBM Plex Mono"
+    },
+    "body": {
+      "family": "Inter"
+    }
+  },
+  "background": {
+    "color": {
+      "light": "#FFFFFF",
+      "dark": "#13161B"
+    }
+  },
+  "styling": {
+    "codeblocks": {
+      "theme": {
+        "light": "github-light",
+        "dark": "github-dark"
+      }
+    }
   },
   "favicon": "/favicon.svg",
   "navigation": {
-    "tabs": [
+    "groups": [
       {
-        "tab": "BoxLite",
-        "groups": [
+        "group": "Getting Started",
+        "pages": [
+          "index",
+          "getting-started/index",
+          "getting-started/quickstart-python",
+          "getting-started/quickstart-nodejs",
+          "getting-started/quickstart-rust",
+          "getting-started/quickstart-c",
+          "getting-started/core-concepts",
+          "getting-started/design-principles"
+        ]
+      },
+      {
+        "group": "Tutorials",
+        "pages": [
+          "tutorials/index",
+          "tutorials/ai-coding-tools",
+          "tutorials/code-execution",
+          "tutorials/file-transfer",
+          "tutorials/llm-integration",
+          "tutorials/browser-automation",
+          "tutorials/desktop-automation",
+          "tutorials/interactive-terminal",
+          "tutorials/run-any-language",
+          "tutorials/long-running-services",
+          "tutorials/error-handling"
+        ]
+      },
+      {
+        "group": "Guides",
+        "pages": [
+          "guides/index",
+          "guides/ai-agent-integration",
+          "guides/building-from-source",
+          "guides/image-registry-configuration",
+          "guides/macos-sandbox-debugging"
+        ]
+      },
+      {
+        "group": "SDK Reference",
+        "pages": [
+          "reference/index",
           {
-            "group": "Getting Started",
+            "group": "Python SDK",
+            "icon": "python",
             "pages": [
-              "index",
-              "getting-started/index",
-              "getting-started/quickstart-python",
-              "getting-started/quickstart-nodejs",
-              "getting-started/quickstart-rust",
-              "getting-started/quickstart-c",
-              "getting-started/core-concepts",
-              "getting-started/design-principles"
+              "reference/python/index",
+              "reference/python/box-types",
+              "reference/python/execution",
+              "reference/python/errors-metrics"
             ]
           },
           {
-            "group": "Tutorials",
+            "group": "Node.js SDK",
+            "icon": "node-js",
             "pages": [
-              "tutorials/index",
-              "tutorials/ai-coding-tools",
-              "tutorials/code-execution",
-              "tutorials/file-transfer",
-              "tutorials/llm-integration",
-              "tutorials/browser-automation",
-              "tutorials/desktop-automation",
-              "tutorials/interactive-terminal",
-              "tutorials/run-any-language",
-              "tutorials/long-running-services",
-              "tutorials/error-handling"
+              "reference/nodejs/index",
+              "reference/nodejs/box-types",
+              "reference/nodejs/execution",
+              "reference/nodejs/errors-metrics"
             ]
           },
           {
-            "group": "Guides",
+            "group": "Rust SDK",
+            "icon": "gear",
             "pages": [
-              "guides/index",
-              "guides/ai-agent-integration",
-              "guides/building-from-source",
-              "guides/image-registry-configuration",
-              "guides/macos-sandbox-debugging"
+              "reference/rust/index",
+              "reference/rust/box-config",
+              "reference/rust/execution",
+              "reference/rust/errors-metrics"
             ]
           },
           {
-            "group": "SDK Reference",
+            "group": "C SDK",
+            "icon": "c",
             "pages": [
-              "reference/index",
-              {
-                "group": "Python SDK",
-                "icon": "python",
-                "pages": [
-                  "reference/python/index",
-                  "reference/python/box-types",
-                  "reference/python/execution",
-                  "reference/python/errors-metrics"
-                ]
-              },
-              {
-                "group": "Node.js SDK",
-                "icon": "node-js",
-                "pages": [
-                  "reference/nodejs/index",
-                  "reference/nodejs/box-types",
-                  "reference/nodejs/execution",
-                  "reference/nodejs/errors-metrics"
-                ]
-              },
-              {
-                "group": "Rust SDK",
-                "icon": "gear",
-                "pages": [
-                  "reference/rust/index",
-                  "reference/rust/box-config",
-                  "reference/rust/execution",
-                  "reference/rust/errors-metrics"
-                ]
-              },
-              {
-                "group": "C SDK",
-                "icon": "c",
-                "pages": [
-                  "reference/c/index",
-                  "reference/c/native-api",
-                  "reference/c/memory-json-threading",
-                  "reference/c/errors-metrics"
-                ]
-              }
-            ]
-          },
-          {
-            "group": "Architecture",
-            "pages": [
-              "architecture/index",
-              "architecture/components",
-              "architecture/security",
-              "architecture/networking-storage"
-            ]
-          },
-          {
-            "group": "Resources",
-            "pages": [
-              "faq",
-              "guides/changelog"
-            ]
-          },
-          {
-            "group": "Development",
-            "pages": [
-              "development/cli",
-              "development/rust-style"
+              "reference/c/index",
+              "reference/c/native-api",
+              "reference/c/memory-json-threading",
+              "reference/c/errors-metrics"
             ]
           }
+        ]
+      },
+      {
+        "group": "Architecture",
+        "pages": [
+          "architecture/index",
+          "architecture/components",
+          "architecture/security",
+          "architecture/networking-storage"
+        ]
+      },
+      {
+        "group": "Resources",
+        "pages": [
+          "faq",
+          "guides/changelog"
+        ]
+      },
+      {
+        "group": "Development",
+        "pages": [
+          "development/cli",
+          "development/rust-style"
         ]
       }
     ]
