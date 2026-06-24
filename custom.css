@@ -283,7 +283,7 @@ body::before {
   background-image:
     linear-gradient(rgba(255, 255, 255, 0.022) 1px, transparent 1px),
     linear-gradient(90deg, rgba(255, 255, 255, 0.022) 1px, transparent 1px),
-    radial-gradient(120% 90% at 50% -18%, rgba(0, 176, 240, 0.11) 0%, rgba(0, 176, 240, 0) 70%);
+    radial-gradient(120% 90% at 50% -18%, rgba(0, 176, 240, 0.06) 0%, rgba(0, 176, 240, 0) 65%);
   background-size: 64px 64px, 64px 64px, 100% 100%;
   background-position: center top;
 }
@@ -292,7 +292,7 @@ html:not(.dark) body::before {
   background-image:
     linear-gradient(rgba(0, 0, 0, 0.03) 1px, transparent 1px),
     linear-gradient(90deg, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
-    radial-gradient(120% 90% at 50% -18%, rgba(0, 176, 240, 0.075) 0%, rgba(0, 176, 240, 0) 66%);
+    radial-gradient(120% 90% at 50% -18%, rgba(0, 176, 240, 0.045) 0%, rgba(0, 176, 240, 0) 62%);
   background-size: 64px 64px, 64px 64px, 100% 100%;
   background-position: center top;
 }
