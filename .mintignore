@@ -5,3 +5,6 @@
 # Draft content
 drafts/
 *.draft.mdx
+
+# Local tooling scratch (screenshots, snapshots) — not docs content
+.playwright-mcp/

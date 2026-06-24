@@ -1,0 +1,284 @@
+/* ============================================================
+   BoxLite docs — ASCII / terminal restyle
+   Mirrors boxlite-ai/boxlite#829 design language:
+   #00B0F0 accent · square corners · dark-default.
+
+   Type system (Daytona-style split — terminal identity, readable prose):
+     headings + code + UI labels → IBM Plex Mono  (set via docs.json fonts.heading)
+     body / prose                → Inter          (set via docs.json fonts.body)
+   custom.css re-asserts mono on the few UI labels that must stay terminal
+   (sidebar group titles, table headers) since they aren't <h*> elements.
+
+   Palette (exact, lifted from the dashboard restyle index.css):
+     dark   bg #13161B  card #1A1D24  code #0D0F13  border #2A2F3A  dim #8C919C
+     light  bg #FFFFFF  card #F3F4F6  code #F7F9FC  border #E2E5EA  dim #6B7079
+     brand  #00B0F0 (hsl 196 100% 47%) · success #5AD67D · warn #E0A33E · err #E05D52
+
+   Surface depth (dark): page #13161B  ‹  card #1A1D24 (lifted)  ‹  code #0D0F13 (recessed terminal)
+   ============================================================ */
+
+:root {
+  --bl-brand: #00b0f0;
+  --bl-brand-bright: #38c7ff;
+  --bl-dark-bg: #13161b;
+  --bl-dark-card: #1a1d24;
+  --bl-dark-code: #0d0f13;
+  --bl-dark-border: #2a2f3a;
+  --bl-dark-dim: #8c919c;
+  --bl-light-card: #f3f4f6;
+  --bl-light-code: #f7f9fc;
+  --bl-light-border: #e2e5ea;
+  --bl-light-dim: #6b7079;
+  --bl-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", "SF Mono", monospace;
+}
+
+/* ------------------------------------------------------------
+   1. Square corners everywhere — the single most defining move
+      of the terminal aesthetic. Genuine circles (avatars, status
+      dots, toggle knobs) are re-rounded just below.
+   ------------------------------------------------------------ */
+*,
+*::before,
+*::after {
+  border-radius: 0 !important;
+}
+
+[class*="rounded-full"],
+img[class*="rounded-full"],
+[class*="avatar"],
+[role="switch"],
+[role="switch"] * {
+  border-radius: 9999px !important;
+}
+
+/* ------------------------------------------------------------
+   2. Monospace on every code surface (global family set in
+      docs.json fonts; this guarantees code/kbd too).
+   ------------------------------------------------------------ */
+code,
+pre,
+kbd,
+samp,
+tt {
+  font-family: var(--bl-mono) !important;
+}
+
+/* ------------------------------------------------------------
+   3. Accent — brand cyan for selection.
+   ------------------------------------------------------------ */
+::selection {
+  background: var(--bl-brand);
+  color: #ffffff;
+}
+
+/* ------------------------------------------------------------
+   4. Terminal scrollbar — thin, square, on-theme.
+   ------------------------------------------------------------ */
+* {
+  scrollbar-width: thin;
+}
+*::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--bl-dark-border);
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--bl-brand);
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ------------------------------------------------------------
+   5. Cards — flat, bordered terminal surfaces.
+      Lift off the page bg, square, brand border on hover.
+   ------------------------------------------------------------ */
+.card {
+  background-color: var(--bl-light-card) !important;
+  border: 1px solid var(--bl-light-border) !important;
+  box-shadow: none !important;
+  transition: border-color 0.12s ease, background-color 0.12s ease !important;
+}
+.card:hover {
+  border-color: var(--bl-brand) !important;
+}
+.dark .card {
+  background-color: var(--bl-dark-card) !important;
+  border-color: var(--bl-dark-border) !important;
+}
+.dark .card:hover {
+  border-color: var(--bl-brand) !important;
+}
+
+/* ------------------------------------------------------------
+   6. Code blocks — recessed terminal panel.
+      Darker than the page in dark mode; 1px framed in both.
+   ------------------------------------------------------------ */
+.code-block {
+  border: 1px solid var(--bl-light-border) !important;
+  box-shadow: none !important;
+}
+.dark .code-block {
+  border-color: var(--bl-dark-border) !important;
+}
+/* Shiki paints the panel via `background: var(--shiki-dark-bg)`, applied by
+   Mintlify's `.dark .dark:bg-codeblock` rule with !important. We need both a
+   higher-specificity selector AND to rewrite the var (set inline per block). */
+html.dark .code-block div[class*="bg-codeblock"] {
+  --shiki-dark-bg: var(--bl-dark-code) !important;
+  background-color: var(--bl-dark-code) !important;
+}
+html:not(.dark) .code-block div[class*="bg-codeblock"] {
+  background-color: var(--bl-light-code) !important;
+}
+
+/* ------------------------------------------------------------
+   7. Inline code — subtle brand-tinted chip, square, bordered.
+   ------------------------------------------------------------ */
+:not(pre) > code {
+  background-color: rgba(0, 176, 240, 0.07) !important;
+  border: 1px solid var(--bl-light-border) !important;
+  padding: 0.05em 0.34em !important;
+  font-size: 0.86em !important;
+}
+.dark :not(pre) > code {
+  background-color: rgba(0, 176, 240, 0.1) !important;
+  border-color: var(--bl-dark-border) !important;
+}
+
+/* ------------------------------------------------------------
+   8. Tables — crisp 1px terminal grid; uppercase tracked headers.
+   ------------------------------------------------------------ */
+table.table th,
+table.table td {
+  border: 1px solid var(--bl-light-border) !important;
+}
+.dark table.table th,
+.dark table.table td {
+  border-color: var(--bl-dark-border) !important;
+}
+table.table th {
+  font-family: var(--bl-mono) !important;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 0.78em;
+  font-weight: 600;
+}
+.dark table.table thead {
+  background-color: var(--bl-dark-card);
+}
+html:not(.dark) table.table thead {
+  background-color: var(--bl-light-card);
+}
+
+/* ------------------------------------------------------------
+   9. Sidebar group titles — terminal section labels.
+      Uppercase, tracked-out, dim — like `■ GENERAL` in the ref.
+   ------------------------------------------------------------ */
+.sidebar-title {
+  font-family: var(--bl-mono) !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.12em !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  color: var(--bl-light-dim) !important;
+}
+.dark .sidebar-title {
+  color: var(--bl-dark-dim) !important;
+}
+
+/* Page eyebrow (section label above the title) — matching terminal label. */
+.eyebrow {
+  font-family: var(--bl-mono) !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.1em !important;
+  font-size: 11px !important;
+}
+
+/* ------------------------------------------------------------
+   10. Steps — brand-cyan numbered markers (kept circular).
+   ------------------------------------------------------------ */
+.steps .step-container [class*="rounded-full"] {
+  background-color: rgba(0, 176, 240, 0.14) !important;
+  border: 1px solid var(--bl-brand) !important;
+  color: var(--bl-brand-bright) !important;
+}
+
+/* ------------------------------------------------------------
+   11. Callouts (Note/Warning/Tip/Info) — flat tinted panel with a
+       thick left accent bar. Recolor Mintlify's blue Note/Info to
+       the brand cyan; amber/green/red keep their semantic hue.
+   ------------------------------------------------------------ */
+.callout {
+  border-width: 1px 1px 1px 3px !important;
+  box-shadow: none !important;
+}
+.dark .callout[class*="blue"] {
+  border-color: var(--bl-brand) !important;
+  background-color: rgba(0, 176, 240, 0.1) !important;
+}
+html:not(.dark) .callout[class*="blue"] {
+  border-color: var(--bl-brand) !important;
+  background-color: rgba(0, 176, 240, 0.07) !important;
+}
+
+/* ------------------------------------------------------------
+   12. Accordions — crisp 1px terminal frame.
+   ------------------------------------------------------------ */
+.accordion-group {
+  border: 1px solid var(--bl-light-border) !important;
+}
+.dark .accordion-group {
+  border-color: var(--bl-dark-border) !important;
+}
+
+/* ------------------------------------------------------------
+   13. Navigation directories (目录) — left sidebar nav + right
+       "On this page" TOC in mono, for the terminal directory feel.
+       Body prose stays Inter. 13px to offset mono's wider glyphs.
+   ------------------------------------------------------------ */
+#navigation-items,
+#navigation-items a,
+#table-of-contents-content,
+.toc,
+.toc a,
+nav:has(#table-of-contents-content) {
+  font-family: var(--bl-mono) !important;
+}
+#navigation-items a,
+.toc a {
+  font-size: 13px !important;
+}
+
+/* ------------------------------------------------------------
+   14. Blueprint grid + cyan top glow — ported from boxlite.ai's
+       hero (.bg-grid: 64px 1px lines + radial brand glow). Painted
+       on a fixed body::before at z-index -1 so it sits behind all
+       content (which is transparent) but above the page color.
+   ------------------------------------------------------------ */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  /* dark default: very faint white grid + stronger brand-cyan glow from top */
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.022) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.022) 1px, transparent 1px),
+    radial-gradient(130% 75% at 50% 0%, rgba(0, 176, 240, 0.15), transparent 58%);
+  background-size: 64px 64px, 64px 64px, 100% 100%;
+  background-position: center top;
+}
+html:not(.dark) body::before {
+  /* light: very faint black grid + a touch more cyan glow */
+  background-image:
+    linear-gradient(rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+    radial-gradient(130% 75% at 50% 0%, rgba(0, 176, 240, 0.11), transparent 55%);
+  background-size: 64px 64px, 64px 64px, 100% 100%;
+  background-position: center top;
+}
+

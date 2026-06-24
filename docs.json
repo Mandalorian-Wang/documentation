@@ -3,9 +3,34 @@
   "theme": "mint",
   "name": "BoxLite Documentation",
   "colors": {
-    "primary": "#000000",
-    "light": "#FFFFFF",
-    "dark": "#000000"
+    "primary": "#00B0F0",
+    "light": "#38C7FF",
+    "dark": "#0090C8"
+  },
+  "appearance": {
+    "default": "dark"
+  },
+  "fonts": {
+    "heading": {
+      "family": "IBM Plex Mono"
+    },
+    "body": {
+      "family": "Inter"
+    }
+  },
+  "background": {
+    "color": {
+      "light": "#FFFFFF",
+      "dark": "#13161B"
+    }
+  },
+  "styling": {
+    "codeblocks": {
+      "theme": {
+        "light": "github-light",
+        "dark": "github-dark"
+      }
+    }
   },
   "favicon": "/favicon.svg",
   "navigation": {
