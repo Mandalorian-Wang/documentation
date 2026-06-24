@@ -76,11 +76,36 @@ mint update
 - Reusable content goes in `snippets/` and is included with `<Snippet file="filename.mdx" />`
 - Currently: `snippets/prerequisites.mdx` (system requirements)
 
+### Theming & design system
+The site uses an **ASCII / terminal** design language mirroring the BoxLite console
+restyle ([boxlite-ai/boxlite#829](https://github.com/boxlite-ai/boxlite/pull/829)).
+Tokens are split across two files:
+- `docs.json` → `colors` (`primary` `#00B0F0`), `appearance.default: dark`,
+  `fonts` (heading `IBM Plex Mono`, body `Inter`), `background.color`,
+  `styling.codeblocks` (github theme).
+- `custom.css` → everything Mintlify config can't express: square corners (radius 0),
+  bordered card/code surfaces, terminal-dark code panel, cyan step markers, uppercase
+  sidebar labels, recolored callouts. Mintlify auto-loads any root `custom.css`.
+
+| Token | Dark | Light |
+|-------|------|-------|
+| accent (brand) | `#00B0F0` | `#00B0F0` |
+| page bg | `#13161B` | `#FFFFFF` |
+| card | `#1A1D24` | `#F3F4F6` |
+| code panel | `#0D0F13` | `#F7F9FC` |
+| border | `#2A2F3A` | `#E2E5EA` |
+
+When adding CSS, target stable Mintlify hooks (`.card`, `.code-block`, `.callout`,
+`.steps`, `.sidebar-title`, `table.table`) — utility classes are unstable. Verify both
+themes with `mint dev`; mind that Mintlify ships some rules `!important`, so overrides
+may need higher specificity (see the code-panel block in `custom.css`).
+
 ## Important Files
 
 | File | Purpose |
 |------|---------|
 | `docs.json` | Mintlify config — navigation structure, theme, colors, logo, links |
+| `custom.css` | Terminal/ASCII design system — square corners, surfaces, code panel, accents |
 | `index.mdx` | Home page — hero section, feature cards, entry points |
 | `snippets/prerequisites.mdx` | Shared system requirements snippet |
 | `.mintignore` | Files excluded from Mintlify build |
