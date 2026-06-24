@@ -264,20 +264,23 @@ body::before {
   inset: 0;
   z-index: -1;
   pointer-events: none;
-  /* dark default: very faint white grid + stronger brand-cyan glow from top */
+  /* dark default: very faint white grid + soft brand-cyan glow.
+     Glow core sits ABOVE the viewport (50% -18%) so no bright edge is
+     clipped, and fades to transparent-cyan (not transparent-black) to
+     avoid a muddy gray ring — a natural wash, not a hard band. */
   background-image:
     linear-gradient(rgba(255, 255, 255, 0.022) 1px, transparent 1px),
     linear-gradient(90deg, rgba(255, 255, 255, 0.022) 1px, transparent 1px),
-    radial-gradient(130% 75% at 50% 0%, rgba(0, 176, 240, 0.15), transparent 58%);
+    radial-gradient(120% 90% at 50% -18%, rgba(0, 176, 240, 0.11) 0%, rgba(0, 176, 240, 0) 70%);
   background-size: 64px 64px, 64px 64px, 100% 100%;
   background-position: center top;
 }
 html:not(.dark) body::before {
-  /* light: very faint black grid + a touch more cyan glow */
+  /* light: very faint black grid + softer cyan wash (same edgeless shape) */
   background-image:
     linear-gradient(rgba(0, 0, 0, 0.03) 1px, transparent 1px),
     linear-gradient(90deg, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
-    radial-gradient(130% 75% at 50% 0%, rgba(0, 176, 240, 0.11), transparent 55%);
+    radial-gradient(120% 90% at 50% -18%, rgba(0, 176, 240, 0.075) 0%, rgba(0, 176, 240, 0) 66%);
   background-size: 64px 64px, 64px 64px, 100% 100%;
   background-position: center top;
 }
