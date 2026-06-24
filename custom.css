@@ -264,36 +264,4 @@ nav:has(#table-of-contents-content) {
   background-image: none !important;
 }
 
-/* ------------------------------------------------------------
-   14. Blueprint grid + cyan top glow — ported from boxlite.ai's
-       hero (.bg-grid: 64px 1px lines + radial brand glow). Painted
-       on a fixed body::before at z-index -1 so it sits behind all
-       content (which is transparent) but above the page color.
-   ------------------------------------------------------------ */
-body::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  z-index: -1;
-  pointer-events: none;
-  /* dark default: very faint white grid + soft brand-cyan glow.
-     Glow core sits ABOVE the viewport (50% -18%) so no bright edge is
-     clipped, and fades to transparent-cyan (not transparent-black) to
-     avoid a muddy gray ring — a natural wash, not a hard band. */
-  background-image:
-    linear-gradient(rgba(255, 255, 255, 0.022) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.022) 1px, transparent 1px),
-    radial-gradient(120% 90% at 50% -18%, rgba(0, 176, 240, 0.06) 0%, rgba(0, 176, 240, 0) 65%);
-  background-size: 64px 64px, 64px 64px, 100% 100%;
-  background-position: center top;
-}
-html:not(.dark) body::before {
-  /* light: very faint black grid + softer cyan wash (same edgeless shape) */
-  background-image:
-    linear-gradient(rgba(0, 0, 0, 0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
-    radial-gradient(120% 90% at 50% -18%, rgba(0, 176, 240, 0.045) 0%, rgba(0, 176, 240, 0) 62%);
-  background-size: 64px 64px, 64px 64px, 100% 100%;
-  background-position: center top;
-}
 
