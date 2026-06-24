@@ -253,6 +253,18 @@ nav:has(#table-of-contents-content) {
 }
 
 /* ------------------------------------------------------------
+   13b. Kill Mintlify's sidebar top scroll-fade overlay.
+        Mintlify paints a 32px sticky div that fades from the
+        opaque page color to transparent at the top of the nav.
+        On a flat dark page it's invisible, but our backdrop is a
+        grid + glow — so this opaque rectangle clips the grid in
+        a visible seam. We don't need the fade (grid already soft).
+   ------------------------------------------------------------ */
+.sticky.top-0.pointer-events-none[class*="bg-gradient-to-b"] {
+  background-image: none !important;
+}
+
+/* ------------------------------------------------------------
    14. Blueprint grid + cyan top glow — ported from boxlite.ai's
        hero (.bg-grid: 64px 1px lines + radial brand glow). Painted
        on a fixed body::before at z-index -1 so it sits behind all
