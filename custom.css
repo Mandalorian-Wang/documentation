@@ -253,6 +253,19 @@ nav:has(#table-of-contents-content) {
 }
 
 /* ------------------------------------------------------------
+   13a. Header logo — bump from Mintlify's default ~28px to ~40px.
+        Our wordmark is a wide aspect (~2.2:1), and 28px reads too
+        small. Targets the <img> inside the header nav anchor.
+   ------------------------------------------------------------ */
+#navbar a.select-none img,
+#navbar a[href="/"] img {
+  height: 40px !important;
+  max-height: 40px !important;
+  width: auto !important;
+  max-width: none !important;
+}
+
+/* ------------------------------------------------------------
    13b. Kill Mintlify's sidebar top scroll-fade overlay.
         Mintlify paints a 32px sticky div that fades from the
         opaque page color to transparent at the top of the nav.
