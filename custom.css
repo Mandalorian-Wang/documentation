@@ -215,7 +215,7 @@ html:not(.dark) table.table thead {
   font-family: var(--bl-mono) !important;
   text-transform: uppercase !important;
   letter-spacing: 0.12em !important;
-  font-size: 11px !important;
+  font-size: 10px !important;
   font-weight: 600 !important;
   color: var(--bl-light-dim) !important;
 }
@@ -227,8 +227,8 @@ html:not(.dark) table.table thead {
 .eyebrow {
   font-family: var(--bl-mono) !important;
   text-transform: uppercase !important;
-  letter-spacing: 0.1em !important;
-  font-size: 11px !important;
+  letter-spacing: 0.5px !important;
+  font-size: 10px !important;
 }
 
 /* ------------------------------------------------------------
@@ -386,9 +386,8 @@ textarea:focus-visible,
 [role="tab"]:focus-visible,
 [role="switch"]:focus-visible,
 [tabindex]:not([tabindex="-1"]):focus-visible {
-  outline: 2px solid hsl(var(--bl-ring) / 0.5) !important;
+  outline: 1px auto hsl(var(--bl-ring) / 0.5) !important;
   outline-offset: 1px !important;
-  border-color: hsl(var(--bl-ring)) !important;
 }
 
 /* Cards are links; a focused card gets the ring, and the same surface shift
@@ -396,7 +395,7 @@ textarea:focus-visible,
 .card:focus-visible,
 a:focus-visible .card {
   background-color: hsl(var(--bl-accent-light)) !important;
-  outline: 2px solid hsl(var(--bl-ring) / 0.5) !important;
+  outline: 1px auto hsl(var(--bl-ring) / 0.5) !important;
   outline-offset: 1px !important;
 }
 .dark .card:focus-visible,
@@ -408,14 +407,13 @@ a:focus-visible .card {
    full ring treatment the console gives its inputs. */
 #search-bar-entry:focus-visible,
 [id*="search"] input:focus-visible {
-  outline: 2px solid hsl(var(--bl-ring) / 0.5) !important;
+  outline: 1px auto hsl(var(--bl-ring) / 0.5) !important;
   outline-offset: 1px !important;
-  border-color: hsl(var(--bl-ring)) !important;
 }
 
 /* Never suppress the ring: Mintlify sets `outline: none` on some controls. */
 *:focus-visible {
-  outline-style: solid !important;
+  outline-style: auto !important;
 }
 
 /* ------------------------------------------------------------
