@@ -12,7 +12,7 @@
    Palette (exact, lifted from the dashboard restyle index.css):
      dark   bg #13161B  card #1A1D24  code #0D0F13  border #2A2F3A  dim #8C919C
      light  bg #FFFFFF  card #F3F4F6  code #F7F9FC  border #E2E5EA  dim #6B7079
-     brand  #00B0F0 (hsl 196 100% 47%) · success #5AD67D · warn #E0A33E · err #E05D52
+     brand  #00B0F0 (hsl 196 100% 47%)
 
    Surface depth (dark): page #13161B  ‹  card #1A1D24 (lifted)  ‹  code #0D0F13 (recessed terminal)
    ============================================================ */
@@ -30,6 +30,32 @@
   --bl-light-border: #e2e5ea;
   --bl-light-dim: #6b7079;
   --bl-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", "SF Mono", monospace;
+
+  /* Console-mirrored tokens.
+     Written as the console's own HSL triplets, not re-typed hex, so the two are
+     provably the same value and a drift shows up as a textual diff. Source:
+     the console's shipped stylesheet (`--brand`, `--accent`, `--ring`,
+     `--success`, `--warning`, `--destructive`, `--info`, `--shadow-card*`).
+     Hand-copied hex is how the old `warn #E0A33E` drifted from the console's
+     `43 72% 57%` (#E0B442). */
+  --bl-ring: 196 100% 47%;          /* console --ring: the brand */
+  --bl-accent-light: 220 14% 93%;   /* console --accent, light */
+  --bl-accent-dark: 222 14% 16%;    /* console --accent, dark  */
+
+  --bl-success-light: 137 45% 38%;
+  --bl-warning-light: 38 80% 40%;
+  --bl-danger-light: 5 71% 50%;
+  --bl-info-light: 196 100% 47%;
+
+  --bl-success-dark: 137 60% 60%;
+  --bl-warning-dark: 43 72% 57%;
+  --bl-danger-dark: 5 71% 58%;
+  --bl-info-dark: 196 100% 47%;
+
+  --bl-shadow-card-light: 0 1px 2px #1018280a, 0 8px 24px -10px #1018281a;
+  --bl-shadow-card-hover-light: 0 2px 4px #1018280f, 0 14px 32px -12px #10182824;
+  --bl-shadow-card-dark: 0 1px 2px #0006, 0 10px 28px -8px #0000008c;
+  --bl-shadow-card-hover-dark: 0 2px 4px #00000080, 0 16px 36px -10px #000000a6;
 }
 
 /* ------------------------------------------------------------
@@ -93,23 +119,31 @@ tt {
 
 /* ------------------------------------------------------------
    5. Cards — flat, bordered terminal surfaces.
-      Lift off the page bg, square, brand border on hover.
+
+      Hover follows the console's model: the surface shifts to `--accent` and
+      the card lifts on `--shadow-card-hover`. The docs previously lit the
+      border up in brand cyan instead, which read as a different interaction
+      language on an otherwise identical palette — and spent the brand colour
+      on a passive hover, leaving nothing louder for focus.
    ------------------------------------------------------------ */
 .card {
   background-color: var(--bl-light-card) !important;
   border: 1px solid var(--bl-light-border) !important;
-  box-shadow: none !important;
-  transition: border-color 0.12s ease, background-color 0.12s ease !important;
+  box-shadow: var(--bl-shadow-card-light) !important;
+  transition: background-color 0.12s ease, box-shadow 0.12s ease !important;
 }
 .card:hover {
-  border-color: var(--bl-brand) !important;
+  background-color: hsl(var(--bl-accent-light)) !important;
+  box-shadow: var(--bl-shadow-card-hover-light) !important;
 }
 .dark .card {
   background-color: var(--bl-dark-card) !important;
   border-color: var(--bl-dark-border) !important;
+  box-shadow: var(--bl-shadow-card-dark) !important;
 }
 .dark .card:hover {
-  border-color: var(--bl-brand) !important;
+  background-color: hsl(var(--bl-accent-dark)) !important;
+  box-shadow: var(--bl-shadow-card-hover-dark) !important;
 }
 
 /* ------------------------------------------------------------
@@ -325,4 +359,123 @@ nav:has(#table-of-contents-content) {
 #content-area h3, article h3 {
   font-size: 17px !important;
   line-height: 26px !important;
+}
+
+/* ------------------------------------------------------------
+   15. Focus-visible — the one interaction the docs had no rules for.
+
+       The console defines a deliberate keyboard-focus system on its
+       interactive primitives: a 2px ring in `--ring` (the brand) at low
+       alpha, plus the border promoted to the ring colour. The docs shipped
+       nothing here, so every focused control fell back to Mintlify's
+       default — a different shape and colour on an otherwise matched
+       palette, and weak keyboard affordance in its own right.
+
+       `:focus-visible` (not `:focus`) so a mouse click does not draw a ring;
+       only keyboard traversal does. Order matters: this section is last so
+       it wins over the earlier `border-color` rules without adding
+       specificity hacks.
+   ------------------------------------------------------------ */
+a:focus-visible,
+button:focus-visible,
+summary:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[role="button"]:focus-visible,
+[role="tab"]:focus-visible,
+[role="switch"]:focus-visible,
+[tabindex]:not([tabindex="-1"]):focus-visible {
+  outline: 2px solid hsl(var(--bl-ring) / 0.5) !important;
+  outline-offset: 1px !important;
+  border-color: hsl(var(--bl-ring)) !important;
+}
+
+/* Cards are links; a focused card gets the ring, and the same surface shift
+   its hover state uses, so keyboard and pointer land in the same place. */
+.card:focus-visible,
+a:focus-visible .card {
+  background-color: hsl(var(--bl-accent-light)) !important;
+  outline: 2px solid hsl(var(--bl-ring) / 0.5) !important;
+  outline-offset: 1px !important;
+}
+.dark .card:focus-visible,
+.dark a:focus-visible .card {
+  background-color: hsl(var(--bl-accent-dark)) !important;
+}
+
+/* The search field is the highest-traffic control on a docs site; give it the
+   full ring treatment the console gives its inputs. */
+#search-bar-entry:focus-visible,
+[id*="search"] input:focus-visible {
+  outline: 2px solid hsl(var(--bl-ring) / 0.5) !important;
+  outline-offset: 1px !important;
+  border-color: hsl(var(--bl-ring)) !important;
+}
+
+/* Never suppress the ring: Mintlify sets `outline: none` on some controls. */
+*:focus-visible {
+  outline-style: solid !important;
+}
+
+/* ------------------------------------------------------------
+   16. Blockquotes — this site's actual note device.
+
+       Measured, not assumed: the reconstructed docs are pure Markdown and use
+       zero MDX components. A DOM check on the running preview returns 0 for
+       `.card`, `.callout`, `.steps` and `.accordion-group` site-wide, while
+       `> ...` blockquotes appear on 54 of 74 pages (292 of them). Mintlify
+       renders those as a bare, class-less <blockquote> with a 4px left border
+       in rgb(37,42,44) — a warm grey that belongs to neither this palette
+       (#2A2F3A is bluer) nor the console's tokens.
+
+       So the emphasis device carrying almost all of the site's asides was the
+       one surface nothing had styled. It gets the brand-cyan accent bar that
+       section 11 intended for Note/Info, on the element that actually exists.
+   ------------------------------------------------------------ */
+#content-area blockquote:not(.sr-only),
+article blockquote:not(.sr-only) {
+  border-left: 3px solid var(--bl-brand) !important;
+  border-top: 0 !important;
+  border-right: 0 !important;
+  border-bottom: 0 !important;
+  background-color: rgba(0, 176, 240, 0.07) !important;
+  padding: 12px 16px !important;
+}
+.dark #content-area blockquote:not(.sr-only),
+.dark article blockquote:not(.sr-only) {
+  background-color: rgba(0, 176, 240, 0.1) !important;
+}
+
+/* ------------------------------------------------------------
+   17. Callout accents — exact console semantic hues.
+
+       Inert today (0 callout elements site-wide), kept because CLAUDE.md
+       directs authors to Mintlify components, so these will render as soon as
+       one is used. Hooks are Mintlify's colour-name classes — the same shape
+       section 11 established — not semantic names, which match nothing.
+
+       Values come from the console's HSL triplets rather than re-typed hex:
+       that is how the old hand-copied `warn #E0A33E` drifted from the
+       console's `43 72% 57%` (#E0B442).
+   ------------------------------------------------------------ */
+html:not(.dark) .callout[class*="amber"],
+html:not(.dark) .callout[class*="yellow"] {
+  border-color: hsl(var(--bl-warning-light)) !important;
+}
+html:not(.dark) .callout[class*="green"] {
+  border-color: hsl(var(--bl-success-light)) !important;
+}
+html:not(.dark) .callout[class*="red"] {
+  border-color: hsl(var(--bl-danger-light)) !important;
+}
+.dark .callout[class*="amber"],
+.dark .callout[class*="yellow"] {
+  border-color: hsl(var(--bl-warning-dark)) !important;
+}
+.dark .callout[class*="green"] {
+  border-color: hsl(var(--bl-success-dark)) !important;
+}
+.dark .callout[class*="red"] {
+  border-color: hsl(var(--bl-danger-dark)) !important;
 }
