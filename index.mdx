@@ -1,105 +1,92 @@
 ---
-title: "Introduction"
-description: "Sandboxes for every agent. Embeddable, stateful, snapshots, and hardware isolation."
-icon: "house"
+title: "BoxLite documentation"
+description: "Run arbitrary code, commands, browsers, desktops, or entire AI agents inside hardware-isolated microVM sandboxes that start in about a second."
 ---
 
-BoxLite lets you spin up lightweight Linux VMs and run OCI containers inside them — in milliseconds, from your own code, with no daemon and no root. Unlike ephemeral sandboxes that destroy state after each execution, BoxLite Boxes are **stateful workspaces** — install packages, create files, build up environment state, then come back later and pick up where you left off.
+**BoxLite runs arbitrary code, commands, browsers, desktops, or entire AI agents inside hardware-isolated microVM sandboxes that start in about a second — in a few lines of code, and safe enough to hand directly to untrusted LLM output.**
 
-Runs on macOS (Apple Silicon), Linux (KVM), and Windows (WSL2).
-
-## Why BoxLite?
-
-<CardGroup cols={2}>
-  <Card title="Embeddable" icon="cube">
-    A library you import — no daemon, no cloud account, no root. Local first, cloud when you're ready.
-  </Card>
-  <Card title="Stateful" icon="database">
-    Boxes retain packages, files, and environment across stop/restart. No rebuilding on every interaction.
-  </Card>
-  <Card title="Snapshots" icon="camera">
-    Fork, checkpoint, and restore full sandbox state. Branch execution like `git branch` for environments.
-  </Card>
-  <Card title="Hardware isolation" icon="shield-halved">
-    Each sandbox is a real micro-VM with its own Linux kernel. VM-level security with container-level ergonomics.
-  </Card>
-</CardGroup>
-
-## Quick start
-
-<Tabs>
-  <Tab title="Python">
-    ```python
-    # pip install boxlite
-    import asyncio
-    import boxlite
-
-    async def main():
-        async with boxlite.SimpleBox(image="alpine:latest") as box:
-            result = await box.exec("echo", "Hello from BoxLite!")
-            print(result.stdout)
-
-    asyncio.run(main())
-    ```
-  </Tab>
-  <Tab title="Node.js">
-    ```typescript
-    // npm install @boxlite-ai/boxlite
-    import { SimpleBox } from '@boxlite-ai/boxlite';
-
-    const box = new SimpleBox({ image: 'alpine:latest' });
-    try {
-      const result = await box.exec('echo', 'Hello from BoxLite!');
-      console.log(result.stdout);
-    } finally {
-      await box.stop();
-    }
-    ```
-  </Tab>
-</Tabs>
-
-## BoxRun — sandbox management
-
-**BoxRun** is the management layer for BoxLite sandboxes. Create, list, stop, and delete boxes through a CLI, REST API, Python SDK, or web dashboard — all in a single binary.
+## Run your first sandbox
 
 ```bash
-curl -fsSL https://boxlite.ai/boxrun/install | sh
-boxrun shell ubuntu
+pip install boxlite
 ```
 
-BoxLite creates and runs micro-VMs. BoxRun manages them — tracking state, persisting data, and exposing operations over HTTP and CLI.
+```python
+# hello.py — requires hardware virtualization (KVM on Linux, Hypervisor.framework on Apple Silicon)
+import asyncio
+import boxlite
 
-## SDKs and platforms
 
-| SDK | Install |
-|-----|---------|
-| Python | `pip install boxlite` |
-| Node.js | `npm install @boxlite-ai/boxlite` |
-| Rust | Git dependency |
-| C | Link `libboxlite` |
+async def main() -> None:
+    try:
+        async with boxlite.SimpleBox(image="python:slim") as box:
+            result = await box.exec("python", "-c", "print('Hello from BoxLite!')")
+            # A non-zero exit code does not raise — check it yourself.
+            print(result.stdout if result.exit_code == 0 else result.stderr, end="")
+    except RuntimeError as exc:
+        print("Box failed to start:", exc)
 
-| Platform | Architecture | Requirements |
-|----------|-------------|-------------|
-| macOS | Apple Silicon | macOS 12+ |
-| Linux | x86_64 / ARM64 | KVM enabled |
-| Windows | WSL2 | KVM support |
 
-## Next steps
+asyncio.run(main())
+```
 
-<CardGroup cols={2}>
-  <Card title="Tutorials" icon="graduation-cap" href="/tutorials/index">
-    Execute code, connect LLMs, transfer files, and automate browsers — step-by-step.
-  </Card>
-  <Card title="Guides" icon="book-open" href="/guides/index">
-    AI agent integration, security configuration, and production patterns.
-  </Card>
-  <Card title="SDK reference" icon="book" href="/reference/index">
-    Full API reference for the Python, Node.js, Rust, and C SDKs.
-  </Card>
-  <Card title="Architecture" icon="sitemap" href="/architecture/index">
-    How BoxLite works under the hood — microVMs, the jailer, networking, and storage.
-  </Card>
-  <Card title="Join the community" icon="discord" href="https://go.boxlite.ai/discord">
-    Ask questions, share projects, and chat with the BoxLite team on Discord.
-  </Card>
-</CardGroup>
+```text
+Hello from BoxLite!
+```
+
+Other languages: [Node.js](/getting-started/quickstart-nodejs) · [Rust](/getting-started/quickstart-rust) · [C](/getting-started/quickstart-c).
+Full prerequisites, the CLI, and offline installs: [Installation](/getting-started/installation).
+
+---
+
+## Who this documentation is for
+
+- **AI / agent engineers**: you need to give an LLM a secure sandbox that can run code, open a browser, and operate a desktop, without exposing the host to model-generated commands.
+- **Backend / platform engineers**: you need to start, reuse, and reclaim isolated execution environments on demand inside your own service (multi-tenant, CI, code grading, untrusted third-party code).
+- **Agent product authors**: you already have a demo and want to turn it into a concurrency-safe, observable, cleanable production service.
+
+Want to run something right now? Start with [Run your first sandbox](#run-your-first-sandbox) above.
+
+---
+
+## Quickest path for new users
+
+1. **Install it** → [Installation](/getting-started/installation) (note the platform and virtualization requirements; the Node package is `@boxlite-ai/boxlite`).
+2. **Run your first sandbox** → pick your language:
+   - [Python quickstart](/getting-started/quickstart-python)
+   - [Node.js quickstart](/getting-started/quickstart-nodejs)
+   - [Rust quickstart](/getting-started/quickstart-rust)
+   - [C quickstart](/getting-started/quickstart-c)
+3. **Understand what you are operating** → [Architecture overview](/architecture/index), then [Box types](/manage-sandbox/sandbox-types).
+4. **Build something real** → go to [Agent tools](/agent-tools/index) (run code / commands / browser / desktop) or the [use cases](/use-cases/index) for end-to-end guides.
+5. **Go to production** → [Running sandboxes at scale](/guides/at-scale) and [Error handling](/guides/error-handling).
+
+> Environment prerequisite: BoxLite depends on hardware virtualization. Linux requires KVM; macOS runs through its built-in microVM / virtualization stack. Startup fails in environments without virtualization support (such as some nested VMs or CI runners) — see the Troubleshooting section on each page and [Debug macOS Seatbelt denials](/development/macos-sandbox-debugging).
+
+---
+
+## Where everything lives
+
+One row per section. The sidebar lists every page; this table is for deciding *which* section you need.
+
+| Section | Answers |
+|---|---|
+| [Introduction](/getting-started/index) | What a Box is, how it differs from a container, and what is ready today |
+| [Manage sandbox](/manage-sandbox/index) | Creating, configuring, and reclaiming boxes — resources, volumes, network, secrets |
+| [Agent tools](/agent-tools/index) | The capabilities an agent calls: run code, PTY, browser, desktop, MCP, Git |
+| [Agent in a box](/agent-in-box/index) | Putting a full agent *inside* a box — Claude Code, tool loops, a REST service |
+| [Human tools](/human-tools/index) | Handing a running box to a person: desktop and browser takeover |
+| [Use cases](/use-cases/index) | End-to-end guides — one complete, runnable deliverable per page |
+| [From demo to production](/guides/index) | Turning a demo into a production service: concurrency, limits, cleanup, deployment |
+| [Architecture](/architecture/index) | Components, the path of one `exec`, and — deeper — how isolation, networking, storage, and boot actually work |
+| [SDK reference](/reference/index) | Exact signatures and types, one page per language, plus the CLI |
+| [FAQ and releases](/resources/index) | Recurring questions, and where each release's notes are published |
+| [Contributing](/development/index) | Working on BoxLite itself — build, tests, style, and the contributor licence agreement |
+
+---
+
+## Key mental model (three sentences)
+
+- **The `Boxlite` runtime**: a synchronous context manager that creates / queries / reuses / reclaims a set of boxes (`get` / `get_or_create` / `list_info` / `remove(id_or_name, force=False)` / `metrics` / `shutdown` / `close`).
+- **A Box**: each sandbox is an async context manager (`SimpleBox` / `CodeBox` / `BrowserBox` / `ComputerBox` / `InteractiveBox` / `SkillBox`), and `box.info()` is a synchronous call.
+- **Isolation**: microVM-level isolation is on by default; to tighten it further use `BoxOptions(advanced=AdvancedBoxOptions(security=SecurityOptions.maximum()))`, and to inject credentials use `BoxOptions(secrets=[Secret(...)])`.

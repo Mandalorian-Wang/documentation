@@ -1,154 +1,46 @@
 ---
-title: "Installation"
-sidebarTitle: "Installation"
-description: "Install BoxLite on your system and set up the SDK for your language."
-icon: "download"
+title: "Introduction to BoxLite"
+description: "What a Box actually is, how it differs from a container, and which of its capabilities are ready to build on today."
 ---
 
-## System requirements
+## A Box is a microVM, not a container
 
-BoxLite runs lightweight micro-VMs and requires hardware virtualization support.
+A Box starts a lightweight virtual machine in one line of code and runs any standard container image (Docker / OCI) inside it. Four properties distinguish it from an ordinary container:
 
-| Platform       | Architecture  | Requirements                        |
-|----------------|---------------|-------------------------------------|
-| macOS          | Apple Silicon | macOS 12+ (Monterey or later)       |
-| Linux          | x86_64        | KVM enabled (`/dev/kvm` accessible) |
-| Linux          | ARM64         | KVM enabled (`/dev/kvm` accessible) |
-| Windows (WSL2) | x86_64        | WSL2 with KVM support               |
+- **Hardware-level isolation.** Each Box has its own kernel (KVM on Linux, Hypervisor.framework on macOS) rather than sharing the host kernel through namespaces. That boundary is what makes it safe to run untrusted or model-generated code.
+- **Stateful.** Most sandboxes are destroyed after a single execution, so the environment has to be rebuilt every time. A Box is a persistent workspace: after `stop` and a later `start`, installed packages and written files are still there.
+- **No daemon.** BoxLite is embedded as a library inside your process. It needs no root and no background service.
+- **Local-first.** It runs entirely on your machine without a cloud account, and scales out horizontally when you need it.
 
-<Warning>
-  macOS Intel (x86_64) is **not supported** due to Hypervisor.framework stability issues.
-</Warning>
+## When to use it
 
-### Verify virtualization support
+| Scenario | Why it fits |
+|---|---|
+| Running LLM- or agent-generated code | Hardware isolation and an egress allowlist keep mistakes and exfiltration away from the host |
+| An environment you "install once, reuse repeatedly" | A Box keeps its state across stop/start, so you do not rebuild it each time |
+| Multi-tenant or concurrent execution of untrusted tasks | An async-first API lets you run many mutually isolated Boxes on one host |
+| Browser automation, desktop automation, or running a coding agent | `BrowserBox`, `ComputerBox`, and `SkillBox` cover these directly |
 
-<Tabs>
-  <Tab title="macOS">
-    ```bash
-    # Check macOS version (should be 12+)
-    sw_vers
+## What is ready to build on
 
-    # Check architecture (should be arm64)
-    uname -m
-    ```
-  </Tab>
-  <Tab title="Linux">
-    ```bash
-    # Check if CPU supports virtualization (should show vmx or svm)
-    grep -E 'vmx|svm' /proc/cpuinfo
+Every Box type, lifecycle management, custom resources / volumes / network, snapshots, secrets, code execution, browser automation, running a coding agent in a box, and a REST client are all available today.
 
-    # Check if KVM is available (should exist and be accessible)
-    ls -l /dev/kvm
+For the capabilities people most often ask about, here is the current path:
 
-    # If /dev/kvm doesn't exist, load KVM module
-    sudo modprobe kvm
-    sudo modprobe kvm_intel  # For Intel CPUs
-    sudo modprobe kvm_amd    # For AMD CPUs
+| You want to | How it works today |
+|---|---|
+| Expose a sandbox over MCP | Wrap `SimpleBox.exec` in your own MCP server — [MCP tool handler](/agent-tools/mcp-server) |
+| Run Git / GitHub workflows | `exec` the `git` / `gh` CLIs with the token injected via `secrets` — [GitHub operations](/agent-tools/github-operations) |
+| Give a human a graphical desktop | `ComputerBox`'s noVNC desktop plus port forwarding — [Desktop access](/human-tools/desktop-access) |
+| Drive a sandbox from an agent loop | An LLM tool-use loop calling `SimpleBox.exec` — [Drive a sandbox from your agent loop](/agent-tools/drive-from-agent-loop) |
+| Use a PTY from Rust / C / Go | `exec(..., tty=True)`; the `InteractiveBox` wrapper is Python and Node — [Interactive shell (PTY)](/agent-tools/pseudo-terminal) |
+| Connect to a remote BoxLite service | The `Boxlite.rest(...)` client — [Manage remote sandboxes over REST](/guides/agent-service-endpoint) |
 
-    # Add user to kvm group (may require logout/login)
-    sudo usermod -aG kvm $USER
-    ```
-  </Tab>
-  <Tab title="Windows (WSL2)">
-    ```bash
-    # Verify you're running WSL2 (should show "2")
-    wsl.exe -l -v
+## Next
 
-    # Check if KVM is available
-    ls -l /dev/kvm
+1. **Install it** — [Installation](/getting-started/installation) covers every SDK, the CLI, and the virtualization requirement.
+2. **Run something** — pick the [Python](/getting-started/quickstart-python), [Node.js](/getting-started/quickstart-nodejs), [Rust](/getting-started/quickstart-rust), or [C](/getting-started/quickstart-c) quickstart.
+3. **Choose a Box type** — [Box types](/manage-sandbox/sandbox-types) compares all six and their defaults.
+4. **See what you are operating** — [Architecture overview](/architecture/index) traces one `exec` from your process to the guest.
 
-    # Add user to kvm group
-    sudo usermod -aG kvm $USER
-
-    # Apply the new group membership (pick one):
-    newgrp kvm
-    # OR restart WSL from Windows PowerShell:
-    # wsl.exe --shutdown
-
-    # Verify group membership
-    id -nG | tr ' ' '\n' | grep -x kvm
-
-    # Verify KVM access
-    python3 -c "open('/dev/kvm','rb').close(); print('kvm ok')"
-    ```
-
-    <Note>
-      If you see "Timeout waiting for guest ready (30s)" errors, it's likely a KVM permission issue. Ensure your user is in the `kvm` group and restart WSL with `wsl.exe --shutdown`.
-    </Note>
-  </Tab>
-</Tabs>
-
-## Install an SDK
-
-<Tabs>
-  <Tab title="Python">
-    ```bash
-    pip install boxlite
-    ```
-
-    **Requirements:** Python 3.10+, pip 20.0+
-
-    **Verify:**
-
-    ```bash
-    python3 -c "import boxlite; print(boxlite.__version__)"
-    ```
-  </Tab>
-  <Tab title="Node.js">
-    ```bash
-    npm install @boxlite-ai/boxlite
-    ```
-
-    **Requirements:** Node.js 18+
-
-    **Verify:**
-
-    ```bash
-    node -e "const b = require('@boxlite-ai/boxlite'); console.log('boxlite loaded')"
-    ```
-  </Tab>
-  <Tab title="Rust">
-    Add to your `Cargo.toml`:
-
-    ```toml
-    [dependencies]
-    boxlite = { git = "https://github.com/boxlite-ai/boxlite" }
-    tokio = { version = "1", features = ["full"] }
-    futures = "0.3"
-    ```
-
-    Then run:
-
-    ```bash
-    cargo build
-    ```
-  </Tab>
-  <Tab title="C">
-    The C SDK is built from source:
-
-    ```bash
-    git clone https://github.com/boxlite-ai/boxlite.git
-    cd boxlite
-    make build:c
-    ```
-
-    **Requirements:** GCC or Clang, CMake 3.15+. On macOS, install Xcode Command Line Tools (`xcode-select --install`).
-  </Tab>
-</Tabs>
-
-## Next steps
-
-<CardGroup cols={2}>
-  <Card title="Python quickstart" icon="python" href="/getting-started/quickstart-python">
-    Create your first sandbox, execute code, and explore BoxLite's Python API.
-  </Card>
-  <Card title="Node.js quickstart" icon="node-js" href="/getting-started/quickstart-nodejs">
-    Run commands in isolated VMs with the Node.js SDK and TypeScript support.
-  </Card>
-  <Card title="Rust quickstart" icon="gear" href="/getting-started/quickstart-rust">
-    Use the native Rust crate for performance-critical sandbox workloads.
-  </Card>
-  <Card title="C quickstart" icon="c" href="/getting-started/quickstart-c">
-    Integrate BoxLite into C/C++ applications via the native C API.
-  </Card>
-</CardGroup>
+Hitting an error already? Environment and install problems are on [Installation](/getting-started/installation#troubleshooting); exception types and API pitfalls are on [Error handling](/guides/error-handling); quick answers are in the [FAQ](/faq).

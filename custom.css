@@ -278,3 +278,51 @@ nav:has(#table-of-contents-content) {
 }
 
 
+
+/* ------------------------------------------------------------
+   13c. Sidebar group spacing, by state.
+        Mintlify defaults to `mt-6 lg:mt-8` (32px) between top-level
+        groups. That spacing assumes each group shows several children.
+        Here most groups are collapsed root nodes, i.e. single lines, so
+        a 32px — or even 16px — gap between one-line items reads as a
+        sparse, disconnected list. Collapsed groups therefore sit close
+        together; a group whose children are visible gets real
+        separation, because then it genuinely is a block.
+   ------------------------------------------------------------ */
+#navigation-items .sidebar-group,
+#navigation-items div:has(> .sidebar-group-header) {
+  margin-top: 4px !important;
+}
+#navigation-items .sidebar-group:has([aria-expanded="true"]),
+#navigation-items div:has(> .sidebar-group-header) {
+  margin-top: 14px !important;
+}
+/* A page list directly under a section label needs only a hairline gap. */
+#navigation-items div:has(> .sidebar-group-header) > .sidebar-group {
+  margin-top: 6px !important;
+}
+#navigation-items .sidebar-group:first-child,
+#navigation-items > div > div:first-child {
+  margin-top: 0 !important;
+}
+
+/* ------------------------------------------------------------
+   14. Heading scale for a monospace heading face.
+       fonts.heading is IBM Plex Mono, whose glyphs run ~20% wider and
+       optically heavier than a proportional face at the same px. At
+       Mintlify's default 36/24/20 the page title reads oversized and
+       long titles ("Production best practices") dominate the column.
+       Scaling down one step restores the intended optical hierarchy.
+   ------------------------------------------------------------ */
+#content-area h1, article h1 {
+  font-size: 30px !important;
+  line-height: 36px !important;
+}
+#content-area h2, article h2 {
+  font-size: 21px !important;
+  line-height: 30px !important;
+}
+#content-area h3, article h3 {
+  font-size: 17px !important;
+  line-height: 26px !important;
+}
