@@ -4,15 +4,33 @@ This is the official documentation site for **BoxLite**, built with Mintlify. Bo
 
 ## Project Structure
 
-- `docs.json` — Mintlify config (navigation, theme, colors, logo). Check before making structural changes.
-- `index.mdx` — Home page
-- `getting-started/` — Quickstart guides (Python, Node.js, Rust, C)
-- `architecture/` — Architecture deep dives (components, security, networking)
-- `reference/` — SDK API reference (`python/`, `nodejs/`, `rust/`, `c/`)
-- `guides/` — How-to guides (build from source, examples, AI integration, etc.)
-- `development/` — Internal docs (CLI, Rust style guide)
-- `snippets/` — Reusable MDX snippets (included via `<Snippet file="..." />`)
-- `images/`, `logo/` — Static assets
+- `docs.json` — Mintlify config: navigation groups, redirects, theme. Check before any structural change.
+- `llms.txt` — machine-readable route index. Regenerate when navigation changes.
+- `index.mdx` — home page · `faq.mdx` — FAQ and troubleshooting
+- `getting-started/` — install plus one quickstart per language
+- `manage-sandbox/` — box lifecycle, configuration, resources, volumes, network, secrets
+- `agent-tools/` — capabilities an agent calls: exec, PTY, browser, desktop, MCP, git
+- `agent-in-box/` — an agent living inside the box (Claude Code, tool loops, REST)
+- `human-tools/` — handing a running box to a person (desktop, browser)
+- `use-cases/` — end-to-end scenario guides, one complete deliverable per page
+- `guides/` — production practices, build, deployment, error handling, registry
+- `architecture/` — overview plus internals (components, security, networking, storage)
+- `reference/` — SDK reference, **one page per language**, plus the CLI
+- `development/` — contributor docs · `legal/` — CLA
+- `assets/diagrams/` — rendered architecture diagrams (SVG)
+- `scripts/` — tooling, not docs content (see `.mintignore`)
+
+### Which directory does a new page belong in?
+
+| Layer | Directories | Answers | Owns |
+|---|---|---|---|
+| **Capability page** | `manage-sandbox/` `agent-tools/` `human-tools/` | "What does this API do, what are its parameters?" | **The parameter tables** |
+| **Scenario guide** | `use-cases/` | "How do I ship X end to end?" | The scenario, architecture, trust boundary |
+
+A use-case guide must combine **two or more capabilities** toward a business outcome, and must **link** to capability pages instead of restating their parameter tables. If a proposed guide only re-teaches one capability, it belongs on that capability page instead.
+
+One fact lives on exactly one page. Everything else links to it. When the same default value, error string, or parameter table appears on two pages, delete the copy and link.
+
 
 ## Development Commands
 
@@ -65,7 +83,6 @@ Use Mintlify's built-in components — prefer them over raw HTML:
 - `<Card>`, `<CardGroup>` — navigation cards
 - `<Note>`, `<Warning>`, `<Tip>`, `<Info>` — callout boxes
 - `<Tabs>`, `<Tab>` — tabbed content (e.g., platform-specific instructions)
-- `<Snippet file="filename.mdx" />` — reusable content from `snippets/`
 - Full reference: https://mintlify.com/docs/components
 
 ## Terminology
@@ -98,15 +115,16 @@ Use this table to determine which documentation files to update based on changed
 
 | BoxLite source path | Documentation files to check |
 |---|---|
-| `sdk/python/**` | `reference/python/*.mdx`, `getting-started/quickstart-python.mdx` |
-| `sdk/nodejs/**` | `reference/nodejs/*.mdx`, `getting-started/quickstart-nodejs.mdx` |
-| `sdk/rust/**`, `boxlite-sdk/` | `reference/rust/*.mdx`, `getting-started/quickstart-rust.mdx` |
-| `sdk/c/**`, `boxlite-c/` | `reference/c/*.mdx`, `getting-started/quickstart-c.mdx` |
-| `src/vmm/**`, `src/jailer/**` | `architecture/components.mdx`, `architecture/security.mdx` |
-| `src/networking/**` | `architecture/networking-storage.mdx` |
-| `src/guest_agent/**` | `architecture/components.mdx` |
+| `sdks/python/**` | `reference/python.mdx`, `getting-started/quickstart-python.mdx` |
+| `sdks/node/**` | `reference/nodejs.mdx`, `getting-started/quickstart-nodejs.mdx` |
+| `src/boxlite/**` (public API) | `reference/rust.mdx`, `getting-started/quickstart-rust.mdx` |
+| `sdks/c/include/boxlite.h` | `reference/c.mdx`, `getting-started/quickstart-c.mdx` |
+| `src/boxlite/src/vmm/**`, `src/shim/**` | `architecture/core-components.mdx`, `architecture/security-and-isolation.mdx` |
+| `src/boxlite/src/net/**` | `architecture/networking.mdx` |
+| `src/boxlite/src/{rootfs,volumes,images}/**` | `architecture/storage.mdx` |
+| `src/guest/**` | `architecture/core-components.mdx` |
 | `README.md`, `CHANGELOG.md` | `guides/changelog.mdx`, `index.mdx` |
-| `examples/**` | `tutorials/*.mdx`, `guides/*.mdx` |
+| `examples/**` | `use-cases/*.mdx`, `agent-tools/*.mdx` |
 | `Cargo.toml`, `pyproject.toml`, `package.json` | Check for dependency or feature changes that affect quickstarts |
 
 ### Decision framework
@@ -138,3 +156,35 @@ Decide whether to update docs based on the nature of the change:
 - **PR title**: `docs: sync from boxlite PR #{N}`
 - **PR body**: Include a link to the source PR and a summary of what changed and why
 - **No version numbers**: Never add version numbers anywhere in documentation. Always describe features as current behavior.
+
+### Do not write soft promises
+
+**If something is unsupported, say "not supported".** Never write `coming soon`, `planned`, `not yet supported`, or `not currently supported`.
+
+A `coming soon` makes a promise nobody dated: the reader waits, or chooses BoxLite on the assumption it will land, and gets burned. "Not supported" is a fact they can act on today — they pick an ARM64 Mac or Linux and move on. A capability list is a statement of fact, not a roadmap; roadmaps live in release notes and issues.
+
+The word **`yet`** is the signal. Delete it and the sentence is usually correct.
+
+| Do not write | Write instead |
+|---|---|
+| `coming soon` / `planned` / `on the roadmap` | `Not supported` |
+| `not yet supported` / `not currently supported` | `not supported` |
+| `not yet implemented` / `not yet enforced` | `accepted but not enforced` |
+| `does not yet guarantee` | `does not guarantee` |
+
+Legitimate exceptions — these describe a point-in-time state, not a future promise, and must not be rewritten: real SDK error strings (`Error: Box not yet created...`), lifecycle descriptions ("VM not yet started"), transient states ("the box is not yet ready"), and prose addressed to the reader ("if you have not yet read...").
+
+`scripts/lint-docs.py` enforces this in CI. Run it before opening a PR:
+
+```bash
+python3 scripts/lint-docs.py .
+```
+
+### MDX parser hazards
+
+`.mdx` is JSX-flavoured. In prose (outside code fences), these break the build:
+
+- `<SOMETHING>` is parsed as a JSX tag. Wrap placeholders in backticks: `` `<YOUR_API_KEY>` ``, never bare.
+- `{...}` is parsed as a JavaScript expression. Wrap paths and objects in backticks: `` `GET /executions/{id}` ``.
+
+Inside fenced code blocks both are safe. Placeholders use the `<YOUR_THING>` form — angle brackets, not square brackets, since `[...]` is link syntax.

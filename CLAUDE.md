@@ -18,20 +18,38 @@ This is the official documentation site for **BoxLite** — a local-first micro-
 ## Directory Structure
 
 ```
-docs.json              # Mintlify config: navigation, theme, colors, logo
+docs.json              # Mintlify config: navigation groups, redirects, theme
+llms.txt               # Machine-readable route index — regenerate when navigation changes
 index.mdx              # Home page
 faq.mdx                # FAQ & troubleshooting
-getting-started/       # Quickstart guides (Python, Node.js, Rust, C)
-architecture/          # Architecture, components, security, networking
-reference/             # SDK API reference (python/, nodejs/, rust/, c/)
-boxrun/                # BoxRun platform docs (CLI, Python SDK, REST API, config)
-guides/                # How-to guides (build, examples, AI integration, etc.)
-development/           # Internal docs (CLI, Rust style guide)
-snippets/              # Reusable MDX snippets (e.g., prerequisites.mdx)
-images/                # Static images (hero, screenshots)
-logo/                  # Light/dark SVG logos
-.github/workflows/     # GitHub Actions (docs sync automation)
+getting-started/       # Install + one quickstart per language
+manage-sandbox/        # Box lifecycle, configuration, resources, volumes, network, secrets
+agent-tools/           # Capabilities an agent calls: exec, PTY, browser, desktop, MCP, git
+agent-in-box/          # An agent living inside the box (Claude Code, tool loops, REST)
+human-tools/           # Handing a running box to a person (desktop, browser)
+use-cases/             # End-to-end scenario guides (one complete deliverable per page)
+guides/                # Production practices, build, deployment, error handling, registry
+architecture/          # Overview + internals (components, security, networking, storage)
+reference/             # SDK reference — ONE page per language, plus the CLI
+development/           # Contributor docs (CLI dev, local E2E, Rust style, investigations)
+legal/                 # CLA
+assets/diagrams/       # Rendered architecture diagrams (SVG)
+scripts/               # Tooling, not docs content (see .mintignore)
+.github/workflows/     # GitHub Actions, including docs sync automation
 ```
+
+### Which directory does a new page belong in?
+
+The distinction that keeps this site free of duplication:
+
+| Layer | Directories | Answers | Owns |
+|---|---|---|---|
+| **Capability page** | `manage-sandbox/` `agent-tools/` `human-tools/` | "What does this API do, what are its parameters?" | **The parameter tables** |
+| **Scenario guide** | `use-cases/` | "How do I ship X end to end?" | The scenario, architecture, trust boundary |
+
+A use-case guide must combine **two or more capabilities** toward a business outcome, and must **link** to capability pages instead of restating their parameter tables. If a proposed guide only re-teaches one capability, it belongs on that capability page instead.
+
+One fact lives on exactly one page. Everything else links to it. When you find the same default value, error string, or parameter table on two pages, delete the copy and link.
 
 ## Common Tasks
 
@@ -54,10 +72,10 @@ mint update
 - Start with introductory context before diving into steps
 
 ### Navigation
-- All navigation is defined in `docs.json` under `navigation.tabs`
-- 4 tabs: Documentation, SDK Reference, Guides, Development
+- All navigation is defined in `docs.json` under `navigation.groups`
 - **Never add a page to navigation without creating the file first**
-- **Never remove a page without checking for inbound links**
+- **Never delete or rename a page without adding a `redirects` entry** in `docs.json` — every route that has ever shipped must keep resolving
+- Regenerate `llms.txt` whenever navigation changes
 
 ### Writing Style
 - Active voice, second person ("you")
@@ -71,10 +89,6 @@ mint update
 - Prefer MDX components over raw HTML
 - Code blocks: always include language identifier, add `filename.ext` title when relevant
 - Use realistic parameter values, not `foo`/`bar` placeholders
-
-### Snippets
-- Reusable content goes in `snippets/` and is included with `<Snippet file="filename.mdx" />`
-- Currently: `snippets/prerequisites.mdx` (system requirements)
 
 ### Theming & design system
 The site uses an **ASCII / terminal** design language mirroring the BoxLite console
@@ -107,7 +121,6 @@ may need higher specificity (see the code-panel block in `custom.css`).
 | `docs.json` | Mintlify config — navigation structure, theme, colors, logo, links |
 | `custom.css` | Terminal/ASCII design system — square corners, surfaces, code panel, accents |
 | `index.mdx` | Home page — hero section, feature cards, entry points |
-| `snippets/prerequisites.mdx` | Shared system requirements snippet |
 | `.mintignore` | Files excluded from Mintlify build |
 | `.github/workflows/sync-from-boxlite.yml` | Auto-syncs docs when BoxLite SDK PRs merge |
 
@@ -127,3 +140,35 @@ Use these terms consistently across all documentation:
 | Guest Agent | The agent running inside the VM |
 | Jailer | The security isolation component |
 | ShimController | Process lifecycle manager |
+
+### Do not write soft promises
+
+**If something is unsupported, say "not supported".** Never write `coming soon`, `planned`, `not yet supported`, or `not currently supported`.
+
+A `coming soon` makes a promise nobody dated: the reader waits, or chooses BoxLite on the assumption it will land, and gets burned. "Not supported" is a fact they can act on today — they pick an ARM64 Mac or Linux and move on. A capability list is a statement of fact, not a roadmap; roadmaps live in release notes and issues.
+
+The word **`yet`** is the signal. Delete it and the sentence is usually correct.
+
+| Do not write | Write instead |
+|---|---|
+| `coming soon` / `planned` / `on the roadmap` | `Not supported` |
+| `not yet supported` / `not currently supported` | `not supported` |
+| `not yet implemented` / `not yet enforced` | `accepted but not enforced` |
+| `does not yet guarantee` | `does not guarantee` |
+
+Legitimate exceptions — these describe a point-in-time state, not a future promise, and must not be rewritten: real SDK error strings (`Error: Box not yet created...`), lifecycle descriptions ("VM not yet started"), transient states ("the box is not yet ready"), and prose addressed to the reader ("if you have not yet read...").
+
+`scripts/lint-docs.py` enforces this in CI. Run it before opening a PR:
+
+```bash
+python3 scripts/lint-docs.py .
+```
+
+### MDX parser hazards
+
+`.mdx` is JSX-flavoured. In prose (outside code fences), these break the build:
+
+- `<SOMETHING>` is parsed as a JSX tag. Wrap placeholders in backticks: `` `<YOUR_API_KEY>` ``, never bare.
+- `{...}` is parsed as a JavaScript expression. Wrap paths and objects in backticks: `` `GET /executions/{id}` ``.
+
+Inside fenced code blocks both are safe. Placeholders use the `<YOUR_THING>` form — angle brackets, not square brackets, since `[...]` is link syntax.

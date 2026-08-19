@@ -1,0 +1,303 @@
+---
+title: "Environment and startup"
+description: "Shape the Linux environment inside a box — variables, run user, working directory — and control what it starts: the entrypoint, the command, and the image."
+---
+
+The same image can produce very different machines. Declare what you need at creation time instead of maintaining a derived image for each variation.
+
+## What you can set
+
+The fields below are forwarded through `**kwargs` to the underlying `BoxOptions` in wrapper classes such as `SimpleBox`/`CodeBox`, and can also be used directly with `BoxOptions(...)`.
+
+| Parameter | Required | Type (Python) | Type (Node) | Description |
+|---|---|---|---|---|
+| `image` | One of two | `str` | `string` (`image`) | Container image, e.g. `alpine:latest`, `python:alpine`. At least one of this and `rootfs_path`, otherwise `SimpleBox` raises `ValueError`. |
+| `rootfs_path` | One of two | `str` | `string` (`rootfsPath`) | Path to a local OCI image layout directory (the on-disk form of a container image); an alternative to `image`. |
+| `env` | Optional | `list[tuple[str, str]]` | `Record<string, string>` (`env`) | Environment variables injected into the container process. **At construction time Python uses a list of tuples, Node uses an object.** |
+| `entrypoint` | Optional | `list[str]` | `string[]` (`entrypoint`) | Overrides the image's ENTRYPOINT (the executable). When set it **fully replaces** the image's original ENTRYPOINT. |
+| `cmd` | Optional | `list[str]` | `string[]` (`cmd`) | Overrides the image's CMD (default arguments). The ENTRYPOINT is preserved. The final command = ENTRYPOINT + CMD. |
+| `user` | Optional | `str` | `string` (`user`) | Running user, format `<name\|uid>[:<group\|gid>]`, e.g. `1000:1000`, `nobody`, `nobody:nobody`. Defaults to the image's USER (usually root). |
+| `working_dir` | Optional | `str` | `string` (`workingDir`) | Default working directory inside the container. |
+| `cpus` | Optional | `int` | `number` (`cpus`) | Number of CPU cores. |
+| `memory_mib` | Optional | `int` | `number` (`memoryMib`) | Memory limit (MiB). Defaults to 1024 MiB when unset; specify it explicitly in production. See [Compute resources](/manage-sandbox/compute-resources). |
+| `name` | Optional | `str` | `string` (`name`) | Sandbox name (must be unique). |
+| `auto_remove` | Optional | `bool` (default True) | `boolean` (`autoRemove`, default true) | Remove automatically on stop. |
+
+> `SimpleBox`'s convenience parameters only cover `image / rootfs_path / memory_mib / cpus / runtime / name / auto_remove / reuse_existing`; `env / entrypoint / cmd / user / working_dir` and so on are forwarded through `**kwargs` to `BoxOptions`, so their names and types follow `BoxOptions` (for example Python's `working_dir`, and the construction-time `env` being a list of tuples).
+
+## Quick Example
+
+The shortest path: use `SimpleBox` to inject environment variables, run as a non-root user, set the working directory, and then run a command to verify.
+
+```python
+import asyncio
+
+import boxlite
+
+async def main():
+    try:
+        # at construction time, env is list[tuple[str, str]] (note: different from the dict used by exec(env=...))
+        # note that working_dir must be a directory that already exists in the image, otherwise exec raises RuntimeError.
+        # alpine ships with /tmp; to use a custom directory like /work, create it first via exec mkdir.
+        async with boxlite.SimpleBox(
+            image="alpine:latest",
+            env=[("APP_ENV", "production"), ("LANG", "C.UTF-8")],
+            user="1000:1000",     # run as uid=1000, gid=1000 (non-root)
+            working_dir="/tmp",   # commands run in this directory by default (must already exist in the image)
+        ) as box:
+            print(f"box started: {box.id}")
+
+            # a non-zero exit code does not raise; check exit_code yourself
+            result = await box.exec("sh", "-c", "echo $APP_ENV @ $(pwd) as $(id -u)")
+            if result.exit_code != 0:
+                print(f"command failed ({result.exit_code}): {result.stderr.strip()}")
+            else:
+                print(result.stdout.strip())  # production @ /tmp as 1000
+    except Exception as e:
+        # image pull failure / no virtualization raises a standard exception (e.g. RuntimeError)
+        print(f"error: {type(e).__name__}: {e}")
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+Node equivalent:
+
+```typescript
+import { SimpleBox } from "@boxlite-ai/boxlite";
+
+async function main() {
+  try {
+    // in Node, construction-time env is Record<string, string> (different from Python's construction-time list)
+    // workingDir must be a directory that already exists in the image, otherwise exec throws. alpine ships with /tmp.
+    await using box = new SimpleBox({
+      image: "alpine:latest",
+      env: { APP_ENV: "production", LANG: "C.UTF-8" },
+      user: "1000:1000",
+      workingDir: "/tmp",
+    });
+
+    const result = await box.exec("sh", ["-c", "echo $APP_ENV @ $(pwd) as $(id -u)"]);
+    if (result.exitCode !== 0) {
+      console.error(`command failed (${result.exitCode}): ${result.stderr.trim()}`);
+    } else {
+      console.log(result.stdout.trim()); // production @ /tmp as 1000
+    }
+  } catch (e) {
+    console.error(`error: ${(e as Error).message}`);
+  }
+}
+
+main();
+```
+
+---
+
+## The relationship between `entrypoint` and `cmd`
+
+An OCI image has two directives: `ENTRYPOINT` (the executable) and `CMD` (default arguments). The final startup command is the concatenation of the two: `ENTRYPOINT + CMD`.
+
+- Set only `cmd`: replace the default arguments, keep the image's ENTRYPOINT.
+- Set only `entrypoint`: replace the executable.
+- Set both: fully customize the startup behavior.
+
+Note: some images (such as `python:alpine`) put the default command in CMD rather than ENTRYPOINT. To pass arguments like `-c`, you must explicitly set `entrypoint=["python3"]`, otherwise the arguments have nothing to attach to.
+
+> Important: `entrypoint + cmd` controls the **container init process**. If that init command is **short-lived** (it exits as soon as it finishes, e.g. `python3 -c "print(...)"`), the container enters the **Stopped** state after init exits, and you can no longer call `box.exec(...)`; it raises
+> `RuntimeError: internal error: spawn_failed: Container init process exited — cannot exec. ... incompatible container status: \`Stopped\``.
+>
+> Therefore: if you want to customize init via `entrypoint + cmd` and also keep `exec`-ing afterward, init must be a **long-lived** process (such as sleep or a service process). The example below changes init to `time.sleep(120)`, after which `exec` reliably returns `exit=0`. If you only run one command and never exec again, a short-lived init is also fine.
+
+```python
+import asyncio
+
+import boxlite
+
+async def main():
+    try:
+        async with boxlite.SimpleBox(
+            image="python:alpine",
+            entrypoint=["python3"],
+            # init must be long-running, otherwise the container goes Stopped and exec is no longer possible
+            cmd=["-c", "import time; print('init running'); time.sleep(120)"],
+            cpus=1,
+            memory_mib=512,
+        ) as box:
+            print(f"box started: {box.id}")
+            await asyncio.sleep(2)  # wait for init to come up
+            # while init is long-running, other commands can be exec'd, exit=0
+            result = await box.exec("python3", "-c", "print('hello from exec')")
+            print(f"exec: {result.stdout.strip()} (exit={result.exit_code})")  # exit=0
+    except Exception as e:
+        print(f"error: {type(e).__name__}: {e}")
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+## `user`: running as non-root
+
+`user` accepts a username or a UID, in the format `<name|uid>[:<group|gid>]`. Non-numeric usernames are resolved from the container's `/etc/passwd` / `/etc/group`.
+
+```python
+import asyncio
+
+import boxlite
+
+async def main():
+    try:
+        # in alpine, nobody is uid=65534, gid=65534
+        async with boxlite.SimpleBox(image="alpine:latest", user="nobody:nobody") as box:
+            result = await box.exec("id")
+            print(result.stdout.strip())  # uid=65534(nobody) gid=65534(nobody) ...
+    except Exception as e:
+        print(f"error: {type(e).__name__}: {e}")
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+You can also override the user/directory/environment per-`exec` (`env` here is a **dict**):
+
+```python
+import asyncio
+
+import boxlite
+
+async def main():
+    try:
+        async with boxlite.SimpleBox(image="alpine:latest") as box:
+            # per-execution override (exec's env is a dict, timeout is in seconds, float)
+            result = await box.exec(
+                "sh", "-c", "echo $GREETING",
+                env={"GREETING": "hi"},   # exec takes a dict
+                user="nobody",
+                cwd="/tmp",
+                timeout=10.0,
+            )
+            print(result.stdout.strip())  # hi
+
+# The two env parameters take different shapes — this catches people out:
+#   Box constructor : env=[("KEY", "value")]   list of tuples
+#   exec(...)       : env={"KEY": "value"}     dict
+# Passing a dict to the constructor raises:
+#   TypeError: argument 'env': 'dict' object cannot be cast as 'Sequence'
+    except Exception as e:
+        print(f"error: {type(e).__name__}: {e}")
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+## Return value: `ExecResult`
+
+`box.exec(...)` returns an `ExecResult` (a dataclass in the Python wrapper layer).
+
+| Field | Type | Description |
+|---|---|---|
+| `exit_code` | `int` | Process exit code. **Non-zero does not raise**; the caller must check it. |
+| `stdout` | `str` | Standard output. |
+| `stderr` | `str` | Standard error. |
+| `error_message` | `str \| None` | Non-`None` only when the process died abnormally. |
+
+Node's `ExecResult` fields are `exitCode` / `stdout` / `stderr`.
+
+---
+
+## Troubleshooting
+
+### Passing a string as the volume's third element causes a TypeError
+
+A volume's third element is the boolean `read_only`; the strings `"ro"`/`"rw"` are CLI-only and raise `TypeError` here. See [Volumes](/manage-sandbox/volumes#troubleshooting).
+
+### Construction-time `env` passed as a dict reports a type error (Python)
+
+`SimpleBox(env=...)` / `BoxOptions(env=...)` requires `list[tuple[str, str]]` at **construction time**:
+
+```python
+import asyncio
+
+import boxlite
+
+async def main():
+    try:
+        # correct: construction-time env is list[tuple[str, str]]
+        async with boxlite.SimpleBox(
+            image="alpine:latest",
+            env=[("KEY", "value")],
+        ) as box:
+            result = await box.exec("sh", "-c", "echo $KEY")
+            print(result.stdout.strip())  # value
+    except Exception as e:
+        print(f"error: {type(e).__name__}: {e}")
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+`box.exec(env=...)` uses a `dict` at **execution time**. The distinction: a list at construction time, a dict at exec time.
+
+### `cmd` arguments take no effect / the image has no ENTRYPOINT
+
+If the image's default command is in CMD (not ENTRYPOINT), setting `cmd=["-c", ...]` alone leaves the arguments with no executable to attach to. Explicitly set `entrypoint=["python3"]` (or the target executable); see the entrypoint example above.
+
+### After setting `entrypoint + cmd` to a short-lived command, `exec` reports `incompatible container status: Stopped`
+
+`entrypoint + cmd` is the **container init process**. A short-lived init (which exits as soon as it finishes) puts the container into the Stopped state, and a subsequent `exec` raises:
+
+```text
+RuntimeError: internal error: spawn_failed: Container init process exited — cannot exec. ... incompatible container status: `Stopped`
+```
+
+Fix: if you need to keep `exec`-ing, make init long-lived (sleep / a service); if you only run one command, use a short-lived init and do not exec again. See the entrypoint example above.
+
+### `working_dir` pointing to a nonexistent directory makes `exec` raise RuntimeError
+
+`working_dir` (or `exec(cwd=...)`) must be a **directory that already exists in the image**. When it points to a nonexistent directory (e.g. setting `working_dir="/work"` on `alpine`), the `box` still creates successfully, but the first `exec` raises:
+
+```text
+RuntimeError: internal error: spawn_failed: ... error in executing process : failed to unix syscall
+```
+
+Fix: use a directory that ships with the image (`alpine` has `/tmp`, `/root`), or create one first via `exec` from an existing working directory:
+
+```python
+import asyncio
+
+import boxlite
+
+async def main():
+    try:
+        async with boxlite.SimpleBox(image="alpine:latest") as box:
+            # create the directory first, then run inside it
+            mk = await box.exec("mkdir", "-p", "/work")
+            if mk.exit_code != 0:
+                print(f"mkdir failed: {mk.stderr.strip()}")
+                return
+            result = await box.exec("pwd", cwd="/work")
+            print(result.stdout.strip())  # /work
+    except Exception as e:
+        print(f"error: {type(e).__name__}: {e}")
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+### `exec` exits non-zero without raising
+
+This is expected behavior: when `exec` fails (the command returns non-zero) it **does not raise** but returns an `ExecResult` with `exit_code != 0`. Always check `result.exit_code` (Node: `result.exitCode`).
+
+### A missing command / image pull failure raises a standard exception
+
+- Missing command: raises a standard `RuntimeError` (Python) / a bare `Error` (Node), **not** a `BoxliteError` subclass.
+- Image pull network flakiness: raises a `RuntimeError`, which you can retry after `try/except`.
+
+When catching, use a broad `except Exception` rather than only catching `BoxliteError`.
+
+### No hardware virtualization causes startup failure
+
+BoxLite requires hardware virtualization (an environment constraint):
+
+- Linux: requires KVM (`/dev/kvm` available); under WSL2 the user must be in the `kvm` group.
+- macOS: uses Apple Hypervisor.framework, no `/dev/kvm` required (macOS arm64 supported).
+- No virtualization: startup fails on `async with` entry. The process does not crash and can be caught with `try/except` to report the issue.

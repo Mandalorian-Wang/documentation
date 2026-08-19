@@ -1,88 +1,109 @@
 # BoxLite Documentation
 
-> BoxLite is a local-first micro-VM sandbox for AI agents — stateful, lightweight, hardware-level isolation, no daemon required.
+> BoxLite is an embeddable microVM sandbox for AI agents — stateful, sub-second boot, hardware-level isolation, no daemon required.
 
-## Getting Started
+## BoxLite Opensource
 
-- [Introduction](/index.mdx): BoxLite overview, features, and quick start
-- [Installation](/getting-started/index.mdx): Install BoxLite for Python, Node.js, Rust, or C
-- [Python Quick Start](/getting-started/quickstart-python.mdx): Get started with BoxLite in Python
-- [Node.js Quick Start](/getting-started/quickstart-nodejs.mdx): Get started with BoxLite in Node.js
-- [Rust Quick Start](/getting-started/quickstart-rust.mdx): Get started with BoxLite in Rust
-- [C Quick Start](/getting-started/quickstart-c.mdx): Get started with BoxLite in C
-- [Core Concepts](/getting-started/core-concepts.mdx): Boxes, images, execution model, and lifecycle
+### Getting Started
+- [BoxLite documentation](/index.mdx)
+- [Introduction to BoxLite](/getting-started/index.mdx): What a Box actually is, how it differs from a container, and which of its capabilities are ready to build on today.
+- [Installation](/getting-started/installation.mdx): Install the four SDKs and the CLI, and confirm your machine meets the virtualization requirement.
+- [Python quickstart](/getting-started/quickstart-python.mdx): The shortest path to running your first code in an isolated microVM sandbox: pull an image, start a Box, run a command,…
+- [Node.js quickstart](/getting-started/quickstart-nodejs.mdx): From npm install to a command running inside an isolated microVM, in about five minutes.
+- [Rust quickstart](/getting-started/quickstart-rust.mdx)
+- [C quickstart](/getting-started/quickstart-c.mdx): Start a sandbox and run a command from C, using the Simple API for the happy path and the Native API when you need…
 
-## Tutorials
+### Manage Sandbox
+- [Manage sandboxes](/manage-sandbox/index.mdx)
+- [Box types](/manage-sandbox/sandbox-types.mdx): Six one-line constructors, each returning an isolated environment tuned for one job: commands, code, a browser, a…
+- [Lifecycle](/manage-sandbox/lifecycle.mdx): Manage sandboxes as long-lived resources — create, start, stop, remove, plus detach to survive the parent process and…
+- [Custom configuration](/manage-sandbox/configuration.mdx): Shape a sandbox's runtime without building a new image: environment variables, entrypoint and command, run user,…
+- [Compute resources](/manage-sandbox/compute-resources.mdx): Allocate CPU (cpus), memory (memory_mib), and disk (disk_size_gb) so a workload is neither starved nor wasteful.
+- [Volumes and mounts](/manage-sandbox/volumes.mdx): Mount a host directory into the sandbox so both sides read and write the same files.
+- [Network access](/manage-sandbox/network-access.mdx): Control the sandbox's network boundary: expose a service to the host with port forwarding, restrict outbound traffic…
+- [Snapshots and clones](/manage-sandbox/snapshots.mdx): Save a sandbox's disk state, create a fully independent copy, or pack an entire sandbox into a portable archive.
+- [Secrets and security isolation](/manage-sandbox/secrets-and-security.mdx): Deliver credentials to a sandbox without letting the sandbox see them, and tighten the isolation boundary so untrusted…
 
-- [Tutorials Overview](/tutorials/index.mdx): All tutorials and box type selection guide
-- [Run Claude Code in a sandbox](/tutorials/ai-coding-tools.mdx): Run Claude Code inside an isolated VM
-- [Execute AI-generated code](/tutorials/code-execution.mdx): Run untrusted Python code safely with CodeBox
-- [Upload & download files](/tutorials/file-transfer.mdx): Move files in and out of a sandbox
-- [Connect to an LLM](/tutorials/llm-integration.mdx): Wire up OpenAI, Anthropic, or Vercel AI SDK tool calling
-- [Automate a browser](/tutorials/browser-automation.mdx): Browser automation with Playwright or Puppeteer
-- [Automate a desktop](/tutorials/desktop-automation.mdx): GUI desktop automation with ComputerBox
-- [Interactive terminal](/tutorials/interactive-terminal.mdx): PTY sessions with InteractiveBox
-- [Run any language or tool](/tutorials/run-any-language.mdx): Use SimpleBox with custom images
-- [Run services with port forwarding](/tutorials/long-running-services.mdx): Start servers, forward ports, access from host
-- [Handle errors and debug](/tutorials/error-handling.mdx): Exit codes, exceptions, timeouts, streaming
+### Agent Tools
+- [Agent tools](/agent-tools/index.mdx): The capabilities an agent calls inside an isolated sandbox: run commands, run generated code, move files, and drive a…
+- [Python code execution](/agent-tools/code-execution-python.mdx): Run Python inside an isolated microVM with CodeBox and read stdout back — the shortest path for an agent's \"write…
+- [Run any language / command](/agent-tools/code-execution-any-language.mdx): Run any shell command or executable — in any language — inside a disposable microVM, and read back a structured stdout…
+- [Pseudo-terminal (PTY)](/agent-tools/pseudo-terminal.mdx)
+- [Computer use (desktop)](/agent-tools/computer-use.mdx): Boot a full Linux desktop inside a sandbox so an agent can see the screen, move the mouse, click, type, and scroll.
+- [Browser automation](/agent-tools/browser-automation.mdx)
+- [Drive a sandbox from your agent loop](/agent-tools/drive-from-agent-loop.mdx): Give your agent one safe door to a real machine: the model proposes a command, your loop runs it in a microVM, and the…
+- [MCP server](/agent-tools/mcp-server.mdx): Expose sandboxed command execution to any Model Context Protocol (MCP) client by wrapping BoxLite in a small MCP server…
+- [GitHub operations](/agent-tools/github-operations.mdx): Let an agent clone, commit, push, and open pull requests from inside a sandbox — with your GITHUB_TOKEN never entering…
 
-## Guides
+### Agent in a Box
+- [Agent in box](/agent-in-box/index.mdx): Run a complete agent — its file access, command execution, and package installs — inside a microVM instead of on your…
+- [Run Claude Code](/agent-in-box/run-claude-code.mdx): Install and drive the Claude Code CLI inside a microVM, where it can read, write, execute, and install freely without…
+- [Run Codex](/agent-in-box/run-codex.mdx): Install and drive the OpenAI Codex CLI inside a microVM, so the agent can execute freely while the blast radius stays…
+- [Run Pi](/agent-in-box/run-pi.mdx): Install and drive the Pi coding agent inside a microVM, where it can read, write, and execute freely while your host…
+- [Run OpenCode](/agent-in-box/run-opencode.mdx): Install and drive the OpenCode CLI inside a microVM, configuring its provider without writing a config file into the…
 
-- [Guides Overview](/guides/index.mdx): Advanced patterns and configuration guides
-- [AI Agent Integration](/guides/ai-agent-integration.mdx): Concurrency, timeouts, security presets
-- [Building from Source](/guides/building-from-source.mdx): Compile BoxLite from source
-- [Image Registry Configuration](/guides/image-registry-configuration.mdx): Configure OCI image registries
-- [macOS Sandbox Debugging](/guides/macos-sandbox-debugging.mdx): Debug sandbox issues on macOS
-- [Changelog](/guides/changelog.mdx): Release history
+### Human Tools
+- [Human tools](/human-tools/index.mdx): Inspect or take over a sandbox's graphical interface from your browser — no VNC client to install.
+- [Desktop / VNC access](/human-tools/desktop-access.mdx): Share a Linux desktop running inside a sandbox with a human, through a browser and with no VNC client.
+- [Browser access](/human-tools/browser-access.mdx): Run a real browser inside an isolated sandbox and drive it from the host with Playwright or Puppeteer.
 
-## SDK Reference
+### Guides
+- [Agent builder guide](/guides/index.mdx)
+- [Production best practices](/guides/production-best-practices.mdx): A checklist for running sandboxes in production: concurrency, resource ceilings, isolation, and guaranteed cleanup.
+- [Deployment](/guides/deployment.mdx): Run a BoxLite-backed service inside Docker or on Kubernetes, where each sandbox still needs hardware virtualization.
+- [Agent service endpoint (REST)](/guides/agent-service-endpoint.mdx): Manage a fleet of sandboxes through one REST endpoint — your code needs only a URL and an API key, not local…
+- [Error handling](/guides/error-handling.mdx): Tell command failure, timeout, parse failure, and low-level runtime errors apart — and recover from each separately.
+- [Image registry configuration](/guides/image-registry-configuration.mdx): Pull agent images from private or custom OCI registries — a corporate registry, ghcr.io, quay.io, or a local caching…
+- [Building from source](/guides/building-from-source.mdx): From git clone to a working local SDK, using the repository's own make targets.
+- [macOS sandbox debugging](/guides/macos-sandbox-debugging.mdx): Use this page when a box fails to start on macOS and you suspect Seatbelt. BoxLite runs boxlite-shim under a…
 
-- [SDK Reference Overview](/reference/index.mdx): SDK comparison and BoxOptions parameters
+### Architecture
+- [Architecture overview](/architecture/index.mdx): The components a box.exec(...) call passes through, where the isolation boundary sits, and how each SDK maps onto the…
+- [Under the hood](/architecture/internals.mdx): What BoxLite does inside your process when you run async with SimpleBox(...) — enough of a mental model to tune…
+- [Core components](/architecture/core-components.mdx): What each module is responsible for, where its state lives on disk, and which metrics it exposes.
+- [Security and isolation](/architecture/security-and-isolation.mdx)
+- [Networking](/architecture/networking.mdx): How a box reaches the network: the user-mode stack, the fixed subnet, DNS handling, and how a host port reaches a…
+- [Storage](/architecture/storage.mdx): Where a box's bytes live: the digest-keyed image cache, the copy-on-write rootfs, and the two kinds of mount.
+- [Boot latency analysis](/architecture/boot-latency.mdx): Where the time goes between start() and a ready container — and why the second start is far faster than the first.
 
-### Python SDK
+### SDK Reference
+- [SDK reference](/reference/index.mdx): Index of the BoxLite SDKs and a capability comparison across the four language bindings (Python / Node.js / Rust / C).…
+- [Python SDK reference](/reference/python.mdx): Complete class / method / parameter / return / exception reference. All signatures and defaults follow the latest…
+- [Node.js SDK reference](/reference/nodejs.mdx): The complete API surface of @boxlite-ai/boxlite: runtime, box handle, box types, errors, metrics, and the errors people…
+- [Rust SDK reference](/reference/rust.mdx): **What and why**: the boxlite crate is the core implementation of BoxLite — a Tokio-based, async-first library for…
+- [C SDK reference](/reference/c.mdx): **What and why**: BoxLite's C SDK embeds hardware-isolated microVM sandboxes into any C/C++ program, game engine, or…
+- [CLI reference](/reference/cli.mdx): **What and why**: the boxlite command line offers a docker-like experience for creating, running, and managing isolated…
 
-- [Python SDK Overview](/reference/python/index.mdx): Installation, runtime management, sync API
-- [Box Types (Python)](/reference/python/box-types.mdx): SimpleBox, CodeBox, BrowserBox, ComputerBox, InteractiveBox
-- [Execution (Python)](/reference/python/execution.mdx): Command execution, streaming I/O
-- [Errors & Metrics (Python)](/reference/python/errors-metrics.mdx): Exception hierarchy, metrics
+### Resources
+- [Resources](/resources/index.mdx): Reference material that sits alongside the documentation: answers to recurring questions, what changed between…
+- [FAQ](/faq.mdx): Short answers to what teams ask most when adopting BoxLite, with copy-runnable snippets.
+- [Changelog](/guides/changelog.mdx): Where BoxLite's release history lives, and how to check which version you are running.
+- [BoxLite contributor license agreement](/legal/CLA.mdx)
 
-### Node.js SDK
+### Contributing
+- [Contributing](/development/index.mdx): Documentation for people working on BoxLite itself rather than building on it: how to develop the CLI, how to run the…
+- [CLI development guide](/development/cli-development.mdx): Build, test, and extend the boxlite command — implemented in the boxlite-cli crate under src/cli/.
+- [Local E2E](/development/e2e-local.mdx): An operations runbook for the VM integration tests, in CI and on your own machine.
+- [Rust style guide](/development/rust-style.mdx): Coding conventions for contributors to the BoxLite core (the Rust crates). The goal is for submitted PRs to pass the CI…
+- [Concurrent execution deadlock investigation](/development/concurrent-exec-deadlock.mdx): **Resolved and superseded.** A historical record of one deadlock — kept for the debugging method, not as current…
 
-- [Node.js SDK Overview](/reference/nodejs/index.mdx): Installation, runtime management
-- [Box Types (Node.js)](/reference/nodejs/box-types.mdx): SimpleBox, CodeBox, BrowserBox, ComputerBox, InteractiveBox
-- [Execution (Node.js)](/reference/nodejs/execution.mdx): Command execution, streaming I/O
-- [Errors & Metrics (Node.js)](/reference/nodejs/errors-metrics.mdx): Error types, metrics
+## Use cases
 
-### Rust SDK
+### Use cases
+- [Use cases](/use-cases/index.mdx): Complete, end-to-end guides for shipping something real with BoxLite. Each one takes a scenario from problem statement…
 
-- [Rust SDK Overview](/reference/rust/index.mdx): Installation, runtime management
-- [Box Configuration (Rust)](/reference/rust/box-config.mdx): BoxConfig, builder pattern
-- [Execution (Rust)](/reference/rust/execution.mdx): Command execution
-- [Errors & Metrics (Rust)](/reference/rust/errors-metrics.mdx): Error types, metrics
+### The box is a tool the model calls
+- [Build a code interpreter for your LLM](/use-cases/code-interpreter.mdx): Let a model write Python freely and execute it inside a hardware-isolated microVM. You get the result; your host never…
+- [Build a data analysis agent](/use-cases/data-analysis-agent.mdx): Hand a CSV to a model, let it write its own pandas and matplotlib code, and run that code in an isolated microVM. You…
+- [Preview a sandboxed web app](/use-cases/sandboxed-web-app.mdx): Run a whole web service — generated by a model or uploaded by a user — inside an isolated microVM, and reach its HTTP…
+- [Expose a sandbox as an MCP tool](/use-cases/mcp-tool-server.mdx): Wrap an isolated sandbox in a standard MCP server so Claude Desktop, an IDE, or any agent can discover and call it over…
+- [Review untrusted pull requests in a sandbox](/use-cases/sandboxed-ci.mdx): Run an outside contributor's pull request — install its dependencies, execute its tests, and have a model review it —…
 
-### C SDK
+### The agent lives in the box
+- [Give an agent a computer](/use-cases/computer-use-agent.mdx): Run a full Linux desktop inside an isolated microVM and let a vision model drive it — look at the screen, decide, move…
+- [Scrape and analyze the web safely](/use-cases/web-scraping-agent.mdx): Drive a real browser inside a microVM, parse the untrusted HTML it returns in a *second* sandbox, and only then hand…
+- [Use a custom image as the agent environment](/use-cases/custom-agent-image.mdx): Give your agent the toolchain it needs on the first boot instead of installing it every time. Any OCI image — a public…
 
-- [C SDK Overview](/reference/c/index.mdx): Installation, runtime management
-- [Native API (C)](/reference/c/native-api.mdx): Core C API functions
-- [Memory, JSON & Threading (C)](/reference/c/memory-json-threading.mdx): Memory management, JSON, threads
-- [Errors & Metrics (C)](/reference/c/errors-metrics.mdx): Error handling, metrics
-
-## Architecture
-
-- [Architecture Overview](/architecture/index.mdx): System architecture and design
-- [Core Components](/architecture/components.mdx): Jailer, ShimController, Guest Agent
-- [Security & Isolation](/architecture/security.mdx): Security model and isolation guarantees
-- [Networking & Storage](/architecture/networking-storage.mdx): Network and storage configuration
-
-## BoxRun
-
-- [BoxRun Overview](/boxrun/index.mdx): Managed sandbox platform
-- [BoxRun Quick Start](/boxrun/quickstart.mdx): Get started with BoxRun
-- [BoxRun CLI](/boxrun/cli.mdx): Command-line reference
-- [BoxRun Python SDK](/boxrun/python-sdk.mdx): Python SDK for BoxRun
-- [BoxRun REST API](/boxrun/rest-api.mdx): REST API reference
-- [BoxRun Configuration](/boxrun/configuration.mdx): Configuration options
-
-## FAQ
-
-- [FAQ & Troubleshooting](/faq.mdx): Common questions and solutions
+### Multi-tenant platform
+- [Run an interactive development environment](/use-cases/interactive-dev-environment.mdx): Give each user, branch, or agent a live shell in its own microVM — cd, install, edit, test, with state surviving…
+- [Run untrusted tools safely](/use-cases/untrusted-tool-execution.mdx): Execute a scanner, a parser, or any third-party binary against a sample you did not write — with the network off,…

@@ -33,114 +33,163 @@
     }
   },
   "favicon": "/favicon.svg",
+  "contextual": {
+    "options": [
+      "copy",
+      "view"
+    ],
+    "display": "header"
+  },
   "navigation": {
-    "groups": [
+    "tabs": [
       {
-        "group": "Getting Started",
-        "pages": [
-          "index",
-          "getting-started/index",
-          "getting-started/quickstart-python",
-          "getting-started/quickstart-nodejs",
-          "getting-started/quickstart-rust",
-          "getting-started/quickstart-c",
-          "getting-started/core-concepts",
-          "getting-started/design-principles"
-        ]
-      },
-      {
-        "group": "Tutorials",
-        "pages": [
-          "tutorials/index",
-          "tutorials/ai-coding-tools",
-          "tutorials/code-execution",
-          "tutorials/file-transfer",
-          "tutorials/llm-integration",
-          "tutorials/browser-automation",
-          "tutorials/desktop-automation",
-          "tutorials/interactive-terminal",
-          "tutorials/run-any-language",
-          "tutorials/long-running-services",
-          "tutorials/error-handling"
-        ]
-      },
-      {
-        "group": "Guides",
-        "pages": [
-          "guides/index",
-          "guides/ai-agent-integration",
-          "guides/building-from-source",
-          "guides/image-registry-configuration",
-          "guides/macos-sandbox-debugging"
-        ]
-      },
-      {
-        "group": "SDK Reference",
-        "pages": [
-          "reference/index",
+        "tab": "BoxLite Opensource",
+        "groups": [
           {
-            "group": "Python SDK",
-            "icon": "python",
+            "group": "Getting started",
+            "icon": "rocket",
+            "root": "index",
             "pages": [
-              "reference/python/index",
-              "reference/python/box-types",
-              "reference/python/execution",
-              "reference/python/errors-metrics"
+              "getting-started/index",
+              "getting-started/installation",
+              "getting-started/quickstart-python",
+              "getting-started/quickstart-nodejs",
+              "getting-started/quickstart-rust",
+              "getting-started/quickstart-c"
             ]
           },
           {
-            "group": "Node.js SDK",
-            "icon": "node-js",
+            "group": "Manage sandboxes",
+            "icon": "cube",
+            "root": "manage-sandbox/index",
             "pages": [
-              "reference/nodejs/index",
-              "reference/nodejs/box-types",
-              "reference/nodejs/execution",
-              "reference/nodejs/errors-metrics"
+              "manage-sandbox/sandbox-types",
+              "manage-sandbox/lifecycle",
+              "manage-sandbox/environment",
+              "manage-sandbox/compute-resources",
+              "manage-sandbox/volumes",
+              "manage-sandbox/network-access",
+              "manage-sandbox/snapshots",
+              "manage-sandbox/secrets-and-security"
             ]
           },
           {
-            "group": "Rust SDK",
-            "icon": "gear",
+            "group": "Agent tools",
+            "icon": "screwdriver-wrench",
+            "root": "agent-tools/index",
             "pages": [
-              "reference/rust/index",
-              "reference/rust/box-config",
-              "reference/rust/execution",
-              "reference/rust/errors-metrics"
+              "agent-tools/code-execution-python",
+              "agent-tools/code-execution-any-language",
+              "agent-tools/pseudo-terminal",
+              "agent-tools/computer-use",
+              "agent-tools/browser-automation",
+              "agent-tools/drive-from-agent-loop",
+              "agent-tools/mcp-server",
+              "agent-tools/github-operations"
             ]
           },
           {
-            "group": "C SDK",
-            "icon": "c",
+            "group": "Agent in a box",
+            "icon": "robot",
+            "root": "agent-in-box/index",
             "pages": [
-              "reference/c/index",
-              "reference/c/native-api",
-              "reference/c/memory-json-threading",
-              "reference/c/errors-metrics"
+              "agent-in-box/run-claude-code",
+              "agent-in-box/run-codex",
+              "agent-in-box/run-pi",
+              "agent-in-box/run-opencode",
+              "agent-in-box/run-hermes"
+            ]
+          },
+          {
+            "group": "Human tools",
+            "icon": "user",
+            "root": "human-tools/index",
+            "pages": [
+              "human-tools/desktop-access",
+              "human-tools/browser-access"
+            ]
+          },
+          {
+            "group": "From demo to production",
+            "icon": "map",
+            "root": "guides/index",
+            "pages": [
+              "guides/error-handling",
+              "guides/at-scale",
+              "guides/deployment",
+              "guides/agent-service-endpoint",
+              "guides/image-registry-configuration"
+            ]
+          },
+          {
+            "group": "Architecture",
+            "icon": "sitemap",
+            "root": "architecture/index",
+            "pages": [
+              "architecture/core-components",
+              "architecture/security-and-isolation",
+              "architecture/networking",
+              "architecture/storage",
+              "architecture/boot-latency"
+            ]
+          },
+          {
+            "group": "SDK reference",
+            "icon": "code",
+            "root": "reference/index",
+            "pages": [
+              "reference/python",
+              "reference/nodejs",
+              "reference/rust",
+              "reference/c",
+              "reference/cli"
+            ]
+          },
+          {
+            "group": "FAQ and releases",
+            "icon": "circle-info",
+            "root": "resources/index",
+            "pages": [
+              "faq",
+              "guides/changelog"
+            ]
+          },
+          {
+            "group": "Contributing",
+            "icon": "code-branch",
+            "root": "development/index",
+            "pages": [
+              "development/cli-development",
+              "development/e2e-local",
+              "development/rust-style",
+              "development/building-from-source",
+              "development/macos-sandbox-debugging",
+              "development/concurrent-exec-deadlock",
+              "legal/CLA"
             ]
           }
         ]
       },
       {
-        "group": "Architecture",
-        "pages": [
-          "architecture/index",
-          "architecture/components",
-          "architecture/security",
-          "architecture/networking-storage"
-        ]
-      },
-      {
-        "group": "Resources",
-        "pages": [
-          "faq",
-          "guides/changelog"
-        ]
-      },
-      {
-        "group": "Development",
-        "pages": [
-          "development/cli",
-          "development/rust-style"
+        "tab": "Use cases",
+        "groups": [
+          {
+            "group": "Use cases",
+            "icon": "lightbulb",
+            "root": "use-cases/index",
+            "pages": [
+              "use-cases/code-interpreter",
+              "use-cases/data-analysis-agent",
+              "use-cases/sandboxed-web-app",
+              "use-cases/mcp-tool-server",
+              "use-cases/sandboxed-ci",
+              "use-cases/computer-use-agent",
+              "use-cases/web-scraping-agent",
+              "use-cases/custom-agent-image",
+              "use-cases/interactive-dev-environment",
+              "use-cases/untrusted-tool-execution"
+            ]
+          }
         ]
       }
     ]
@@ -168,5 +217,175 @@
       "github": "https://github.com/boxlite-ai",
       "discord": "https://go.boxlite.ai/discord"
     }
-  }
+  },
+  "redirects": [
+    {
+      "source": "/agent-in-box/agent-sdk-in-box",
+      "destination": "/agent-tools/drive-from-agent-loop"
+    },
+    {
+      "source": "/agent-in-box/agent-service-endpoint",
+      "destination": "/guides/agent-service-endpoint"
+    },
+    {
+      "source": "/architecture/components",
+      "destination": "/architecture/core-components"
+    },
+    {
+      "source": "/architecture/internals",
+      "destination": "/architecture/index"
+    },
+    {
+      "source": "/architecture/networking-storage",
+      "destination": "/architecture/networking"
+    },
+    {
+      "source": "/architecture/security",
+      "destination": "/architecture/security-and-isolation"
+    },
+    {
+      "source": "/development/cli",
+      "destination": "/development/cli-development"
+    },
+    {
+      "source": "/getting-started/core-concepts",
+      "destination": "/getting-started/index"
+    },
+    {
+      "source": "/getting-started/design-principles",
+      "destination": "/architecture/index"
+    },
+    {
+      "source": "/guides/ai-agent-integration",
+      "destination": "/agent-in-box/index"
+    },
+    {
+      "source": "/guides/building-from-source",
+      "destination": "/development/building-from-source"
+    },
+    {
+      "source": "/guides/macos-sandbox-debugging",
+      "destination": "/development/macos-sandbox-debugging"
+    },
+    {
+      "source": "/guides/production-best-practices",
+      "destination": "/guides/at-scale"
+    },
+    {
+      "source": "/manage-sandbox/configuration",
+      "destination": "/manage-sandbox/environment"
+    },
+    {
+      "source": "/reference/c/errors-metrics",
+      "destination": "/reference/c"
+    },
+    {
+      "source": "/reference/c/index",
+      "destination": "/reference/c"
+    },
+    {
+      "source": "/reference/c/memory-json-threading",
+      "destination": "/reference/c"
+    },
+    {
+      "source": "/reference/c/native-api",
+      "destination": "/reference/c"
+    },
+    {
+      "source": "/reference/nodejs/box-types",
+      "destination": "/reference/nodejs"
+    },
+    {
+      "source": "/reference/nodejs/errors-metrics",
+      "destination": "/reference/nodejs"
+    },
+    {
+      "source": "/reference/nodejs/execution",
+      "destination": "/reference/nodejs"
+    },
+    {
+      "source": "/reference/nodejs/index",
+      "destination": "/reference/nodejs"
+    },
+    {
+      "source": "/reference/python/box-types",
+      "destination": "/reference/python"
+    },
+    {
+      "source": "/reference/python/errors-metrics",
+      "destination": "/reference/python"
+    },
+    {
+      "source": "/reference/python/execution",
+      "destination": "/reference/python"
+    },
+    {
+      "source": "/reference/python/index",
+      "destination": "/reference/python"
+    },
+    {
+      "source": "/reference/rust/box-config",
+      "destination": "/reference/rust"
+    },
+    {
+      "source": "/reference/rust/errors-metrics",
+      "destination": "/reference/rust"
+    },
+    {
+      "source": "/reference/rust/execution",
+      "destination": "/reference/rust"
+    },
+    {
+      "source": "/reference/rust/index",
+      "destination": "/reference/rust"
+    },
+    {
+      "source": "/tutorials/ai-coding-tools",
+      "destination": "/agent-in-box/run-claude-code"
+    },
+    {
+      "source": "/tutorials/browser-automation",
+      "destination": "/agent-tools/browser-automation"
+    },
+    {
+      "source": "/tutorials/code-execution",
+      "destination": "/agent-tools/code-execution-python"
+    },
+    {
+      "source": "/tutorials/desktop-automation",
+      "destination": "/agent-tools/computer-use"
+    },
+    {
+      "source": "/tutorials/error-handling",
+      "destination": "/guides/error-handling"
+    },
+    {
+      "source": "/tutorials/file-transfer",
+      "destination": "/manage-sandbox/volumes"
+    },
+    {
+      "source": "/tutorials/index",
+      "destination": "/use-cases/index"
+    },
+    {
+      "source": "/tutorials/interactive-terminal",
+      "destination": "/agent-tools/pseudo-terminal"
+    },
+    {
+      "source": "/tutorials/llm-integration",
+      "destination": "/agent-tools/drive-from-agent-loop"
+    },
+    {
+      "source": "/tutorials/long-running-services",
+      "destination": "/manage-sandbox/network-access"
+    },
+    {
+      "source": "/tutorials/run-any-language",
+      "destination": "/agent-tools/code-execution-any-language"
+    },
+    {
+      "source": "/tutorials",
+      "destination": "/use-cases/index"
+    }
+  ]
 }
