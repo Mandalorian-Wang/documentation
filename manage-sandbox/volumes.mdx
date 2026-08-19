@@ -5,6 +5,10 @@ description: "Mount a host directory into the sandbox so both sides read and wri
 
 A file written inside the sandbox appears on the host immediately, and the reverse. Use it to feed in a dataset or repository, to mount weights and configuration read-only, or to keep results after a box is destroyed. The host path must be **absolute and already exist**.
 
+<Note>
+  This page covers mounting a directory from the host you are running on. On BoxLite Cloud there is no such host, and a host bind mount is ignored — you mount a managed volume by id instead. See [Persistent volumes on BoxLite Cloud](/cloud/volumes).
+</Note>
+
 
 ## Quick Example
 

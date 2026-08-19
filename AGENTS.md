@@ -31,6 +31,20 @@ A use-case guide must combine **two or more capabilities** toward a business out
 
 One fact lives on exactly one page. Everything else links to it. When the same default value, error string, or parameter table appears on two pages, delete the copy and link.
 
+### BoxLite Cloud (dual-product docs)
+
+BoxLite Cloud ships in this repo and this `docs.json` as the `BoxLite Cloud` tab, with every page under `cloud/`. Keep it that way:
+
+- One repo, one `docs.json` — never a separate repo or a second Mintlify project (parallel doc surfaces drift; this project has already lost 7 of 14 shared labels to it once).
+- All Cloud content lives under `cloud/` — nested folders flatten to routes automatically, so the repo root grows by exactly one directory regardless of how many Cloud pages ship.
+- Three layers: **product shell** (per product line, duplication intentional: auth, runtime handle, limits, billing, ops) · **shared body** (single file, linked from both tabs: box concepts, agent tools, use cases, SDK reference) · **seam** (shared pages must never assume how the runtime handle was obtained).
+- Concepts are shared, code is not — local (`SimpleBox(...)`) and remote (`Boxlite.rest(...)`) have different `exec` signatures and teardown, and host bind mounts are ignored over REST. Shared pages get runtime-switchable code blocks, never one sample claimed to work for both.
+- Every Cloud-versus-open-source difference lives on `cloud/vs-opensource`; other pages link there.
+- Capability gaps are facts, not promises: "Disabled — the hosted service reports `snapshots_enabled` as false," never "not yet supported."
+
+**Verifying a Cloud fact.** Cloud has no public source tree of its own, so a claim rests on one of these, preferred in this order: (1) the `boxlite` source at `origin/main`, including the Cloud API in `apps/api/` and the preview proxy in `apps/proxy/` — `apps/API.md` catalogues the platform routes; (2) the live console in a browser, for what only the product shows (plans, limits, dialog defaults, console wording); (3) unauthenticated route probes, where an existing route answers `401` and a missing one `404` — always probe a deliberately nonexistent route in the same run as a control. `GET /api/v1/config` (capability flags) and `GET /api/config` (client configuration) are public and need no credentials.
+
+**Two customer-facing API surfaces, never blurred**: the SDK REST API under `/v1/...` (bearer `blk_live_...`, driven by `Boxlite.rest(...)`) and the platform API under `/api/...` (preview URLs, the public flag). Routes guarded by a platform admin role are not customer APIs — do not document them.
 
 ## Development Commands
 

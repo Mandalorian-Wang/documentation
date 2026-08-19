@@ -171,6 +171,47 @@
         ]
       },
       {
+        "tab": "BoxLite Cloud",
+        "groups": [
+          {
+            "group": "Getting started",
+            "icon": "cloud",
+            "root": "cloud/index",
+            "pages": [
+              "cloud/vs-opensource",
+              "cloud/quickstart",
+              "cloud/api-keys"
+            ]
+          },
+          {
+            "group": "Boxes",
+            "icon": "cube",
+            "root": "cloud/boxes",
+            "pages": []
+          },
+          {
+            "group": "Volumes",
+            "icon": "database",
+            "root": "cloud/volumes",
+            "pages": []
+          },
+          {
+            "group": "Network",
+            "icon": "globe",
+            "root": "cloud/network",
+            "pages": [
+              "cloud/network-policy"
+            ]
+          },
+          {
+            "group": "Billing",
+            "icon": "credit-card",
+            "root": "cloud/billing",
+            "pages": []
+          }
+        ]
+      },
+      {
         "tab": "Use cases",
         "groups": [
           {

@@ -6,6 +6,10 @@ description: "Manage a fleet of sandboxes through one REST endpoint — your cod
 
 The SDK ships a REST **client**. Point it at a host running `boxlite serve` and your `create` / `exec` / `list_info` / `remove` calls become HTTP and WebSocket requests served by real microVMs elsewhere. Swapping `Boxlite.default()` for `Boxlite.rest(...)` leaves your call sites almost unchanged.
 
+<Note>
+  This page covers pointing the client at a server you run. The same client also reaches BoxLite Cloud, where the server is managed for you — see [What is BoxLite Cloud](/cloud/index) and [Run untrusted code on BoxLite Cloud](/cloud/quickstart).
+</Note>
+
 ## Prerequisites
 
 - A working BoxLite install (Python `boxlite` or Node `@boxlite-ai/boxlite`) and a machine with hardware virtualization — see [Installation](/getting-started/installation#platform-and-virtualization-requirements-common-to-all-sdks).
