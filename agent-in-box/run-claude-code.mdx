@@ -24,9 +24,9 @@ The agent gets the freedom that `--dangerously-skip-permissions` implies, with t
 
 Minimal code: enter a `SkillBox`, ask a single question, and read the answer. The first `call()` automatically installs the Claude CLI and its dependencies inside the box (this takes a few minutes), and they are reused afterward.
 
-### Python
+<CodeGroup>
 
-```python
+```python Python
 # pip install boxlite
 # export CLAUDE_CODE_OAUTH_TOKEN="<YOUR_CLAUDE_OAUTH_TOKEN>"  # replace with your real token
 import asyncio
@@ -56,9 +56,7 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
-### Node
-
-```typescript
+```typescript Node.js
 // npm install @boxlite-ai/boxlite
 // export CLAUDE_CODE_OAUTH_TOKEN="<YOUR_CLAUDE_OAUTH_TOKEN>"  // replace with your real token
 import { SkillBox } from "@boxlite-ai/boxlite";
@@ -87,6 +85,8 @@ async function main(): Promise<void> {
 
 main();
 ```
+
+</CodeGroup>
 
 > Multi-turn conversation: call `call()` repeatedly on the same box. Claude retains context within the same session.
 

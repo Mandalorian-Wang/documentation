@@ -9,7 +9,10 @@ A test suite needs CPU, a large build needs disk, a long-lived service needs sta
 
 The following uses Python to create a sandbox with **2 cores / 1024 MiB of memory / 8 GB of disk** and prints the configuration that actually takes effect.
 
-```python
+
+<CodeGroup>
+
+```python Python
 # Python 3.10+; requires pip install boxlite
 import asyncio
 from boxlite import SimpleBox
@@ -43,9 +46,7 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
-Node equivalent:
-
-```typescript
+```typescript Node.js
 // Node 18+; requires npm install @boxlite-ai/boxlite
 import { SimpleBox } from "@boxlite-ai/boxlite";
 
@@ -69,6 +70,8 @@ async function main(): Promise<void> {
 
 main();
 ```
+
+</CodeGroup>
 
 ## Parameters and Returns
 

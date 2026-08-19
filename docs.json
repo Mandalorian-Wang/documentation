@@ -55,6 +55,7 @@
               "getting-started/quickstart-python",
               "getting-started/quickstart-nodejs",
               "getting-started/quickstart-rust",
+              "getting-started/quickstart-go",
               "getting-started/quickstart-c"
             ]
           },
@@ -141,6 +142,7 @@
               "reference/python",
               "reference/nodejs",
               "reference/rust",
+              "reference/go",
               "reference/c",
               "reference/cli"
             ]

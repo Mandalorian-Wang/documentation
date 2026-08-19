@@ -5,16 +5,15 @@ description: "Mount a host directory into the sandbox so both sides read and wri
 
 A file written inside the sandbox appears on the host immediately, and the reverse. Use it to feed in a dataset or repository, to mount weights and configuration read-only, or to keep results after a box is destroyed. The host path must be **absolute and already exist**.
 
-<Note>
-  This page covers mounting a directory from the host you are running on. On BoxLite Cloud there is no such host, and a host bind mount is ignored — you mount a managed volume by id instead. See [Persistent volumes on BoxLite Cloud](/cloud/volumes).
-</Note>
-
 
 ## Quick Example
 
 Mount a host directory read-write at `/workspace` in the sandbox, write a file from inside the sandbox, then return to the host to verify that it appears.
 
-```python
+
+<CodeGroup>
+
+```python Python
 import asyncio
 import os
 import tempfile
@@ -57,9 +56,7 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
-Node version (same read-write mount):
-
-```typescript
+```typescript Node.js
 import { SimpleBox } from "@boxlite-ai/boxlite";
 import { mkdtempSync, writeFileSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -77,10 +74,10 @@ async function main() {
       volumes: [{ hostPath: hostDir, guestPath: "/workspace" }],
     });
 
-    const ls = await box.exec("cat", ["/workspace/hello.txt"]);
+    const ls = await box.exec("cat", "/workspace/hello.txt");
     console.log("guest reads host file:", ls.stdout.trim());
 
-    await box.exec("sh", ["-c", "echo 'from guest' > /workspace/from_guest.txt"]);
+    await box.exec("sh", "-c", "echo 'from guest' > /workspace/from_guest.txt");
 
     // await using exit automatically destroys the sandbox; files in the mounted directory remain on the host
     const back = readFileSync(join(hostDir, "from_guest.txt"), "utf8");
@@ -92,6 +89,8 @@ async function main() {
 
 main();
 ```
+
+</CodeGroup>
 
 ---
 
@@ -119,7 +118,10 @@ Field types:
 
 Read-only mount example:
 
-```python
+
+<CodeGroup>
+
+```python Python
 import asyncio
 import boxlite
 
@@ -143,15 +145,7 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
-### Node: a `volumes` element is an object
-
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `hostPath` | `string` | Yes | An existing absolute path on the host |
-| `guestPath` | `string` | Yes | The mount point inside the sandbox |
-| `readOnly` | `boolean` | No (default `false`) | `true` = read-only |
-
-```typescript
+```typescript Node.js
 import { SimpleBox } from "@boxlite-ai/boxlite";
 
 async function main() {
@@ -163,7 +157,7 @@ async function main() {
         { hostPath: "<YOUR_PATH>/output", guestPath: "/output" },
       ],
     });
-    const r = await box.exec("ls", ["-la", "/config"]);
+    const r = await box.exec("ls", "-la", "/config");
     console.log(r.stdout);
   } catch (e) {
     console.error("box failed to start:", e);
@@ -172,6 +166,16 @@ async function main() {
 
 main();
 ```
+
+</CodeGroup>
+
+In Node, a `volumes` element is an object:
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `hostPath` | `string` | Yes | An existing absolute path on the host |
+| `guestPath` | `string` | Yes | The mount point inside the sandbox |
+| `readOnly` | `boolean` | No (default `false`) | `true` = read-only |
 
 ### Return value
 

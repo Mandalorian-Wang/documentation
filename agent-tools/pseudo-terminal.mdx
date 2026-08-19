@@ -18,7 +18,10 @@ Under the hood it allocates a PTY for the command and forwards your local stdin,
 
 Save the whole block below as `interactive.py`, run `python interactive.py` in a **terminal**, and you drop straight into the box's shell. Type `exit` or press Ctrl-D to quit.
 
-```python
+
+<CodeGroup>
+
+```python Python
 # interactive.py
 # How to run: execute in a real terminal  python interactive.py
 import asyncio
@@ -55,11 +58,7 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
-### Node
-
-Save as `interactive.mjs` (`@boxlite-ai/boxlite` is ESM-only) and run `node interactive.mjs` in a terminal.
-
-```typescript
+```typescript Node.js
 // interactive.mjs
 // How to run: execute in a real terminal  node interactive.mjs
 import { InteractiveBox } from "@boxlite-ai/boxlite";
@@ -87,6 +86,10 @@ async function main() {
 
 main();
 ```
+
+</CodeGroup>
+
+For the Node version, save it as `interactive.mjs` (`@boxlite-ai/boxlite` is ESM-only) and run `node interactive.mjs` in a terminal.
 
 ---
 

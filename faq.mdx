@@ -49,18 +49,23 @@ Native Windows (without WSL2) is not supported.
 
 ### How do I check my installed version?
 
-```python
+
+<CodeGroup>
+
+```python Python
 # Python
 import boxlite
 print(boxlite.__version__)  # prints the latest published version
 ```
 
-```typescript
+```typescript Node.js
 // Node — version comes from the package metadata
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 console.log(require("@boxlite-ai/boxlite/package.json").version);
 ```
+
+</CodeGroup>
 
 ## Configuration & Resources
 
@@ -102,7 +107,10 @@ asyncio.run(main())
 
 Use the `volumes` parameter. The third element of each tuple is a **boolean `read_only`** (`True` = read-only, `False` = read-write) — **not** the string `"ro"`/`"rw"`. A 2-tuple defaults to read-write.
 
-```python
+
+<CodeGroup>
+
+```python Python
 # Python — mount host dir read-only via SimpleBox(volumes=...)
 import asyncio
 from pathlib import Path
@@ -130,15 +138,7 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
-> Why `SimpleBox` and not `runtime.create(opts)` here? `runtime.create()` returns the
-> **native** `Box`, whose `exec(command, args_list)` takes args as a **list** and returns a
-> streaming `Execution` (you then `await execution.wait()` for `exit_code`; stdout/stderr stream
-> off the `Execution`). The convenient `exec(cmd, *args) -> ExecResult` shown throughout this page
-> is the **`SimpleBox`/`CodeBox`** wrapper API. Don't mix the two: `nativeBox.exec("ls", "-la", "/x")`
-> raises `TypeError: argument 'args': Can't extract 'str' to 'Vec'`, and the returned `Execution`
-> has no `.exit_code` / `.stdout`.
-
-```typescript
+```typescript Node.js
 // Node — readOnly is a boolean field on each volume entry
 import { SimpleBox } from "@boxlite-ai/boxlite";
 
@@ -150,7 +150,7 @@ async function main(): Promise<void> {
         { hostPath: "<YOUR_PATH>", guestPath: "/mnt/data", readOnly: true },
       ],
     });
-    const result = await box.exec("ls", ["-la", "/mnt/data"]);
+    const result = await box.exec("ls", "-la", "/mnt/data");
     console.log(result.stdout);
   } catch (err) {
     console.error("error:", err);
@@ -160,11 +160,24 @@ async function main(): Promise<void> {
 main();
 ```
 
+</CodeGroup>
+
+> Why `SimpleBox` and not `runtime.create(opts)` here? `runtime.create()` returns the
+> **native** `Box`, whose `exec(command, args_list)` takes args as a **list** and returns a
+> streaming `Execution` (you then `await execution.wait()` for `exit_code`; stdout/stderr stream
+> off the `Execution`). The convenient `exec(cmd, *args) -> ExecResult` shown throughout this page
+> is the **`SimpleBox`/`CodeBox`** wrapper API. Don't mix the two: `nativeBox.exec("ls", "-la", "/x")`
+> raises `TypeError: argument 'args': Can't extract 'str' to 'Vec'`, and the returned `Execution`
+> has no `.exit_code` / `.stdout`.
+
 ### How do I expose ports from a box?
 
 Use `ports`. Each entry is `(host_port, guest_port, protocol)` in Python or an object in Node. A `host_port` of `0`/omitted means "same as guest port".
 
-```python
+
+<CodeGroup>
+
+```python Python
 # Python — publish guest port 80 on host port 8080
 from boxlite import BoxOptions
 
@@ -174,7 +187,7 @@ opts = BoxOptions(
 )
 ```
 
-```typescript
+```typescript Node.js
 // Node — ports use {hostPort?, guestPort, protocol?}
 import { SimpleBox } from "@boxlite-ai/boxlite";
 
@@ -183,6 +196,8 @@ const box = new SimpleBox({
   ports: [{ hostPort: 8080, guestPort: 80, protocol: "tcp" }],
 });
 ```
+
+</CodeGroup>
 
 ### How do I pass secrets into a box?
 
@@ -536,7 +551,10 @@ Before opening an issue or a discussion, work through this checklist so the repo
 
 The fastest "is it working?" check. Run a command in a throwaway sandbox and print the result.
 
-```python
+
+<CodeGroup>
+
+```python Python
 # Python — requires: pip install boxlite
 import asyncio
 from boxlite import SimpleBox, BoxliteError
@@ -560,7 +578,7 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
-```typescript
+```typescript Node.js
 // Node — requires: npm install @boxlite-ai/boxlite
 import { SimpleBox } from "@boxlite-ai/boxlite";
 
@@ -583,3 +601,5 @@ async function main(): Promise<void> {
 
 main();
 ```
+
+</CodeGroup>

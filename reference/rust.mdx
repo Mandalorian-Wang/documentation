@@ -43,8 +43,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let runtime = BoxliteRuntime::with_defaults()?;
 
     // 2) Create a box (default rootfs = alpine:latest). create is async.
-    //    Note: auto_remove defaults to true (stop deletes the box); set to false here for an explicit remove later.
-    let options = BoxOptions { auto_remove: false, ..Default::default() };
+    //    Note: the default deletes the box on stop; auto_delete: Some(0) keeps it for an explicit remove later.
+    let options = BoxOptions { auto_delete: Some(0), ..Default::default() };
     let litebox = runtime
         .create(options, Some("hello-box".to_string()))
         .await?;
@@ -56,7 +56,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("exit code = {}", result.exit_code);   // 0 = success
 
     // 4) Cleanup: stop terminates the VM; remove is called on the [runtime], not the box.
-    //    (If auto_remove=true, stop() has already deleted it, so remove is unnecessary and should not be called.)
+    //    (Under the default policy stop() has already deleted it, so remove is unnecessary and should not be called.)
     litebox.stop().await?;
     runtime.remove("hello-box", false).await?;
 
@@ -255,8 +255,8 @@ pub struct ExecResult {
 Source: `src/boxlite/src/runtime/options.rs`. `BoxOptions` implements `Default`; fill the remaining fields with `..Default::default()`.
 
 ```rust
-use boxlite::{BoxOptions, RootfsSpec, VolumeSpec, NetworkSpec, PortSpec};
-use boxlite::{AdvancedBoxOptions, SecurityOptions};
+use boxlite::runtime::options::{PortSpec, VolumeSpec};  // not re-exported at the crate root
+use boxlite::{AdvancedBoxOptions, BoxOptions, NetworkSpec, RootfsSpec, SecurityOptions};
 
 let options = BoxOptions {
     cpus: Some(2),                                       // None = the runtime default of 1 vCPU (see note in 4.1)
@@ -270,7 +270,7 @@ let options = BoxOptions {
     }],
     network: NetworkSpec::Enabled { allow_net: vec!["api.github.com".into()] },
     ports: vec![PortSpec { host_port: Some(8080), guest_port: 80, ..Default::default() }],
-    auto_remove: false,                                 // keep the box after stopping
+    auto_delete: Some(0),                               // keep the box after stopping
     advanced: AdvancedBoxOptions {
         security: SecurityOptions::enabled(),           // enabled by default
         ..Default::default()
@@ -293,7 +293,8 @@ let options = BoxOptions {
 | `network` | `NetworkSpec` | Optional | `Enabled { allow_net: [] }` | Network isolation |
 | `ports` | `Vec<PortSpec>` | Optional | `[]` | Port mappings |
 | `secrets` | `Vec<Secret>` | Optional | `[]` | Outbound HTTP(S) secret substitution rules |
-| `auto_remove` | `bool` | Optional | `true` | Auto-delete after stopping (mutually exclusive with `detach=true`) |
+| `auto_delete` | `Option<u32>` | Optional | `None` | Seconds after a successful stop before deletion. `Some(0)` keeps the box; `Some(n>0)` deletes it — local runtimes delete immediately on stop, REST runtimes wait `n` seconds. `None` falls back to the deprecated `auto_remove`, whose default is `true`, so the box is deleted on stop |
+| `auto_remove` | `bool` | **Deprecated** | `true` | Superseded by `auto_delete`, which takes precedence when set. REST runtimes do not transmit this field |
 | `detach` | `bool` | Optional | `false` | Run detached from the parent process |
 | `advanced` | `AdvancedBoxOptions` | Optional | secure defaults | Security / mount isolation / health checks |
 | `entrypoint` | `Option<Vec<String>>` | Optional | `None` | Override the image entrypoint |
@@ -487,7 +488,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let options = BoxOptions {
         rootfs: RootfsSpec::Image("alpine:latest".into()),
-        auto_remove: false,                        // disable auto-removal to allow the explicit remove below
+        auto_delete: Some(0),                      // keep the box so the explicit remove below is the only deletion
         advanced: AdvancedBoxOptions {
             security,                              // custom security options
             ..Default::default()
@@ -600,8 +601,10 @@ pub enum BoxStatus {
     Configured,   // Created and persisted, VM not started
     Running,      // Running, accepting commands
     Stopping,     // Gracefully shutting down (transient)
-    Stopped,      // Stopped, can be restarted
-    // There are also Paused / Failed variants (see source src/boxlite/src/litebox/state.rs)
+    Stopped,      // Stopped, VM terminated, rootfs preserved — can be restarted
+    Paused,       // VM frozen via SIGSTOP; used during export/snapshot for a consistent point in time
+    Failed,       // Init pipeline failed; record and rootfs are preserved so you can retry or destroy.
+                  // BoxState::error_reason carries the cause
 }
 ```
 
@@ -609,7 +612,7 @@ Predicate methods: `is_running()` / `is_configured()` / `is_stopped()` / `is_act
 
 ### `BoxState`
 
-The dynamic state of a box (changes over the lifecycle), as opposed to the static configuration. Source `src/boxlite/src/runtime/types.rs` (struct `BoxState`):
+The dynamic state of a box (changes over the lifecycle), as opposed to the static configuration. Source `src/boxlite/src/litebox/state.rs` (struct `BoxState`):
 
 ```rust
 pub struct BoxState {
@@ -617,9 +620,15 @@ pub struct BoxState {
     pub pid: Option<u32>,                   // Process ID (None if not running)
     pub container_id: Option<ContainerID>,  // Container ID (64-char hex; see 9.2)
     pub last_updated: DateTime<Utc>,        // Last state-change timestamp (UTC)
-    pub lock_id: Option<LockId>,            // Lock ID for multiprocess-safe locking
-}
+    pub lock_id: Option<LockId>,            // Allocated on first initialization, not at creation
+    pub health_status: HealthStatus,        // Current health state + consecutive failure count
+    pub error_reason: Option<String>,       // Why the box entered Failed; cleared on a successful transition
+    pub exit_code: Option<i32>,             // Init process exit code, set when the box stopped
+}                                           // because its main command exited (Docker semantics)
 ```
+
+> When a box reports `Failed`, `error_reason` and `exit_code` are where the cause is. Both are
+> `None` while the box is healthy.
 
 ```rust
 use boxlite::{BoxliteRuntime, BoxOptions, BoxStatus};
@@ -808,7 +817,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 | `the \`?\` operator ... future ... not awaited` / `not in async` | Runtime operations are async and must run inside a Tokio runtime | Use `#[tokio::main]` or `tokio::runtime::Runtime::block_on`, and `.await` |
 | Create/start fails with `BoxliteError::Engine(...)` indicating virtualization is unavailable | No hardware virtualization (no KVM / unsupported platform) | Linux needs KVM (user in the `kvm` group); macOS arm64 uses Hypervisor.framework (no `/dev/kvm`); WSL2 needs KVM enabled. This is an environment constraint — you can `match` the error and degrade gracefully |
 | `BoxliteError::Image(...)` while pulling an image | Network flakiness / missing registry auth / wrong reference | Check the image reference and network; configure private registries via `ImageRegistry::...with_basic_auth/with_bearer_auth` (see [runtime options](#boxliteoptions-imageregistry-runtime-options)); retry |
-| `BoxliteError::Config("auto_remove=true is incompatible with detach=true ...")` | `auto_remove` and `detach` are both true | For a detached box, use `auto_remove: false` and manage the lifecycle yourself |
+| `BoxliteError::Config("remove-on-stop is incompatible with detach=true ...")` | Remove-on-stop is in effect together with `detach: true` | For a detached box, set `auto_delete: Some(0)` and manage the lifecycle yourself |
 | `box.remove()` method not found | Removal lives on the **runtime** | `runtime.remove(id_or_name, force).await?` |
 | `rest`/REST-related types not found (`BoxliteRestOptions`, etc.) | The REST client is behind the `rest` feature | Enable the crate feature `rest` |
 

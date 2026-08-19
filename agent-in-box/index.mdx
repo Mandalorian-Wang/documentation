@@ -91,9 +91,11 @@ async def main():
 asyncio.run(main())
 ```
 
-### Python: Pre-install skill packs for the agent
+### Pre-install skill packs for the agent
 
-```python
+<CodeGroup>
+
+```python Python
 import asyncio
 import os
 
@@ -119,9 +121,7 @@ async def main():
 asyncio.run(main())
 ```
 
-### Node: Run an agent with SkillBox
-
-```typescript
+```typescript Node.js
 // Package name is @boxlite-ai/boxlite (not 'boxlite', not '@boxlite/sdk')
 import { SkillBox } from "@boxlite-ai/boxlite";
 
@@ -150,6 +150,8 @@ async function main(): Promise<void> {
 
 main();
 ```
+
+</CodeGroup>
 
 ### Python: Build your own Box for full control over the Claude CLI (advanced)
 

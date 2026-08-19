@@ -145,7 +145,7 @@ Chained construction; all methods return `Self`:
 | `memory_mib` | `Option<u32>` | `None` | Memory in MiB; passed through as `None`, in which case the runtime's default VM size applies. Set it explicitly in production |
 | `env` | `Vec<(String, String)>` | `[]` | Environment variables |
 | `volumes` | `Vec<VolumeSpec>` | `[]` | Volume mounts (see below) |
-| `auto_remove` | `bool` | `true` | Whether to delete the box automatically after it stops |
+| `auto_delete` | `Option<u32>` | `None` | Seconds after a successful stop before deletion. `Some(0)` keeps the box; leave it unset to delete on stop |
 
 Mount a host directory (`read_only` is a **bool**, not a string):
 
@@ -251,4 +251,4 @@ The first use of an image (such as `alpine:latest`) downloads it from a registry
 
 - Run any language's code inside a box, mount volumes, or configure networking: replace `BoxCommand` with your target command and `RootfsSpec::Image(...)` with the image you need (such as `python:3.11-slim`).
 - For stronger isolation, configure the security options under `BoxOptions.advanced`.
-- Other languages: see the [Python quickstart](/getting-started/quickstart-python) and the [Node.js quickstart](/getting-started/quickstart-nodejs).
+- Other languages: see the [Python quickstart](/getting-started/quickstart-python), the [Node.js quickstart](/getting-started/quickstart-nodejs), and the [Go quickstart](/getting-started/quickstart-go).

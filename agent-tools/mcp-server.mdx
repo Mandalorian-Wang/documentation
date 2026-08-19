@@ -10,7 +10,9 @@ You write the MCP server; BoxLite supplies the sandbox behind it. An MCP tool ha
 
 This is the sandbox half — the function you register as an MCP tool. It is complete and runnable on its own.
 
-```python
+<CodeGroup>
+
+```python Python
 import asyncio
 
 from boxlite import SimpleBox, BoxliteError
@@ -40,6 +42,45 @@ async def main() -> None:
 if __name__ == "__main__":
     asyncio.run(main())
 ```
+
+```typescript Node.js
+import { BoxliteError, SimpleBox } from "@boxlite-ai/boxlite";
+
+interface RunResult {
+  exitCode?: number;
+  stdout?: string;
+  stderr?: string;
+  error?: string;
+}
+
+// Run one command in an isolated sandbox and return a serializable result.
+async function runInSandbox(command: string, ...args: string[]): Promise<RunResult> {
+  try {
+    // autoRemove: true tears the box down on exit; image is required
+    await using box = new SimpleBox({ image: "alpine:latest", autoRemove: true });
+    const result = await box.exec(command, args, {}, { timeoutSecs: 30 });
+    // A non-zero exit code does NOT throw — return it as data
+    return { exitCode: result.exitCode, stdout: result.stdout, stderr: result.stderr };
+  } catch (err) {
+    if (err instanceof BoxliteError) {
+      // Wrapper-layer errors (e.g. ExecError) subclass BoxliteError
+      return { error: err.message };
+    }
+    // Image pull failures and missing virtualization surface as a standard Error
+    return { error: `runtime failure: ${err instanceof Error ? err.message : err}` };
+  }
+}
+
+async function main(): Promise<void> {
+  console.log(await runInSandbox("echo", "hello from the box"));
+}
+
+main();
+```
+
+</CodeGroup>
+
+Verified: real run prints `{ exitCode: 0, stdout: 'hello from the box\n', stderr: '' }`.
 
 To make it an actual MCP tool, register it with a standalone MCP framework — for example `FastMCP` from the official `mcp` Python package, installed separately. The full build, including a client that performs the handshake, is in the use cases: [Expose a sandbox as an MCP tool](/use-cases/mcp-tool-server).
 

@@ -531,20 +531,22 @@ main();
 
 ### Remote BoxLite server (REST) and the routing prefix
 
-Connect to a remote BoxLite server instead of the local runtime. Construct an `ApiKeyCredential` and pass it positionally: `JsBoxlite.rest(url, credential)`.
+Connect to a remote BoxLite server instead of the local runtime. `JsBoxlite.rest` takes a single `BoxliteRestOptions` bag — not `(url, credential)` positionally.
 
 ```typescript
-import { JsBoxlite, ApiKeyCredential } from "@boxlite-ai/boxlite";
+import { ApiKeyCredential, BoxliteRestOptions, JsBoxlite } from "@boxlite-ai/boxlite";
 
 const rt = JsBoxlite.rest(
-  "http://localhost:8100",
-  new ApiKeyCredential("<YOUR_API_KEY>"), // TODO: replace
+  new BoxliteRestOptions({
+    url: "http://localhost:8100",
+    credential: new ApiKeyCredential("<YOUR_API_KEY>"), // TODO: replace
+  }),
 );
 const boxes = await rt.listInfo();
 
 // Env discovery -- returns null when BOXLITE_API_KEY is unset:
 const cred = ApiKeyCredential.fromEnv();
-const rt2 = JsBoxlite.rest("http://localhost:8100", cred ?? undefined);
+const rt2 = JsBoxlite.rest(new BoxliteRestOptions({ url: "http://localhost:8100", credential: cred ?? undefined }));
 ```
 
 `ApiKeyCredential` structurally satisfies the exported `Credential` interface, so functions can type their parameter as `Credential` and accept any future credential kind without a signature change.

@@ -9,7 +9,9 @@ description: "Run any shell command or executable — in any language — inside
 
 The snippet below runs as-is. It starts an Alpine box, runs one command, and reads the result back.
 
-```python
+<CodeGroup>
+
+```python Python
 import asyncio
 
 from boxlite import SimpleBox
@@ -32,7 +34,29 @@ if __name__ == "__main__":
         print(f"BoxLite failed to run: {e}")
 ```
 
-To run a different language, change the program name. For example, have an agent run a piece of Python it generated:
+```typescript Node.js
+import { SimpleBox } from "@boxlite-ai/boxlite";
+
+async function main(): Promise<void> {
+  const box = new SimpleBox({ image: "alpine:latest" });
+  try {
+    // exec(cmd, ...args)
+    const result = await box.exec("echo", "Hello from BoxLite!");
+    console.log("stdout:", result.stdout.trim());
+    console.log("exitCode:", result.exitCode); // note the camelCase exitCode
+  } catch (err) {
+    console.error("BoxLite failed to run:", err);
+  } finally {
+    await box.stop(); // release resources (auto_remove defaults to true)
+  }
+}
+
+main();
+```
+
+</CodeGroup>
+
+To run a different language, change the program name. For example, have an agent run a piece of Python it generated (this variant has no separate Node translation — the pattern is identical, only the program name and arguments change):
 
 ```python
 import asyncio
@@ -56,28 +80,6 @@ if __name__ == "__main__":
         asyncio.run(main())
     except RuntimeError as e:
         print(f"BoxLite failed to run: {e}")
-```
-
-Node version (equivalent happy path):
-
-```typescript
-import { SimpleBox } from "@boxlite-ai/boxlite";
-
-async function main(): Promise<void> {
-  const box = new SimpleBox({ image: "alpine:latest" });
-  try {
-    // exec(cmd, ...args)
-    const result = await box.exec("echo", "Hello from BoxLite!");
-    console.log("stdout:", result.stdout.trim());
-    console.log("exitCode:", result.exitCode); // note the camelCase exitCode
-  } catch (err) {
-    console.error("BoxLite failed to run:", err);
-  } finally {
-    await box.stop(); // release resources (auto_remove defaults to true)
-  }
-}
-
-main();
 ```
 
 ---

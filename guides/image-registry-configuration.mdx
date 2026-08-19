@@ -32,7 +32,10 @@ The simplest flow: have BoxLite check `ghcr.io` first, then fall back to
 `docker.io`, then create a box with `alpine` and run a command. You can copy and
 run it directly.
 
-```python
+
+<CodeGroup>
+
+```python Python
 import asyncio
 
 import boxlite
@@ -63,9 +66,7 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
-Node version:
-
-```typescript
+```typescript Node.js
 import { JsBoxlite, SimpleBox } from "@boxlite-ai/boxlite";
 
 async function main(): Promise<void> {
@@ -90,6 +91,8 @@ async function main(): Promise<void> {
 
 main();
 ```
+
+</CodeGroup>
 
 ## Private / authenticated registries
 
@@ -141,7 +144,10 @@ if __name__ == "__main__":
 
 For Bearer token auth, replace `username`/`password` with `bearer_token`:
 
-```python
+
+<CodeGroup>
+
+```python Python
 import os
 
 import boxlite
@@ -154,9 +160,7 @@ registry = boxlite.ImageRegistry(
 )
 ```
 
-Node puts auth in an `auth` sub-object (unlike Python's flat fields):
-
-```typescript
+```typescript Node.js
 import { JsBoxlite, SimpleBox } from "@boxlite-ai/boxlite";
 
 const runtime = new JsBoxlite({
@@ -185,6 +189,10 @@ try {
   await box.stop();
 }
 ```
+
+</CodeGroup>
+
+Node puts auth in an `auth` sub-object, unlike Python's flat fields.
 
 ## Parameters and Returns
 

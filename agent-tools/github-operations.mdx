@@ -9,14 +9,17 @@ A sandbox is a networked Linux machine, so `git` and `gh` work as they always do
 
 Install git inside an Ubuntu sandbox, clone a **public** repository, and read the most recent commit. The whole snippet is ready to copy and run (cloning a public repo needs no token).
 
-```python
+<CodeGroup>
+
+```python Python
 import asyncio
 from boxlite import SimpleBox, BoxliteError
 
 async def main() -> None:
-    # ubuntu base image makes it convenient to install git via apt-get
+    # ubuntu base image makes it convenient to install git via apt-get;
+    # disk_size_gb=8 leaves room for git's full dependency chain (measured at 3% used)
     try:
-        async with SimpleBox(image="ubuntu:24.04") as box:
+        async with SimpleBox(image="ubuntu:24.04", disk_size_gb=8) as box:
             # 1) Install git (a non-zero exit from exec does not raise; check exit_code yourself)
             setup = await box.exec("bash", "-lc", "apt-get update && apt-get install -y git")
             if setup.exit_code != 0:
@@ -47,6 +50,47 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
+```typescript Node.js
+import { BoxliteError, SimpleBox } from "@boxlite-ai/boxlite";
+
+async function main(): Promise<void> {
+  // ubuntu base image makes it convenient to install git via apt-get;
+  // diskSizeGb: 8 leaves room for git's full dependency chain (measured at 3% used)
+  try {
+    await using box = new SimpleBox({ image: "ubuntu:24.04", diskSizeGb: 8 });
+    // 1) Install git (a non-zero exit from exec does not throw; check exitCode yourself)
+    const setup = await box.exec("bash", "-lc", "apt-get update && apt-get install -y git");
+    if (setup.exitCode !== 0) {
+      console.error("git install failed:\n", setup.stderr);
+      return;
+    }
+
+    // 2) Clone a public repository
+    const clone = await box.exec(
+      "git", "clone", "--depth", "1",
+      "https://github.com/octocat/Hello-World.git", "/work/repo",
+    );
+    if (clone.exitCode !== 0) {
+      console.error("clone failed:\n", clone.stderr);
+      return;
+    }
+
+    // 3) Read the most recent commit
+    const log = await box.exec("git", "-C", "/work/repo", "log", "-1", "--pretty=%h %s");
+    console.log("latest commit:", log.stdout.trim());
+  } catch (err) {
+    // Wrapper-layer error, or a standard Error for image pull / virtualization failures
+    console.error(`${err instanceof BoxliteError ? "BoxLite error" : "runtime error"}: ${err instanceof Error ? err.message : err}`);
+  }
+}
+
+main();
+```
+
+</CodeGroup>
+
+Verified: real run prints `latest commit: 7fd1a60 Merge pull request #6 from Spaceghost/patch-1`.
+
 ## Injecting GITHUB_TOKEN with Secret (push / private repos)
 
 The command-line arguments and logs of `exec` may be recorded, so **do not** embed the token in a URL or on the command line. `Secret` provides stronger isolation: **the real token never enters the sandbox**.
@@ -61,7 +105,9 @@ How `Secret` works (note how it differs from "injecting an environment variable"
 
 `SimpleBox(..., secrets=[...])` works too — it forwards the list to `BoxOptions`. The example below uses the low-level `Boxlite` + `Box` only to make the runtime lifecycle explicit.
 
-```python
+<CodeGroup>
+
+```python Python
 import asyncio
 from boxlite import Boxlite, BoxOptions, Secret, NetworkSpec, BoxliteError
 
@@ -75,6 +121,7 @@ PLACEHOLDER = "<BOXLITE_SECRET:github_token>"
 async def main() -> None:
     options = BoxOptions(
         image="ubuntu:24.04",
+        disk_size_gb=8,  # leaves room for git's full dependency chain (measured at 3% used)
         # Disable auto-remove so the runtime.remove in finally is the single cleanup point (default auto_remove=True)
         auto_remove=False,
         # Narrow outbound network to GitHub (default NetworkSpec is Enabled with allow_net=[], i.e. allow all)
@@ -131,7 +178,66 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
-> Tip: the low-level `Box.exec(...)` returns an `Execution` (a streaming handle); call `await execution.wait()` to get the exit code. If you only need the three fields `exit_code` / `stdout` / `stderr` and want something simpler, prefer `SimpleBox` (as in the Quick Example), whose `exec` returns an `ExecResult` directly. The low-level `Box` is used here only to make the runtime lifecycle explicit.
+```typescript Node.js
+import { BoxliteError, JsBoxlite } from "@boxlite-ai/boxlite";
+
+// TODO: replace with your real token; prefer reading from an environment variable over hardcoding
+const GITHUB_TOKEN = process.env.GITHUB_TOKEN ?? "<YOUR_GITHUB_TOKEN>";
+
+// After the Secret is injected, the sandbox sees only this placeholder string;
+// the real token is not inside the sandbox.
+const PLACEHOLDER = "<BOXLITE_SECRET:github_token>";
+
+async function main(): Promise<void> {
+  const runtime = JsBoxlite.withDefaultConfig();
+  let boxId: string | null = null;
+  try {
+    const box = await runtime.create({
+      image: "ubuntu:24.04",
+      diskSizeGb: 8, // leaves room for git's full dependency chain (measured at 3% used)
+      // Disable auto-remove so the runtime.remove in finally is the single cleanup point
+      autoRemove: false,
+      // Narrow outbound network to GitHub (default is enabled with allowNet=[], i.e. allow all)
+      network: { mode: "enabled", allowNet: ["github.com", "api.github.com"] },
+      // Inject via Secret: the MITM proxy replaces the placeholder with the real token only when
+      // an outbound request matches hosts and the placeholder appears in the header/body.
+      secrets: [{ name: "github_token", value: GITHUB_TOKEN, hosts: ["github.com", "api.github.com"] }],
+    });
+    boxId = box.id;
+
+    // Install git inside the sandbox
+    const setup = await (await box.exec("bash", ["-lc", "apt-get update && apt-get install -y git"])).wait();
+    if (setup.exitCode !== 0) {
+      console.error("git install failed");
+      return;
+    }
+
+    // Clone a private repo: use http.extraHeader to put the placeholder in plaintext in the
+    // Authorization header; the real token is substituted by the MITM proxy on the outbound request.
+    const clone = await (
+      await box.exec("git", [
+        "-c", `http.extraHeader=Authorization: Bearer ${PLACEHOLDER}`,
+        "clone", "--depth", "1",
+        // TODO: replace with your private repository
+        "https://github.com/<YOUR_ORG>/<YOUR_PRIVATE_REPO>.git",
+        "/work/repo",
+      ])
+    ).wait();
+    console.log("clone exit code:", clone.exitCode);
+  } catch (err) {
+    console.error(`${err instanceof BoxliteError ? "BoxLite error" : "runtime error"}: ${err instanceof Error ? err.message : err}`);
+  } finally {
+    if (boxId) await runtime.remove(boxId, true);
+    runtime.close();
+  }
+}
+
+main();
+```
+
+</CodeGroup>
+
+> Tip: the low-level `Box.exec(...)` returns an `Execution` (a streaming handle); call `await execution.wait()` to get the exit code. If you only need the three fields `exit_code` / `stdout` / `stderr` and want something simpler, prefer `SimpleBox` (as in the Quick Example), whose `exec` returns an `ExecResult` directly. The low-level `Box` is used here only to make the runtime lifecycle explicit. The low-level `JsBox.exec(...)` (via `JsBoxlite.create`) accepts `args` as a plain array with `env` optional, unlike `SimpleBox.exec`'s array overload, which requires `env`.
 >
 > Likewise, when calling the GitHub REST API, put the placeholder in the Bearer header (the proxy substitutes the real value). If `gh` is not pre-installed, use `curl`, for example:
 > `curl -H "Authorization: Bearer <BOXLITE_SECRET:github_token>" https://api.github.com/user`.
@@ -183,6 +289,7 @@ Returns `ExecResult`:
 | Looking for `box.git_clone()` / `box.open_pr()` | Git and GitHub run through their own CLIs inside the sandbox | Use `box.exec("git", ...)` / `box.exec("gh", ...)` |
 | `clone` returns `exit_code == 128` but the code raised nothing | A non-zero exit from `exec` **does not raise**; it returns `ExecResult(exit_code != 0)` | Check `result.exit_code` after every `exec` and read `result.stderr` as needed |
 | `git: command not found` | The base image does not ship git | Install it first: `apt-get install -y git` (Debian/Ubuntu) or `apk add git` (Alpine) |
+| `apt-get install -y git` fails with `dpkg: error processing archive ... failed to write (No space left on device)` | The default box disk is too small for git's full dependency chain on `ubuntu:24.04` (curl, ssh, ldap, and others) | `disk_size_gb=8` (measured at 3% used after install) |
 | `RuntimeError` (image pull failed) | A network hiccup or a wrong image name | Catch `RuntimeError` and retry; confirm the image reference is correct |
 | Token appears in logs | The token was embedded in a `git clone https://<token>@...` command-line argument | Use `Secret` and put only the placeholder on the command line (e.g. `git -c http.extraHeader="Authorization: Bearer <BOXLITE_SECRET:github_token>"`); the real value is substituted by the proxy on the outbound path, and restrict `hosts` |
 | Secret is set but git/curl still gets 401/403 | The placeholder did not appear in the outbound request, so the proxy could not substitute it: common when credentials are embedded in a `https://user:token@host/...` URL (git Base64-encodes them and the placeholder is broken up), or the target host is not in the `hosts` list | Put the placeholder in a **plaintext request header** (git: `http.extraHeader`; curl/gh: `Authorization: Bearer`); confirm the target host is listed in `Secret.hosts` and `NetworkSpec.allow_net` |

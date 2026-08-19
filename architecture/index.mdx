@@ -30,7 +30,10 @@ Inside the host process, BoxLite is a library that descends through the **shim**
 
 This code is the smallest observable unit for understanding the architecture: it walks the full chain **host application → runtime → Box handle → execution inside the guest agent**, and prints what each layer exposes (Box state, exit code, runtime metrics).
 
-```python
+
+<CodeGroup>
+
+```python Python
 # pip install boxlite
 import asyncio
 
@@ -60,9 +63,7 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
-The equivalent Node implementation (showing the same chain):
-
-```typescript
+```typescript Node.js
 // npm install @boxlite-ai/boxlite   (package name is @boxlite-ai/boxlite)
 import { SimpleBox, BoxliteError } from "@boxlite-ai/boxlite";
 
@@ -84,6 +85,8 @@ async function main(): Promise<void> {
 
 main();
 ```
+
+</CodeGroup>
 
 The layer each step maps to is shown in the data-flow diagram in the next section.
 
