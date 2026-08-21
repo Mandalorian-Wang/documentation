@@ -30,7 +30,9 @@ By default the client reaches the server on the same host at `http://localhost:8
 
 Minimal happy path: connect to a remote endpoint and list existing boxes. Runs as-is (start `boxlite serve` in another terminal first).
 
-```python
+<CodeGroup>
+
+```python Python
 import asyncio
 
 from boxlite import ApiKeyCredential, Boxlite, BoxliteRestOptions
@@ -65,7 +67,39 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
-> Key point: `Boxlite.rest(...)` is a **synchronous** constructor, but the runtime operations under the REST client (`create / get / get_info / list_info / metrics / remove`) must be `await`ed. The local `Boxlite` handle behaves the same way: synchronous construction, async methods.
+```typescript Node.js
+import { JsBoxlite, BoxliteRestOptions, ApiKeyCredential } from "@boxlite-ai/boxlite";
+
+const SERVER_URL = "http://localhost:8100"; // <YOUR_URL>
+const API_KEY = "local-dev-key";            // <YOUR_API_KEY>
+
+async function main(): Promise<void> {
+  // The runtime class is JsBoxlite (there is no bare Boxlite)
+  const runtime = JsBoxlite.rest(
+    new BoxliteRestOptions({
+      url: SERVER_URL,
+      credential: new ApiKeyCredential(API_KEY),
+      pathPrefix: "default", // Required when connecting to the reference server; otherwise requests to /v1/boxes hit 404
+    }),
+  );
+
+  try {
+    const boxes = await runtime.listInfo();
+    console.log(`Remote box count: ${boxes.length}`);
+    for (const info of boxes) {
+      console.log(`  - ${info.id} name=${info.name} status=${info.state.status}`);
+    }
+  } catch (err) {
+    console.error("Connection or listing failed:", err);
+  }
+}
+
+main();
+```
+
+</CodeGroup>
+
+> Key point: `Boxlite.rest(...)` / `JsBoxlite.rest(...)` is a **synchronous** constructor, but the runtime operations under the REST client (`create` / `get` / `get_info`/`getInfo` / `list_info`/`listInfo` / `metrics` / `remove`) must be `await`ed. The local runtime handle behaves the same way: synchronous construction, async methods.
 
 ### Create, Execute, Reclaim (End to End)
 
@@ -196,39 +230,7 @@ print(info.state.status)    # status string: outer BoxInfo.state -> BoxStateInfo
 print(info.cpus, info.memory_mib, info.image)
 ```
 
-The outer object is `BoxInfo.state` (a `BoxStateInfo`), and the inner field is `status` (a string). Both levels must be written correctly.
-
-### Node Equivalent Example
-
-```typescript
-import { JsBoxlite, BoxliteRestOptions, ApiKeyCredential } from "@boxlite-ai/boxlite";
-
-const SERVER_URL = "http://localhost:8100"; // <YOUR_URL>
-const API_KEY = "local-dev-key";            // <YOUR_API_KEY>
-
-async function main(): Promise<void> {
-  // The runtime class is JsBoxlite (there is no bare Boxlite)
-  const runtime = JsBoxlite.rest(
-    new BoxliteRestOptions({
-      url: SERVER_URL,
-      credential: new ApiKeyCredential(API_KEY),
-      pathPrefix: "default", // Required when connecting to the reference server; otherwise requests to /v1/boxes hit 404
-    }),
-  );
-
-  try {
-    const boxes = await runtime.listInfo();
-    console.log(`Remote box count: ${boxes.length}`);
-    for (const info of boxes) {
-      console.log(`  - ${info.id} name=${info.name} status=${info.state.status}`);
-    }
-  } catch (err) {
-    console.error("Connection or listing failed:", err);
-  }
-}
-
-main();
-```
+The outer object is `BoxInfo.state` (a `BoxStateInfo`), and the inner field is `status` (a string). Both levels must be written correctly — the Node equivalent, `info.state.status`, is already shown in the Quick Example above.
 
 ## Troubleshooting
 

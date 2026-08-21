@@ -45,7 +45,9 @@ Read the current state with `box.info().state.status`. **`info()` is synchronous
 
 The example below runs standalone: create → exec → stop → remove. `auto_remove=False` is used to demonstrate the separate stop and remove steps.
 
-```python
+<CodeGroup>
+
+```python Python
 import asyncio
 import boxlite
 
@@ -95,7 +97,64 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
+```typescript Node.js
+import { JsBoxlite } from "@boxlite-ai/boxlite";
+
+async function main(): Promise<void> {
+  // withDefaultConfig() is the process-wide singleton runtime; close() is synchronous
+  const runtime = JsBoxlite.withDefaultConfig();
+  let boxId: string | null = null;
+  try {
+    // 1. create (always returns a Promise; await it)
+    const box = await runtime.create({
+      image: "alpine:latest", // pulled over the network on first run
+      cpus: 2,
+      memoryMib: 512,
+      autoRemove: false, // keep the box after stopping, to demonstrate remove
+    });
+    boxId = box.id;
+    console.log(`created: ${boxId}`);
+
+    // 2. the first exec automatically starts the box (start is idempotent; explicit call is optional)
+    const execution = await box.exec("echo", ["hello from box"]);
+    const stdout = await execution.stdout();
+    while (true) {
+      const line = await stdout.next();
+      if (line === null) break; // EOF
+      console.log("  ", line.trimEnd());
+    }
+    const result = await execution.wait();
+    console.log(`  exitCode = ${result.exitCode}`); // a non-zero exit code does not throw; check it yourself
+
+    // 3. state query: info() is synchronous; do not await
+    const info = box.info();
+    console.log(`  state = ${info.state.status}`);
+
+    // 4. stop (shut down the VM, preserve rootfs)
+    await box.stop();
+    console.log("stopped");
+  } finally {
+    // 5. remove: called on the runtime, not box.remove()
+    if (boxId) {
+      try {
+        await runtime.remove(boxId, true);
+        console.log("removed");
+      } catch (err) {
+        console.error(`remove failed: ${err instanceof Error ? err.message : err}`);
+      }
+    }
+    runtime.close();
+  }
+}
+
+main();
+```
+
+</CodeGroup>
+
 > Key point: `Boxlite` is a **synchronous** context manager (`with`), whereas a `Box`'s methods (`exec`/`stop`/`metrics`) are **async** (require `await`). `box.info()` is synchronous and must not be awaited.
+
+Verified: real run prints `created: <box-id>`, `hello from box`, `exitCode = 0`, `state = running`, `stopped`, `removed`.
 
 ---
 
@@ -122,7 +181,9 @@ Common combinations:
 
 For an `auto_remove=False` Box, the disk persists after `stop()`. Re-acquire a handle and `exec` again, and the VM restarts reusing the original rootfs:
 
-```python
+<CodeGroup>
+
+```python Python
 import asyncio
 import boxlite
 
@@ -164,7 +225,58 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
+```typescript Node.js
+import { JsBoxlite } from "@boxlite-ai/boxlite";
+
+async function main(): Promise<void> {
+  const runtime = JsBoxlite.withDefaultConfig();
+  let boxId: string | null = null;
+  try {
+    let box = await runtime.create({ image: "alpine:latest", autoRemove: false });
+    boxId = box.id;
+
+    // write a file to prove the disk persists
+    await (await box.exec("sh", ["-c", "echo data > /root/note.txt"])).wait();
+
+    await box.stop();
+    console.log("stopped; rootfs preserved");
+
+    // re-acquire the handle (the box is stopped; get still returns a handle)
+    const reattached = await runtime.get(boxId);
+    if (reattached === null) throw new Error(`box ${boxId} not found`);
+    box = reattached;
+
+    // exec triggers a restart, reusing the original rootfs
+    const execution = await box.exec("cat", ["/root/note.txt"]);
+    const stdout = await execution.stdout();
+    while (true) {
+      const line = await stdout.next();
+      if (line === null) break;
+      console.log("  file after restart:", line.trimEnd());
+    }
+    await execution.wait();
+
+    await box.stop();
+  } finally {
+    if (boxId) {
+      try {
+        await runtime.remove(boxId, true);
+      } catch (err) {
+        console.error(`remove failed: ${err instanceof Error ? err.message : err}`);
+      }
+    }
+    runtime.close();
+  }
+}
+
+main();
+```
+
+</CodeGroup>
+
 > Note: data written to tmpfs paths such as `/tmp` does **not** persist across restarts; only data written to ordinary paths on the rootfs (such as `/root`) persists.
+
+Verified: real run prints `stopped; rootfs preserved` then `file after restart: data`.
 
 ---
 
@@ -172,7 +284,9 @@ if __name__ == "__main__":
 
 `runtime.get(id_or_name)` returns a new handle to an existing Box; the Box may be running or stopped. When `get` finds nothing it returns `None` (it does not raise).
 
-```python
+<CodeGroup>
+
+```python Python
 import asyncio
 import boxlite
 
@@ -208,6 +322,50 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
+```typescript Node.js
+import { JsBoxlite } from "@boxlite-ai/boxlite";
+
+async function main(): Promise<void> {
+  const runtime = JsBoxlite.withDefaultConfig();
+  let boxId: string | null = null;
+  try {
+    const box = await runtime.create({ image: "alpine:latest", autoRemove: false });
+    boxId = box.id;
+    await (await box.exec("echo", ["running"])).wait();
+
+    // acquire a second handle pointing to the same box
+    const handle2 = await runtime.get(boxId);
+    if (handle2 === null) throw new Error("reattach failed: box not found");
+
+    const execution = await handle2.exec("echo", ["via second handle"]);
+    const stdout = await execution.stdout();
+    while (true) {
+      const line = await stdout.next();
+      if (line === null) break;
+      console.log("  ", line.trimEnd());
+    }
+    await execution.wait();
+
+    await box.stop();
+  } finally {
+    if (boxId) {
+      try {
+        await runtime.remove(boxId, true);
+      } catch (err) {
+        console.error(`remove failed: ${err instanceof Error ? err.message : err}`);
+      }
+    }
+    runtime.close();
+  }
+}
+
+main();
+```
+
+</CodeGroup>
+
+Verified: real run prints `via second handle`.
+
 ---
 
 ## Cross-process sharing
@@ -218,7 +376,9 @@ One process creates and initializes a Box with `detach=True` and exits; the Box 
 
 The following is a self-contained script: the parent forks a child that creates a detached Box, and after the child exits the parent takes it over.
 
-```python
+<CodeGroup>
+
+```python Python
 import asyncio
 import subprocess
 import sys
@@ -285,7 +445,86 @@ if __name__ == "__main__":
         asyncio.run(parent_reattach())
 ```
 
-Box state persists in the runtime database, so it can be queried (`get_info`), taken over (`get`), and restarted (by `exec`-ing a stopped Box again) across process boundaries.
+```typescript Node.js
+// Self-contained script: the parent spawns a child that creates a detached box,
+// and after the child exits the parent takes it over.
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
+import { JsBoxlite } from "@boxlite-ai/boxlite";
+
+// @boxlite-ai/boxlite is ESM-only, so this file has no CommonJS __filename;
+// derive the equivalent from import.meta.url.
+const __filename = fileURLToPath(import.meta.url);
+
+async function childCreateBox(): Promise<void> {
+  // Do not use withDefaultConfig() here: it is a process-wide singleton that keeps
+  // holding the runtime lock even after this child process exits. Use `new JsBoxlite({})`
+  // instead to construct a releasable runtime instance.
+  const runtime = new JsBoxlite({});
+  const box = await runtime.create({ image: "alpine:latest", detach: true, autoRemove: false });
+  // exec to ensure the box finishes initialization
+  await (await box.exec("echo", ["initialized"])).wait();
+  console.log(`BOX_ID:${box.id}`);
+  // do not call stop(); the box keeps running. The runtime is dropped and the lock is released
+}
+
+async function parentReattach(): Promise<void> {
+  const proc = spawnSync(process.execPath, [__filename, "--child"], {
+    encoding: "utf-8",
+    timeout: 120_000,
+  });
+  if (proc.status !== 0) throw new Error(`child failed: ${proc.stderr}`);
+
+  let boxId: string | null = null;
+  for (const line of proc.stdout.split("\n")) {
+    if (line.startsWith("BOX_ID:")) {
+      boxId = line.slice("BOX_ID:".length).trim();
+      break;
+    }
+  }
+  if (!boxId) throw new Error(`no box id from child; stdout=${proc.stdout}`);
+  console.log(`child created box: ${boxId}`);
+
+  // the parent process also uses `new JsBoxlite({})` rather than withDefaultConfig()
+  const runtime = new JsBoxlite({});
+  try {
+    const info = await runtime.getInfo(boxId);
+    if (info === null) throw new Error("box not found in DB");
+    console.log(`box state in DB: ${info.state.status}`);
+
+    const box = await runtime.get(boxId); // take over
+    if (box === null) throw new Error("reattach failed");
+    const execution = await box.exec("echo", ["hello from parent process"]);
+    const stdout = await execution.stdout();
+    while (true) {
+      const line = await stdout.next();
+      if (line === null) break;
+      console.log("  ", line.trimEnd());
+    }
+    await execution.wait();
+    console.log("cross-process reattach OK");
+  } finally {
+    try {
+      await runtime.remove(boxId, true);
+    } catch (err) {
+      console.error(`cleanup failed: ${err instanceof Error ? err.message : err}`);
+    }
+    runtime.close();
+  }
+}
+
+if (process.argv[2] === "--child") {
+  childCreateBox();
+} else {
+  parentReattach();
+}
+```
+
+</CodeGroup>
+
+Box state persists in the runtime database, so it can be queried (`get_info`), taken over (`get`), and restarted (by `exec`-ing a stopped Box again) across process boundaries. Same shape in both languages: `withDefaultConfig()` / `Boxlite.default()` is the process-wide singleton and must **not** be used here — use `new JsBoxlite({})` / `boxlite.Boxlite(boxlite.Options())` for a releasable instance in both processes.
+
+Verified: real run (parent spawning a child Node process) prints `child created box: <id>`, `box state in DB: running`, `hello from parent process`, `cross-process reattach OK`.
 
 ---
 
@@ -293,7 +532,9 @@ Box state persists in the runtime database, so it can be queried (`get_info`), t
 
 `runtime.shutdown(timeout=None)` gracefully shuts down every Box under that runtime. `timeout` is in seconds: `None` = default 10 seconds, `-1` = wait indefinitely. After shutdown, any creation-type operation raises `RuntimeError`.
 
-```python
+<CodeGroup>
+
+```python Python
 import asyncio
 import boxlite
 
@@ -323,6 +564,42 @@ async def main():
 if __name__ == "__main__":
     asyncio.run(main())
 ```
+
+```typescript Node.js
+import { JsBoxlite } from "@boxlite-ai/boxlite";
+
+async function main(): Promise<void> {
+  const runtime = JsBoxlite.withDefaultConfig();
+
+  const boxes = [];
+  for (let i = 0; i < 3; i++) {
+    const box = await runtime.create({ image: "alpine:latest" });
+    boxes.push(box);
+    console.log(`created box ${i + 1}: ${box.id}`);
+    await (await box.exec("echo", [`hi from box ${i + 1}`])).wait();
+  }
+
+  const metrics = await runtime.metrics();
+  console.log(`running boxes before shutdown: ${metrics.numRunningBoxes}`);
+
+  await runtime.shutdown(5); // 5-second timeout
+  console.log("shutdown complete");
+
+  // creation fails after shutdown
+  try {
+    await runtime.create({ image: "alpine:latest" });
+    console.log("ERROR: expected failure");
+  } catch (err) {
+    console.log(`expected error after shutdown: ${err instanceof Error ? err.message : err}`);
+  }
+}
+
+main();
+```
+
+</CodeGroup>
+
+Verified: real run prints `running boxes before shutdown: 3`, `shutdown complete`, then `expected error after shutdown: stopped: Cannot create box: runtime has been shut down`.
 
 ---
 

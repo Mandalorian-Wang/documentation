@@ -95,12 +95,13 @@ async function main(): Promise<void> {
     });
 
     // likewise must bind to 0.0.0.0
-    await box.exec("sh", [
+    await box.exec(
+      "sh",
       "-c",
       "nohup python -m http.server 18790 --bind 0.0.0.0 > /dev/null 2>&1 &",
-    ]);
+    );
 
-    const r = await box.exec("nslookup", ["example.com"]);
+    const r = await box.exec("nslookup", "example.com");
     console.log(`example.com exitCode=${r.exitCode}`);
 
     await box.stop();

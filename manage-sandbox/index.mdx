@@ -93,7 +93,10 @@ asyncio.run(main())
 
 When you need a long-lived Box or want to reuse one across processes, operate the `Boxlite` runtime directly. Note two things: `Boxlite` enters with a **synchronous** `with`, but its **business methods are `async` and must be awaited**; a single `Box` is still an **async** context manager.
 
-```python
+
+<CodeGroup>
+
+```python Python
 import asyncio
 from boxlite import Boxlite, BoxOptions
 
@@ -126,9 +129,7 @@ async def main():
 asyncio.run(main())
 ```
 
-> Node equivalent (key differences): the package is `@boxlite-ai/boxlite`; the runtime class is `JsBoxlite` (there is no bare `Boxlite`); listing uses `listInfo()`; removal uses `runtime.remove(idOrName, force?)`; `SimpleBox` uses `await using` for automatic cleanup; `info()` is synchronous while `getInfo()` is asynchronous.
-
-```typescript
+```typescript Node.js
 import { SimpleBox } from "@boxlite-ai/boxlite";
 
 async function main(): Promise<void> {
@@ -149,6 +150,10 @@ async function main(): Promise<void> {
 
 main();
 ```
+
+</CodeGroup>
+
+> Node differences: the package is `@boxlite-ai/boxlite`; the runtime class is `JsBoxlite` (there is no bare `Boxlite`); listing uses `listInfo()`; removal uses `runtime.remove(idOrName, force?)`; `SimpleBox` uses `await using` for automatic cleanup; `info()` is synchronous while `getInfo()` is asynchronous.
 
 ---
 ## Where to go next

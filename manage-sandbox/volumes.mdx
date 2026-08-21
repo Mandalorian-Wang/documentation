@@ -10,7 +10,10 @@ A file written inside the sandbox appears on the host immediately, and the rever
 
 Mount a host directory read-write at `/workspace` in the sandbox, write a file from inside the sandbox, then return to the host to verify that it appears.
 
-```python
+
+<CodeGroup>
+
+```python Python
 import asyncio
 import os
 import tempfile
@@ -53,9 +56,7 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
-Node version (same read-write mount):
-
-```typescript
+```typescript Node.js
 import { SimpleBox } from "@boxlite-ai/boxlite";
 import { mkdtempSync, writeFileSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -73,10 +74,10 @@ async function main() {
       volumes: [{ hostPath: hostDir, guestPath: "/workspace" }],
     });
 
-    const ls = await box.exec("cat", ["/workspace/hello.txt"]);
+    const ls = await box.exec("cat", "/workspace/hello.txt");
     console.log("guest reads host file:", ls.stdout.trim());
 
-    await box.exec("sh", ["-c", "echo 'from guest' > /workspace/from_guest.txt"]);
+    await box.exec("sh", "-c", "echo 'from guest' > /workspace/from_guest.txt");
 
     // await using exit automatically destroys the sandbox; files in the mounted directory remain on the host
     const back = readFileSync(join(hostDir, "from_guest.txt"), "utf8");
@@ -88,6 +89,8 @@ async function main() {
 
 main();
 ```
+
+</CodeGroup>
 
 ---
 
@@ -115,7 +118,10 @@ Field types:
 
 Read-only mount example:
 
-```python
+
+<CodeGroup>
+
+```python Python
 import asyncio
 import boxlite
 
@@ -139,15 +145,7 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
-### Node: a `volumes` element is an object
-
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `hostPath` | `string` | Yes | An existing absolute path on the host |
-| `guestPath` | `string` | Yes | The mount point inside the sandbox |
-| `readOnly` | `boolean` | No (default `false`) | `true` = read-only |
-
-```typescript
+```typescript Node.js
 import { SimpleBox } from "@boxlite-ai/boxlite";
 
 async function main() {
@@ -159,7 +157,7 @@ async function main() {
         { hostPath: "<YOUR_PATH>/output", guestPath: "/output" },
       ],
     });
-    const r = await box.exec("ls", ["-la", "/config"]);
+    const r = await box.exec("ls", "-la", "/config");
     console.log(r.stdout);
   } catch (e) {
     console.error("box failed to start:", e);
@@ -168,6 +166,16 @@ async function main() {
 
 main();
 ```
+
+</CodeGroup>
+
+In Node, a `volumes` element is an object:
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `hostPath` | `string` | Yes | An existing absolute path on the host |
+| `guestPath` | `string` | Yes | The mount point inside the sandbox |
+| `readOnly` | `boolean` | No (default `false`) | `true` = read-only |
 
 ### Return value
 

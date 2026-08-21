@@ -1,9 +1,9 @@
 ---
 title: "SDK reference"
-description: "One Rust runtime behind four bindings — Python, Node.js, Rust, and C. Their capabilities are **not fully aligned**, so this is where you confirm the package name, the entry class, and whether your language has a high-level API for what you need."
+description: "One Rust runtime behind five bindings — Python, Node.js, Rust, Go, and C. Their capabilities are **not fully aligned**, so this is where you confirm the package name, the entry class, and whether your language has a high-level API for what you need."
 ---
 
-- For install commands, see each language's quickstart: [Python](/getting-started/quickstart-python) · [Node.js](/getting-started/quickstart-nodejs) · [Rust](/getting-started/quickstart-rust), or the [installation guide](/getting-started/installation).
+- For install commands, see each language's quickstart: [Python](/getting-started/quickstart-python) · [Node.js](/getting-started/quickstart-nodejs) · [Rust](/getting-started/quickstart-rust) · [Go](/getting-started/quickstart-go), or the [installation guide](/getting-started/installation).
 
 ---
 
@@ -14,6 +14,7 @@ description: "One Rust runtime behind four bindings — Python, Node.js, Rust, a
 | [Python](/reference/python) | `boxlite` — runtime, box handles, all six Box types, errors, metrics |
 | [Node.js](/reference/nodejs) | `@boxlite-ai/boxlite` — ESM, `JsBoxlite`, camelCase field names |
 | [Rust](/reference/rust) | The `boxlite` crate — the core layer every other SDK binds to |
+| [Go](/reference/go) | `github.com/boxlite-ai/boxlite/sdks/go` — CGO binding, functional options, no high-level wrapper |
 | [C](/reference/c) | `libboxlite` — Simple API and the callback/post-and-drain model |
 | [CLI](/reference/cli) | `boxlite` commands, flags, and exit codes |
 | [C quickstart](/getting-started/quickstart-c) | Build the C SDK and run a first program |
@@ -34,9 +35,9 @@ Always install **the latest published version**; the per-language SDKs share a s
 
 The minimal "create a sandbox + run a command + read the exit code" skeleton in each language. Each snippet can be copied and run independently (replace the placeholders as noted in the comments).
 
-### Python
+<CodeGroup>
 
-```python
+```python Python
 # pip install boxlite
 import asyncio
 from boxlite import SimpleBox
@@ -58,9 +59,7 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
-### Node.js
-
-```typescript
+```typescript Node.js
 // npm install @boxlite-ai/boxlite   (note the @boxlite-ai/ prefix in the package name)
 import { SimpleBox } from "@boxlite-ai/boxlite";
 
@@ -82,9 +81,7 @@ async function main(): Promise<void> {
 main();
 ```
 
-### Rust
-
-```rust
+```rust Rust
 // crate boxlite
 use boxlite::{BoxOptions, BoxCommand, BoxliteRuntime, BoxliteResult, RootfsSpec};
 
@@ -115,13 +112,7 @@ fn main() -> BoxliteResult<()> {
 }
 ```
 
-> Rust `BoxOptions` field names follow the source (`src/boxlite/src/runtime/options.rs`). The image is set via `rootfs: RootfsSpec::Image(...)` (there is **no** `opts.image` field); fill the rest with `..Default::default()`. The execution method is `exec` (there is **no** `litebox.run`).
-
-### C
-
-The C SDK uses an **asynchronous callback + post-and-drain** model: after registering callbacks you must call `boxlite_runtime_drain` to drive the event loop. The simplest way to get started is the synchronous, blocking Simple/Runner API.
-
-```c
+```c C
 /* link against libboxlite; #include <boxlite.h> */
 #include <boxlite.h>
 #include <stdio.h>
@@ -155,6 +146,13 @@ int main(void) {
 }
 ```
 
+</CodeGroup>
+
+Two per-language notes on the snippets above:
+
+- **Rust**: `BoxOptions` field names follow the source (`src/boxlite/src/runtime/options.rs`). The image is set via `rootfs: RootfsSpec::Image(...)` (there is **no** `opts.image` field); fill the rest with `..Default::default()`. The execution method is `exec` (there is **no** `litebox.run`).
+- **C**: the C SDK uses an **asynchronous callback + post-and-drain** model — after registering callbacks you must call `boxlite_runtime_drain` to drive the event loop. The snippet above uses the simpler synchronous, blocking Simple/Runner API.
+
 ---
 
 ## Parameters & Returns
@@ -167,30 +165,31 @@ int main(void) {
 | Node.js | `npm install @boxlite-ai/boxlite` | `@boxlite-ai/boxlite` (**not** `boxlite`, **not** `@boxlite/sdk`) | `JsBoxlite` (**there is no bare `Boxlite`**) | ESM-only; `engines.node >= 18` |
 | Rust | — | crate `boxlite` | `BoxliteRuntime` | source `src/boxlite/src/` |
 | C | — | `#include <boxlite.h>` | `RuntimeHandle` / `BoxRunner` | cbindgen FFI, callback model |
+| Go | — | module `github.com/boxlite-ai/boxlite/sdks/go`, package `boxlite` | `NewRuntime` → `*Runtime` | CGO. A local debug build needs `make dev:go`, then `go build -tags boxlite_dev` |
 
 ### High-level box types (wrapper support per language)
 
-| Capability | Entry class | Python | Node | Rust | C | Topic page |
-|---|---|:--:|:--:|:--:|:--:|---|
-| General command execution | `SimpleBox` (Py/Node) / low-level `Box` + `Execution` (Rust/C) | Yes | Yes | Low-level | Low-level | [Code execution (any language)](/agent-tools/code-execution-any-language) |
-| Python code execution | `CodeBox` | Yes | Yes | No | No | [Run Python code in a box](/agent-tools/code-execution-python) |
-| Browser automation | `BrowserBox` | Yes | Yes | No | No | [Browser automation](/agent-tools/browser-automation) |
-| Desktop / computer use | `ComputerBox` | Yes | Yes | No | No | [Computer use](/agent-tools/computer-use) |
-| Pseudo-terminal / PTY | `InteractiveBox` (high-level) / `exec(tty=True)` (low-level, all SDKs) | Yes | Yes | Low-level | Low-level | [Interactive shell (PTY)](/agent-tools/pseudo-terminal) |
-| AI CLI / Claude Code | `SkillBox` | Yes | Yes | No | No | [Run Claude Code](/agent-in-box/run-claude-code) |
+| Capability | Entry class | Python | Node | Rust | C | Go | Topic page |
+|---|---|:--:|:--:|:--:|:--:|:--:|---|
+| General command execution | `SimpleBox` (Py/Node) / low-level `Box` + `Execution` (Rust/C) | Yes | Yes | Low-level | Low-level | Low-level | [Code execution (any language)](/agent-tools/code-execution-any-language) |
+| Python code execution | `CodeBox` | Yes | Yes | No | No | No | [Run Python code in a box](/agent-tools/code-execution-python) |
+| Browser automation | `BrowserBox` | Yes | Yes | No | No | No | [Browser automation](/agent-tools/browser-automation) |
+| Desktop / computer use | `ComputerBox` | Yes | Yes | No | No | No | [Computer use](/agent-tools/computer-use) |
+| Pseudo-terminal / PTY | `InteractiveBox` (high-level) / `exec(tty=True)` (low-level, all SDKs) | Yes | Yes | Low-level | Low-level | Low-level | [Interactive shell (PTY)](/agent-tools/pseudo-terminal) |
+| AI CLI / Claude Code | `SkillBox` | Yes | Yes | No | No | No | [Run Claude Code](/agent-in-box/run-claude-code) |
 
-> Rust and C have no high-level wrappers, but you can implement capabilities such as PTY through the low-level `Box.exec(... tty=true)` (Rust: `BoxCommand::tty(true)`).
+> Rust, C, and Go have no high-level wrappers, but you can implement capabilities such as PTY through the low-level exec path (Rust: `BoxCommand::tty(true)`; Go: `ExecutionOptions{TTY: true}`).
 
 ### Core runtime methods (called on the **runtime handle**, not on a box)
 
-| Operation | Python `Boxlite` | Node `JsBoxlite` | Rust `BoxliteRuntime` | Notes |
-|---|---|---|---|---|
-| Create | `create(opts, name=None)` | `create(opts, name?)` | `create(opts, name).await` | — |
-| Get or create | `get_or_create(opts, name=None)` | `getOrCreate(opts, name?)` | `get_or_create(opts, name).await` | — |
-| List | `list_info()` (**not** `list()`) | `listInfo()` | `list_info().await` | Returns a list of `BoxInfo` |
-| Remove | `remove(id_or_name, force=False)` | `remove(idOrName, force?)` | `remove(id, force).await` | On the runtime, **not** `box.remove()` |
-| Metrics | `metrics()` | `metrics()` | `metrics().await` | — |
-| Shut down | `shutdown(timeout=None)` / `close()` | `shutdown(timeout?)` / `close()` | `shutdown(Option<i32>).await` | — |
+| Operation | Python `Boxlite` | Node `JsBoxlite` | Rust `BoxliteRuntime` | Go `*Runtime` | Notes |
+|---|---|---|---|---|---|
+| Create | `create(opts, name=None)` | `create(opts, name?)` | `create(opts, name).await` | `Create(ctx, image, opts...)` | — |
+| Get or create | `get_or_create(opts, name=None)` | `getOrCreate(opts, name?)` | `get_or_create(opts, name).await` | `GetOrCreate(ctx, image, opts...)` — returns `(box, created, err)` | — |
+| List | `list_info()` (**not** `list()`) | `listInfo()` | `list_info().await` | `ListInfo(ctx)` | Returns a list of `BoxInfo` |
+| Remove | `remove(id_or_name, force=False)` | `remove(idOrName, force?)` | `remove(id, force).await` | `Remove(ctx, idOrName)` / `ForceRemove(ctx, idOrName)` | On the runtime, **not** `box.remove()` |
+| Metrics | `metrics()` | `metrics()` | `metrics().await` | `Metrics(ctx)` | — |
+| Shut down | `shutdown(timeout=None)` / `close()` | `shutdown(timeout?)` / `close()` | `shutdown(Option<i32>).await` | `Shutdown(ctx, timeout)` / `Close()` | — |
 
 ### Context manager / async cheat sheet (commonly confused)
 
@@ -202,28 +201,29 @@ int main(void) {
 | Node `JsBoxlite` | plain object | Methods return Promises; `close()` is sync |
 | Node `SimpleBox` | `await using` (`Symbol.asyncDispose`) | `info()` is sync; `getInfo()` is async |
 | Rust `BoxliteRuntime` construction | sync `fn` | `create` / `exec` / `start` are the async parts |
+| Go `*Runtime` / `*Box` | no context manager | `defer rt.Close()` **and** `defer box.Close()`; every I/O method takes a `ctx` as its first argument |
 
 ### Naming differences (inconsistent across languages; copying another language's syntax verbatim will error)
 
-| Concept | Python | Node | Rust | C |
-|---|---|---|---|---|
-| exec timeout | `SimpleBox.exec(timeout=...)` (float) / `CodeBox.run(timeout=...)` (int) / native `Box.exec(timeout_secs=...)` | `exec(.., {timeoutSecs})` | `BoxCommand::timeout(Duration)` | `BoxliteCommand.timeout_secs` (double, `0.0` = no timeout) |
-| exec env | `dict` (`SimpleBox.exec`; the wrapper converts it to a list) | `Record<string,string>` | `BoxCommand::env(k, v)` | `env_pairs[]` + `env_count` |
-| volume read-only flag | bool `read_only` (`(host, guest, True)`) | `readOnly?: boolean` | `VolumeSpec.read_only: bool` | `int read_only` |
-| per-box memory metric | `BoxMetrics.memory_bytes` | `JsBoxMetrics.memoryBytes` | — | `CBoxMetrics.memory_bytes` |
-| per-box CPU metric | `BoxMetrics.cpu_percent` | `JsBoxMetrics.cpuPercent` | — | `CBoxMetrics.cpu_percent` |
-| running box count | `RuntimeMetrics.num_running_boxes` | `JsRuntimeMetrics.numRunningBoxes` | — | same field name on `CRuntimeMetrics` |
-| box state string | `box.info().state.status` | `box.info().state.status` | `BoxInfo.state` | `CBoxInfo` |
-| execution method | `exec` | `exec` | `exec` (**no** `run`) | `boxlite_box_exec` (**no** `boxlite_execute`) |
+| Concept | Python | Node | Rust | C | Go |
+|---|---|---|---|---|---|
+| exec timeout | `SimpleBox.exec(timeout=...)` (float) / `CodeBox.run(timeout=...)` (int) / native `Box.exec(timeout_secs=...)` | `exec(.., {timeoutSecs})` | `BoxCommand::timeout(Duration)` | `BoxliteCommand.timeout_secs` (double, `0.0` = no timeout) | `ExecutionOptions.Timeout` (`time.Duration`; zero = no timeout) |
+| exec env | `dict` (`SimpleBox.exec`; the wrapper converts it to a list) | `Record<string,string>` | `BoxCommand::env(k, v)` | `env_pairs[]` + `env_count` | `ExecutionOptions.Env` (`map[string]string`); the **constructor** instead takes `WithEnv(k, v)`, one pair per call |
+| volume read-only flag | bool `read_only` (`(host, guest, True)`) | `readOnly?: boolean` | `VolumeSpec.read_only: bool` | `int read_only` | no flag — a separate option, `WithVolumeReadOnly(host, guest)` |
+| per-box memory metric | `BoxMetrics.memory_bytes` | `JsBoxMetrics.memoryBytes` | — | `CBoxMetrics.memory_bytes` | `BoxMetrics.MemoryBytes` |
+| per-box CPU metric | `BoxMetrics.cpu_percent` | `JsBoxMetrics.cpuPercent` | — | `CBoxMetrics.cpu_percent` | `BoxMetrics.CPUPercent` |
+| running box count | `RuntimeMetrics.num_running_boxes` | `JsRuntimeMetrics.numRunningBoxes` | — | same field name on `CRuntimeMetrics` | `RuntimeMetrics.RunningBoxes` (**no** `Num` prefix) |
+| box state string | `box.info().state.status` | `box.info().state.status` | `BoxInfo.state` | `CBoxInfo` | `BoxInfo.State` — a `State` string type: `configured` / `running` / `stopping` / `stopped` |
+| execution method | `exec` | `exec` | `exec` (**no** `run`) | `boxlite_box_exec` (**no** `boxlite_execute`) | `Exec`, or `Command(...).Run` / `.Output` |
 
 > Node's per-box metrics also use fields with a `Total` suffix, such as `commandsExecutedTotal` / `execErrorsTotal`, which differ from the Python/C/Go names.
 
 ### Return values
 
-| Type | Python | Node | Rust | C |
-|---|---|---|---|---|
-| command result | `ExecResult(exit_code, stdout, stderr, error_message)` | `{ exitCode, stdout, stderr }` | `ExecResult { exit_code, error_message }` (**no** stdout/stderr; read as streams) | `ExecResult { exit_code, stdout_text, stderr_text }` |
-| non-zero exit | **does not raise**; check `exit_code` yourself | **does not raise**; check `exitCode` yourself | check `result.success()` / `result.code()` | check `exit_code` |
+| Type | Python | Node | Rust | C | Go |
+|---|---|---|---|---|---|
+| command result | `ExecResult(exit_code, stdout, stderr, error_message)` | `{ exitCode, stdout, stderr }` | `ExecResult { exit_code, error_message }` (**no** stdout/stderr; read as streams) | `ExecResult { exit_code, stdout_text, stderr_text }` | `*ExecResult{ExitCode, Stdout, Stderr}` — **`nil` when the command fails to start**, so check `err` before reading it |
+| non-zero exit | **does not raise**; check `exit_code` yourself | **does not raise**; check `exitCode` yourself | check `result.success()` / `result.code()` | check `exit_code` | **does not return an error**; check `ExitCode`. `Command(...).Run` / `.Output` behave the same way, which **differs from the standard library's `os/exec`** |
 
 ---
 

@@ -20,7 +20,7 @@ Pick by what the sandbox has to do. Every type inherits from `SimpleBox`, so `ex
 >
 > The high-level wrappers for `ComputerBox` and `InteractiveBox` are **provided only in Python and Node**; the other language SDKs (C / Go / Rust) currently expose only the lower-level `exec(tty=...)`.
 >
-> Node uses the same six names with `new` and camelCase options, and `await using` in place of `async with` — `await using box = new CodeBox()`. Per-type Node signatures are in the [Node.js SDK reference](/reference/nodejs#parameters-returns).
+> Node uses the same six names with `new` and camelCase options, and `await using` in place of `async with` — `await using box = new CodeBox()`. A verified Node example is on the same tab group as each type's Python example below; full signatures are in the [Node.js SDK reference](/reference/nodejs#parameters-returns).
 
 ---
 
@@ -28,7 +28,9 @@ Pick by what the sandbox has to do. Every type inherits from `SimpleBox`, so `ex
 
 Use it to run any command, use your own image, or get fine-grained control over resources, volumes, ports, and networking. It is also the parent class of the other five types.
 
-```python
+<CodeGroup>
+
+```python Python
 import asyncio
 from boxlite import SimpleBox, BoxliteError
 
@@ -52,7 +54,34 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
+```typescript Node.js
+import { BoxliteError, SimpleBox } from "@boxlite-ai/boxlite";
+
+async function main(): Promise<void> {
+  try {
+    // at least one of image / rootfsPath must be provided, otherwise the constructor throws
+    await using box = new SimpleBox({ image: "alpine:latest" });
+    // args is always an array; the exec timeout option is timeoutSecs; env is Record<string,string>
+    const result = await box.exec("echo", ["hi"], { FOO: "bar" }, { timeoutSecs: 30 });
+    // a non-zero exit code does not throw; check exitCode yourself
+    if (result.exitCode !== 0) {
+      console.error(`command failed (${result.exitCode}): ${result.stderr}`);
+    } else {
+      console.log(result.stdout.trim()); // -> hi
+    }
+  } catch (err) {
+    console.error(`${err instanceof BoxliteError ? "BoxLite error" : "startup failed"}: ${err instanceof Error ? err.message : err}`);
+  }
+}
+
+main();
+```
+
+</CodeGroup>
+
 Key `SimpleBox` constructor arguments: `image` / `rootfs_path` (at least one required), `memory_mib`, `cpus`, `name`, `auto_remove` (default `True`), `reuse_existing` (default `False`). Other advanced options (`volumes` / `ports` / `network` / `secrets` / `advanced`, etc.) are forwarded through `**kwargs` to the underlying `BoxOptions`.
+
+Verified: real run prints `hi`.
 
 ---
 
@@ -60,7 +89,9 @@ Key `SimpleBox` constructor arguments: `image` / `rootfs_path` (at least one req
 
 Use it to execute untrusted or AI-generated Python code, or to run computation or scripting tasks.
 
-```python
+<CodeGroup>
+
+```python Python
 import asyncio
 from boxlite import CodeBox, BoxliteError
 
@@ -79,7 +110,28 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
+```typescript Node.js
+import { BoxliteError, CodeBox } from "@boxlite-ai/boxlite";
+
+async function main(): Promise<void> {
+  try {
+    await using cb = new CodeBox();
+    await cb.installPackage("requests"); // pip install requests
+    const out = await cb.run("import requests; print(requests.__version__)");
+    console.log(out.trim());
+  } catch (err) {
+    console.error(`error: ${err instanceof BoxliteError ? err.message : err}`);
+  }
+}
+
+main();
+```
+
+</CodeGroup>
+
 > Note: the `timeout` of `CodeBox.run(code, timeout=...)` is an `int` and is not enforced. For reliable timeout control, use `exec(..., timeout=<float>)` inherited from `SimpleBox` instead. `run()` returns only stdout; if you also need stderr, use `exec()`.
+
+Verified: real run prints the installed `requests` version (`2.34.2` at time of writing).
 
 ---
 
@@ -87,7 +139,9 @@ if __name__ == "__main__":
 
 Use it to run Playwright in an isolated environment or connect over CDP for browser automation. BrowserBox exposes a browser endpoint to the host, and the host-side Playwright connects to it.
 
-```python
+<CodeGroup>
+
+```python Python
 # pip install boxlite playwright
 import asyncio
 from boxlite import BrowserBox, BrowserBoxOptions, BoxliteError
@@ -117,6 +171,35 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
+```typescript Node.js
+// npm install @boxlite-ai/boxlite playwright-core
+import { BoxliteError, BrowserBox } from "@boxlite-ai/boxlite";
+import { chromium } from "playwright-core";
+
+async function main(): Promise<void> {
+  try {
+    // the browser type is passed via BrowserBoxOptions
+    await using bb = new BrowserBox({ browser: "chromium" });
+    // Playwright Server mode (port defaults to 3000, supports all browser types)
+    const endpoint = await bb.playwrightEndpoint(60);
+    console.log(`Playwright endpoint: ${endpoint}`);
+
+    // connect into the in-sandbox browser using the host's playwright-core
+    const browser = await chromium.connect(endpoint);
+    const page = await browser.newPage();
+    await page.goto("https://example.com");
+    console.log(await page.title()); // -> Example Domain
+    await browser.close();
+  } catch (err) {
+    console.error(`error: ${err instanceof BoxliteError ? err.message : err}`);
+  }
+}
+
+main();
+```
+
+</CodeGroup>
+
 > `playwright_endpoint()` (Playwright Server mode) supports chromium / firefox / webkit; `endpoint()` (direct CDP/BiDi) **does not support WebKit**. The two modes are mutually exclusive — pick one as needed.
 
 ---
@@ -125,7 +208,9 @@ if __name__ == "__main__":
 
 Use it for a computer-use agent that drives a real Linux desktop (XFCE) through mouse, keyboard, and screenshots. You can watch it live in a browser via noVNC.
 
-```python
+<CodeGroup>
+
+```python Python
 import asyncio
 from boxlite import ComputerBox, BoxliteError
 
@@ -150,6 +235,31 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
+```typescript Node.js
+import { BoxliteError, ComputerBox } from "@boxlite-ai/boxlite";
+
+async function main(): Promise<void> {
+  try {
+    await using cb = new ComputerBox();
+    await cb.waitUntilReady(60); // wait for the desktop to be ready
+    console.log(`screen resolution: ${await cb.getScreenSize()}`);
+
+    await cb.mouseMove(400, 300);
+    await cb.leftClick();
+    await cb.type("hello desktop");
+
+    const shot = await cb.screenshot(); // returns a Screenshot object
+    console.log(`screenshot fields: ${Object.keys(shot)}`);
+  } catch (err) {
+    console.error(`error: ${err instanceof BoxliteError ? err.message : err}`);
+  }
+}
+
+main();
+```
+
+</CodeGroup>
+
 `ComputerBox` allocates higher resources by default (`cpu=2`, `memory=2048`), and its GUI ports default to HTTP `3000` / HTTPS `3001`.
 
 ---
@@ -158,7 +268,9 @@ if __name__ == "__main__":
 
 Use it to manually enter a sandbox shell to debug, like `docker exec -it`. On `async with` entry it automatically starts a shell and forwards stdin/stdout in both directions; type `exit` to leave.
 
-```python
+<CodeGroup>
+
+```python Python
 import asyncio
 from boxlite import InteractiveBox, BoxliteError
 
@@ -177,6 +289,25 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
+```typescript Node.js
+import { BoxliteError, InteractiveBox } from "@boxlite-ai/boxlite";
+
+async function main(): Promise<void> {
+  try {
+    // image is required
+    await using box = new InteractiveBox({ image: "alpine:latest" });
+    // once entered you are inside the sandbox shell; stdin/stdout are forwarded automatically
+    await box.wait();
+  } catch (err) {
+    console.error(`error: ${err instanceof BoxliteError ? err.message : err}`);
+  }
+}
+
+main();
+```
+
+</CodeGroup>
+
 > When run in a non-TTY environment (a redirected pipe, some CI), `tty` is auto-detected as `False` and interactive input is not forwarded. To force interactivity, pass `tty=True` explicitly.
 
 ---
@@ -190,7 +321,9 @@ if __name__ == "__main__":
 
 Use it to host an AI agent so the Claude Code CLI works in an isolated environment; you can install skills, hold multi-turn conversations, and watch live through the built-in noVNC desktop.
 
-```python
+<CodeGroup>
+
+```python Python
 import asyncio
 import os
 from boxlite import SkillBox, BoxliteError
@@ -214,6 +347,28 @@ async def main() -> None:
 if __name__ == "__main__":
     asyncio.run(main())
 ```
+
+```typescript Node.js
+import { BoxliteError, SkillBox } from "@boxlite-ai/boxlite";
+
+async function main(): Promise<void> {
+  // an OAuth token must be provided: via constructor option or CLAUDE_CODE_OAUTH_TOKEN, otherwise the constructor throws
+  const token = process.env.CLAUDE_CODE_OAUTH_TOKEN ?? "<YOUR_CLAUDE_OAUTH_TOKEN>"; // TODO: replace
+  try {
+    await using box = new SkillBox({ skills: ["anthropics/skills"], oauthToken: token });
+    await box.waitUntilReady(60);
+    // open https://localhost:<guiHttpsPort> in a browser to watch live
+    const answer = await box.call("What skills do you have?");
+    console.log(answer);
+  } catch (err) {
+    console.error(`error: ${err instanceof BoxliteError ? err.message : err}`);
+  }
+}
+
+main();
+```
+
+</CodeGroup>
 
 `SkillBox` allocates higher resources by default (`memory_mib=4096`, `disk_size_gb=10`); its noVNC GUI ports default to `0` at construction time (randomly assigned), and `auto_remove=True`.
 

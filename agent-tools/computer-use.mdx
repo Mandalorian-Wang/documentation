@@ -9,9 +9,9 @@ Screenshots come back as base64 PNG, ready to feed to a vision model. Use it whe
 
 The minimal flow: start the desktop, wait until ready, then take a screenshot and save it locally. The code is ready to copy and run.
 
-### Python
+<CodeGroup>
 
-```python
+```python Python
 import asyncio
 import base64
 
@@ -40,9 +40,7 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
-### Node
-
-```typescript
+```typescript Node.js
 import { writeFileSync } from "node:fs";
 import { ComputerBox } from "@boxlite-ai/boxlite";
 
@@ -69,6 +67,8 @@ async function main(): Promise<void> {
 
 main();
 ```
+
+</CodeGroup>
 
 ## Parameters & Returns
 

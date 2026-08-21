@@ -53,7 +53,9 @@ So the page is organised the same way: step 1 is written once, step 2 is written
 
 This is the only BoxLite code in an agent loop. Copy it as-is; it does not change when you switch models.
 
-```python
+<CodeGroup>
+
+```python Python
 # box_tool.py — the sandbox tool, provider-independent
 import boxlite
 
@@ -92,12 +94,62 @@ async def sandbox_exec(box, argv) -> dict:
     return {"stdout": result.stdout, "stderr": result.stderr, "exit_code": result.exit_code}
 ```
 
+```typescript Node.js
+// boxTool.ts — the sandbox tool, provider-independent
+import { SimpleBox } from "@boxlite-ai/boxlite";
+
+// The schema body is plain JSON Schema, so every provider accepts it unchanged.
+export const SANDBOX_EXEC_SCHEMA = {
+  type: "object",
+  properties: {
+    argv: {
+      type: "array",
+      items: { type: "string" },
+      description: "Command and arguments, e.g. ['python', '-c', 'print(1)']",
+    },
+  },
+  required: ["argv"],
+};
+
+export const SANDBOX_EXEC_DESCRIPTION =
+  "Run a command inside an isolated sandbox and return its stdout, stderr and exit code.";
+
+interface SandboxExecResult {
+  stdout: string;
+  stderr: string;
+  exitCode: number;
+}
+
+// The single door between the model and the environment.
+// Always returns an object — never throws — so one bad tool call cannot end the loop.
+export async function sandboxExec(box: SimpleBox, argv: unknown): Promise<SandboxExecResult> {
+  if (!Array.isArray(argv) || argv.length === 0 || !argv.every((a) => typeof a === "string")) {
+    return { stdout: "", stderr: "argv must be a non-empty array of strings", exitCode: 2 };
+  }
+  try {
+    const result = await box.exec(argv[0], ...argv.slice(1));
+    // A non-zero exit does NOT throw — pass the exit code back and let the model react.
+    return { stdout: result.stdout, stderr: result.stderr, exitCode: result.exitCode };
+  } catch (err) {
+    // A command the image does not have (a common model hallucination) throws here.
+    // Report it as a tool result so the model can correct itself.
+    return { stdout: "", stderr: `command could not be started: ${err instanceof Error ? err.message : err}`, exitCode: -1 };
+  }
+}
+```
+
+</CodeGroup>
+
+Only this step is BoxLite-specific — Step 2's provider wrappers are the same OpenAI/Anthropic client libraries regardless of which language drives the box, so they are not duplicated per language.
+
 Two behaviours above are worth internalising, because both are how an agent loop dies in production:
 
 | Case | What BoxLite does | What the wrapper must do |
 |---|---|---|
 | Command exits non-zero (`sh -c 'exit 3'`) | Returns `ExecResult(exit_code=3)`, **no exception** | Pass `exit_code` back so the model sees the failure |
 | Command does not exist in the image (`nope`) | Raises `RuntimeError` (`spawn_failed`) | **Catch it** and return it as a tool result, or the loop crashes |
+
+Verified end to end against a real `alpine:latest` box, covering every path above: a normal command, a non-zero exit (`exitCode: 3`), a missing command (`exitCode: -1` with the real `spawn_failed` message), and an invalid `argv`.
 
 ---
 

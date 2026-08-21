@@ -53,9 +53,9 @@ You do not need to build a Box from scratch for each capability. BoxLite provide
 
 The most fundamental agent tool is **exec** — running a command inside the sandbox and reading the result. Both snippets below run as-is.
 
-### Python: an agent runs a command and runs generated code
+<CodeGroup>
 
-```python
+```python Python
 import asyncio
 from boxlite import SimpleBox, CodeBox
 
@@ -89,9 +89,7 @@ async def main():
 asyncio.run(main())
 ```
 
-### Node: the equivalent two steps
-
-```typescript
+```typescript Node.js
 // The package name is @boxlite-ai/boxlite (not 'boxlite', not '@boxlite/sdk')
 import { SimpleBox, CodeBox } from "@boxlite-ai/boxlite";
 
@@ -124,6 +122,8 @@ async function main(): Promise<void> {
 
 main();
 ```
+
+</CodeGroup>
 
 ---
 

@@ -1,0 +1,115 @@
+---
+title: "What is BoxLite Cloud"
+sidebarTitle: "What is Cloud"
+description: "A hosted agent runtime built on BoxLite — the same SDK and the same core API, reached with a URL and an API key, with managed storage and a managed box lifecycle."
+---
+
+**BoxLite Cloud is a hosted agent runtime.** It runs microVM boxes on BoxLite's resource pool, so your machines need no hardware virtualization — your code needs a URL and an API key. It is built for people building agents: compute, persistent storage, and a managed box lifecycle, shaped around what an agent needs to keep working.
+
+## Two shapes, one runtime
+
+A box is more than a place to throw code at. Cloud serves both of the shapes agent builders reach for, and you choose per box.
+
+| Shape | What it looks like | What Cloud contributes |
+|---|---|---|
+| **Disposable container** | Create a box, run untrusted or model-generated code in it, remove it | Hardware-level isolation without a virtualization host of your own |
+| **A home for an agent** | One box that keeps its filesystem, its installed packages, and its working state across sessions | Managed storage that outlives the box, plus a managed stop-and-wake lifecycle |
+
+The second shape is what a stateful microVM makes possible: an agent installs its tools once, writes files, stops, and picks the work back up later instead of rebuilding its world on every run.
+
+## The same SDK, a different runtime handle
+
+Cloud is not a separate client library. You install the same package as open-source BoxLite and swap the runtime handle from a local one to `Boxlite.rest(...)`.
+
+```bash
+pip install boxlite
+```
+
+```python hello_cloud.py
+import asyncio
+import os
+import time
+
+from boxlite import ApiKeyCredential, Boxlite, BoxliteRestOptions, BoxOptions
+
+
+async def main() -> None:
+    api_key = os.environ.get("BOXLITE_API_KEY")  # <YOUR_API_KEY> — create one in the console
+    if not api_key:
+        print("Set BOXLITE_API_KEY before running this script.")
+        return
+
+    # Synchronous construction; every runtime method below is awaited.
+    rt = Boxlite.rest(
+        BoxliteRestOptions(
+            url=os.environ.get("BOXLITE_REST_URL", "https://app.boxlite.ai/api"),
+            credential=ApiKeyCredential(api_key),
+        )
+    )
+
+    box = None
+    try:
+        box = await rt.create(
+            BoxOptions(image="ghcr.io/boxlite-ai/boxlite-agent-base:v0.1.0"),
+            name=f"hello-cloud-{int(time.time())}",
+        )
+        await box.start()
+
+        execution = await box.exec("echo", args=["Hello from BoxLite Cloud"])
+        output = ""
+        async for line in execution.stdout():
+            output += line
+        result = await execution.wait()
+
+        print(f"Exit code: {result.exit_code}")
+        print(output)
+    except Exception as exc:
+        print(f"Cloud call failed: {exc!r}")
+    finally:
+        if box is not None:
+            await rt.remove(box.id, force=True)
+
+
+asyncio.run(main())
+```
+
+The core API is the same one documented across this site — `create`, `start`, `exec`, `remove`, boxes, volumes. The call shapes differ in a handful of specific places, and the differences are enumerated on one page: [Cloud vs open source](/cloud/vs-opensource). Read it before you port existing code.
+
+Node, the CLI, and raw REST are covered in the [Cloud quickstart](/cloud/quickstart).
+
+## What lets an agent stay up
+
+An agent that lives somewhere needs its state to survive, and it needs someone to run the lights. Three capabilities carry that:
+
+- **Storage that outlives the box.** A box loses everything on its disk when it is destroyed. A managed volume does not — mount it into a box to read and write, and another box can mount it later. See [Volumes](/cloud/volumes).
+- **A managed lifecycle.** When you create a box in the console you set **Stop when idle**, **Wake on access**, and **Delete after stopping**. A stopped box wakes on SDK exec, file operations, or a terminal attach, so the agent's home comes back on demand instead of burning compute while nothing is asking it to work. See [Boxes](/cloud/boxes).
+- **Concurrency you do not capacity-plan.** Your plan sets how many boxes run at the same time. Raising it is a plan change, not a hardware purchase. See [Plans, wallet, and usage](/cloud/billing).
+
+One detail matters when you design around this: idle means no SDK, terminal, or preview traffic. Work running inside the box does not count, so a long job can be stopped mid-run. [Boxes](/cloud/boxes) explains how to set the idle switches for long-running work.
+
+## What you pay for
+
+Usage is metered. A subscription plan includes a quota, the quota is consumed first, and a wallet balance funds anything beyond it. Plan tiers, quota amounts, concurrency limits, and per-box resource ceilings all live on [Plans, wallet, and usage](/cloud/billing).
+
+## Start here
+
+<CardGroup cols={2}>
+  <Card title="Cloud quickstart" icon="rocket" href="/cloud/quickstart">
+    Create a key, install the SDK, and run your first command on Cloud.
+  </Card>
+  <Card title="Cloud vs open source" icon="code-compare" href="/cloud/vs-opensource">
+    Every difference between the hosted runtime and self-hosted BoxLite, in one table.
+  </Card>
+  <Card title="API keys" icon="key" href="/cloud/api-keys">
+    Create, scope, expire, and rotate the `blk_live_...` keys your code authenticates with.
+  </Card>
+  <Card title="Boxes" icon="box" href="/cloud/boxes">
+    Images, sizes, and the idle-stop, wake-on-access, and delete-after-stopping switches.
+  </Card>
+  <Card title="Volumes" icon="database" href="/cloud/volumes">
+    Managed storage that outlives a box, and how to mount it.
+  </Card>
+  <Card title="Plans, wallet, and usage" icon="credit-card" href="/cloud/billing">
+    How metering works, what each plan includes, and the per-box resource ceilings.
+  </Card>
+</CardGroup>

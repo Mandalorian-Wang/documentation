@@ -1,0 +1,7 @@
+# macOS
+.DS_Store
+
+# Local agent tooling: launch config and task worktrees. Mintlify already
+# ignores .claude when it builds; git must too, or a worktree copy of the
+# whole site gets committed.
+.claude/

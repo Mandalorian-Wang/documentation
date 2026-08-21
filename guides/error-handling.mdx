@@ -29,7 +29,10 @@ The most concise, directly runnable robust execution pattern: run a command,
 check the exit code, raise `ExecError` on failure, and catch every possible
 failure.
 
-```python
+
+<CodeGroup>
+
+```python Python
 import asyncio
 from boxlite import SimpleBox, ExecError, TimeoutError, BoxliteError
 
@@ -65,9 +68,7 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
-Node version:
-
-```typescript
+```typescript Node.js
 import { SimpleBox, ExecError, BoxliteError } from "@boxlite-ai/boxlite";
 
 async function main(): Promise<void> {
@@ -75,7 +76,7 @@ async function main(): Promise<void> {
     // SimpleBox implements Symbol.asyncDispose; use await using for automatic cleanup
     await using box = new SimpleBox({ image: "alpine:latest" });
 
-    const result = await box.exec("sh", ["-c", "echo hello && exit 0"]);
+    const result = await box.exec("sh", "-c", "echo hello && exit 0");
     if (result.exitCode !== 0) {
       throw new ExecError(
         "sh -c 'echo hello && exit 0'",
@@ -97,6 +98,8 @@ async function main(): Promise<void> {
 
 main();
 ```
+
+</CodeGroup>
 
 ---
 

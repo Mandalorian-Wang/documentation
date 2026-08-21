@@ -1,0 +1,107 @@
+---
+title: "Plans, wallet, and usage"
+sidebarTitle: "Billing"
+description: "How BoxLite Cloud charges for boxes: a plan gives you included quota and a concurrency limit each cycle, and your prepaid wallet funds everything beyond it."
+---
+
+A plan gives you two things each billing cycle: an included quota of usage and a concurrency limit on how many boxes run at once. The wallet is a prepaid balance that funds usage once that quota is consumed. Everything on this page lives under **Billing** in the console, across its **Overview**, **Usage**, and **Wallet** tabs.
+
+## How usage is funded
+
+The console states the rule on its own usage chart: **quota covers first, the wallet funds the rest**. Two separate ideas sit behind that sentence.
+
+**Included quota** comes with a plan. It is an amount of usage — expressed in dollars — that your plan covers during the current billing cycle. You do not top it up and you do not manage it; it arrives with the plan and is tied to the cycle.
+
+**Wallet balance** is prepaid and entirely yours to manage. You add funds to it, and it pays for usage after the cycle's included quota is consumed. An account can hold a wallet balance with or without a plan.
+
+So a box you run draws on your quota until the quota for that cycle is gone, and from that point on it draws on your wallet.
+
+The **New box** dialog reports a box's **PRICE PER HOUR** before you create it, so you can see what a size costs while you are choosing it.
+
+## Plans
+
+The **Overview** tab lists the available plans and marks your **ACTIVE PLAN**.
+
+| Plan | Price | Included quota | Concurrency limit |
+|---|---|---|---|
+| Starter | $19/mo | $30 | 20 boxes |
+| Pro | $149/mo | $250 | 100 boxes |
+| Max | $499/mo | $900 | 1000 boxes |
+
+**Enterprise** is handled directly: custom limits and compliance review. Contact sales at [sales@boxlite.ai](mailto:sales@boxlite.ai).
+
+### What the concurrency limit means for you
+
+The concurrency limit caps how many boxes run at the same time — not how many you create over a month, and not how much work each one does. If you are building an agent fleet, this is the number to size against your workload: an orchestrator that fans out to 40 parallel agents, each in its own box, needs a plan whose concurrency limit clears 40. A single long-lived box that runs all day occupies one slot the whole time.
+
+Quota and concurrency are independent. You can hit the concurrency limit with quota to spare, and you can exhaust quota while running a single box.
+
+### Accounts with no plan
+
+An account does not have to carry a plan. The console shows **ACTIVE PLAN** as `No plan` in that case, and usage draws on the wallet balance instead of on an included quota. Pick a plan from **ALL PLANS** on the **Overview** tab when you want a cycle quota and a plan concurrency limit.
+
+## Per-box resource ceilings
+
+**Billing** also publishes the resource ceilings that apply to every box in your organization, under **BOX LIMITS** — "Resources limit per box":
+
+| Resource | Ceiling per box |
+|---|---|
+| Compute | 4 vCPU |
+| Memory | 32 GiB |
+| Storage | 120 GiB |
+
+The console gives its reason plainly: limits mitigate misuse and keep box and compute capacity fairly available across all users.
+
+These are ceilings on a **single box**, which makes them a different constraint from your plan's concurrency limit. The ceilings bound how large one box can be; the concurrency limit bounds how many boxes run at once. See [Boxes](/cloud/boxes) for the preset sizes and the custom size fields you choose from within these ceilings. If your workload genuinely needs a larger single box, that is an Enterprise conversation — custom limits go through [sales@boxlite.ai](mailto:sales@boxlite.ai).
+
+## Wallet
+
+The **Wallet** tab shows **WALLET BALANCE** (the amount available) and **SPENT THIS MONTH**. The balance is prepaid: you put money in before you spend it, and it funds usage beyond your plan's included quota.
+
+### Add funds
+
+Click **Top up** and choose one of the preset amounts — **$25**, **$500**, **$1,000**, or **$2,000** — or enter a custom amount. The console tells you what happens next: "You will be redirected to Stripe to complete the payment."
+
+### Redeem a coupon
+
+**REDEEM COUPON** takes a coupon code and credits your account: "Enter a coupon code to redeem your credits."
+
+### Connect a payment method
+
+Until you attach a card, **PAYMENT METHOD** reads `Payment method not connected`, with a **Connect** button beside it. The console attaches an offer to doing so, in its own words: "Connect a credit card to receive an additional $100 of credits."
+
+## Track usage
+
+The **Usage** tab answers the question "where is my money going" with **COST OVER TIME** — settled cost by day for the last 30 days, viewable as either a **CHART** or a **LIST**.
+
+The view splits cost into two series:
+
+| Series | What it represents |
+|---|---|
+| **Quota-covered** | Cost your plan's included quota absorbed |
+| **From wallet** | Cost your prepaid wallet balance paid for |
+
+Read it in that order, because it mirrors how funding works. While quota remains for the cycle, the days you see are quota-covered. Once the cycle's quota is consumed, **From wallet** is the series that grows — and that transition is the moment worth watching, because it is where a running box starts drawing on money you topped up.
+
+Check this tab **before** you scale a workload up. Look at what a typical day already costs and which series it lands in, then multiply by the fan-out you are about to add. A workload that doubles its box count doubles a quota-covered day just as readily as a wallet-funded one; the difference is only whether you notice.
+
+## Keep costs predictable
+
+The console prices a box per hour, so the habits that keep spend flat are all about not leaving boxes running behind you.
+
+- **Remove boxes when the work is done.** A forgotten box is the most common source of surprise cost. Tear it down as part of your task, not as cleanup you plan to do later. See [Boxes](/cloud/boxes).
+- **Treat stop-when-idle as a safety net, not a budget.** It is a genuine backstop for boxes you forgot, but the console is explicit about its blind spot: idle means no SDK, terminal, or preview traffic, and work running inside the box does not count. A busy box is never idle, so stop-when-idle will not cap what it spends.
+- **Size the box to the job.** The largest size is not the safe default. Pick the smallest preset that runs your workload comfortably, and reach for a custom size only when a preset genuinely does not fit — see [Boxes](/cloud/boxes).
+- **Size your fleet against the concurrency limit.** Know the limit on your plan before you fan out, so an orchestrator does not stall partway through a batch.
+- **Look at the Usage tab before a large run.** One glance at the last 30 days tells you whether you are still on quota and what a day of the current workload costs.
+
+## Troubleshooting
+
+| Situation | Why it happens | What to do |
+|---|---|---|
+| New boxes are refused while your existing boxes keep running fine | You are at your plan's concurrency limit — the cap is on boxes running at the same time | Stop or remove a box you no longer need to free a slot, or move to a plan with a higher concurrency limit |
+| Your cost is showing up under **From wallet** instead of **Quota-covered** | The included quota for this billing cycle is consumed, so usage now draws on your prepaid balance | Nothing is broken. Keep the wallet funded, or move to a plan whose included quota matches your steady-state usage |
+| Wallet balance has reached zero and your quota is consumed | There is nothing left to fund usage this cycle | Click **Top up** on the **Wallet** tab, or redeem a coupon code under **REDEEM COUPON** |
+| **ACTIVE PLAN** shows `No plan` | The account carries no subscription, so there is no included quota and no plan concurrency limit | Choose a plan from **ALL PLANS** on the **Overview** tab, or keep running on wallet balance alone if that suits you |
+| **PAYMENT METHOD** shows `Payment method not connected` | No card is attached to the account | Click **Connect** on the **Wallet** tab. The console offers additional credits for connecting a credit card |
+| A box needs more than 4 vCPU, 32 GiB of memory, or 120 GiB of storage | Those are per-box ceilings for the whole organization | Split the work across several boxes within your concurrency limit, or discuss custom limits with [sales@boxlite.ai](mailto:sales@boxlite.ai) |

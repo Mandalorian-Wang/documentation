@@ -51,6 +51,36 @@ A use-case guide must combine **two or more capabilities** toward a business out
 
 One fact lives on exactly one page. Everything else links to it. When you find the same default value, error string, or parameter table on two pages, delete the copy and link.
 
+### BoxLite Cloud (dual-product docs)
+
+BoxLite Cloud ships in this repo and this `docs.json` as the `BoxLite Cloud` tab, with every page under `cloud/`. Keep it that way:
+
+- **One repo, one `docs.json`.** Never split Cloud into a separate repo or a second Mintlify project. Parallel doc surfaces drift — this project has direct evidence of it (`docs.json` + `mkdocs.yml` + README + homepage nav table previously drifted on 7 of 14 shared labels).
+- **All Cloud content lives under `cloud/`.** Nested folders flatten to routes automatically, so however many Cloud pages ship, the repo root only ever grows by that one directory — not a dozen new top-level ones.
+- **Three layers, not a duplicated tree:**
+
+  | Layer | Owner | Content |
+  |---|---|---|
+  | Product shell | Per product line, duplication intentional | Auth, getting a runtime handle, limits, billing, ops |
+  | Shared body | Single file, linked from both tabs | Box concepts, agent tools, use cases, SDK reference |
+  | Seam | Contract, not content | Shared pages must never assume how the runtime handle was obtained |
+
+- **Concepts are shared, code is not.** Local (`SimpleBox(...)`) and remote (`Boxlite.rest(...)`) have different call shapes — different `exec` signature, different teardown, host bind mounts ignored over REST. A shared page gets runtime-switchable code blocks (local / remote); it never claims one code sample works for both.
+- **Every Cloud difference lives on `cloud/vs-opensource`.** Other pages link there instead of restating differences.
+- Capability gaps are facts, not promises: "Disabled — the hosted service reports `snapshots_enabled` as false," never "not yet supported."
+
+#### Verifying Cloud facts
+
+Cloud has no public source tree of its own, so a claim about it must rest on one of these, in this order of preference:
+
+1. **The `boxlite` source at `origin/main`** for anything the SDK, CLI, or REST client does — including the Cloud-facing API surface (`apps/api/`) and the preview proxy (`apps/proxy/`). `apps/API.md` catalogues the platform routes.
+2. **The live console**, operated in a browser, for anything only the product shows — plans, limits, dialog defaults, console wording.
+3. **Unauthenticated route probes** to tell a real route from a missing one: an existing route answers `401`, a missing one `404`. Always probe a deliberately nonexistent route in the same run as a control, or the inference is worthless.
+
+Two public endpoints report Cloud's own configuration and need no credentials: `GET /api/v1/config` returns capability flags, and `GET /api/config` returns client configuration. Prefer them over assumptions about what Cloud enables.
+
+There are **two customer-facing API surfaces**, and pages must not blur them: the SDK REST API under `/v1/...` (bearer `blk_live_...` key, what `Boxlite.rest(...)` drives) and the platform API under `/api/...` (preview URLs, the public flag). Routes guarded by a platform admin role are not customer APIs — do not document them.
+
 ## Common Tasks
 
 ```bash

@@ -63,7 +63,10 @@ tool call stands in for real LLM output so you can copy and run it directly;
 when you wire in a real model, replace `tool_call` with the model's returned
 tool call.
 
-```python
+
+<CodeGroup>
+
+```python Python
 import asyncio
 from boxlite import SimpleBox
 
@@ -92,11 +95,7 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
-Node equivalent (key differences: package name `@boxlite-ai/boxlite`,
-`SimpleBox` cleans up via `await using`, and the `exec` timeout option is
-`timeoutSecs`):
-
-```typescript
+```typescript Node.js
 import { SimpleBox } from "@boxlite-ai/boxlite";
 
 async function runToolInSandbox(
@@ -133,6 +132,10 @@ async function main(): Promise<void> {
 
 main();
 ```
+
+</CodeGroup>
+
+Node differs in three places: the package name is `@boxlite-ai/boxlite`, `SimpleBox` cleans up via `await using`, and the `exec` timeout option is `timeoutSecs`.
 
 > For a complete tool loop where a real LLM drives the sandbox, see
 > [Drive a sandbox from your agent loop](/agent-tools/drive-from-agent-loop).
