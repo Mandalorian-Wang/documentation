@@ -1,43 +1,25 @@
 ---
 title: "Persistent volumes on BoxLite Cloud"
 sidebarTitle: "Volumes"
-description: "Create a managed volume from the SDK or the console, mount it into a box by id, and keep the data after the box is gone."
+description: "Create a managed volume, give it a name you choose, mount it by name or by id, and keep the data after the box is gone."
 ---
 
 A box loses everything on its disk when it is destroyed. A volume does not — mount one into a box and the data outlives it. Use a volume for a dataset or model weights you do not want to fetch again, or for an agent's working state that has to survive the box that produced it.
 
-## When you need a volume
+## Prerequisites
 
-- **An agent whose state must outlive its box.** A box on Cloud can stop when it goes idle and be deleted after stopping. Anything the agent wrote to the box's own disk goes away with it; anything it wrote through a volume mount is still there for the next box.
-- **A large dataset or model you do not want to re-download.** Fetch it once into a volume, then mount that volume into every box that needs it instead of paying the download on each box.
-- **Handing results from one box to the next.** One box produces artifacts under the mount path, a later box mounts the same volume and picks them up.
+- An API key from the console, exported as `BOXLITE_API_KEY`. See [API keys](/cloud/api-keys).
+- `pip install boxlite` for Python or `npm install @boxlite-ai/boxlite` for Node, and the REST URL exported as `BOXLITE_REST_URL`. See [Quickstart](/cloud/quickstart).
+- A REST runtime. Managed volumes need one — a local runtime has no volume backend to resolve a volume reference against.
 
-## Manage volumes from the SDK
+## Quick example
 
-The runtime you build with `Boxlite.rest(...)` carries a volumes API. `volumes` is a **property**, so write `rt.volumes` — no parentheses — and await the four methods hanging off it.
+Create a volume, mount it into a box at `/data`, write a file through the mount, and read it back. This runs as written once the two environment variables are set.
 
-| Call | Awaited | Parameters | Returns |
-|---|---|---|---|
-| `rt.volumes` | No — a property on the runtime | — | The volumes handle the four methods below live on |
-| `rt.volumes.create()` | Yes | None. The call takes no arguments | `VolumeInfo` for the new volume |
-| `rt.volumes.list()` | Yes | None | `list[VolumeInfo]` |
-| `rt.volumes.get(id)` | Yes | `id`: `str`, required | `VolumeInfo`. Raises when no volume has that id |
-| `rt.volumes.remove(id, force=False)` | Yes | `id`: `str`, required. `force`: `bool`, optional, default `False` | `None` |
+<CodeGroup>
 
-Every method returns `VolumeInfo` objects, whose fields are read-only:
-
-| Field | Type | Description |
-|---|---|---|
-| `id` | `str` | The server-assigned volume id. This is what you mount by, and what you pass to `get()` and `remove()` |
-| `created_at` | `str` | Creation timestamp as an RFC 3339 string |
-| `size_bytes` | `int` or `None` | The volume's size in bytes when the backend reports it |
-
-When the backend behind your runtime does not support named volumes, these four calls raise a BoxLite error. Handle it where you call them, as the example below does.
-
-This script creates a volume, mounts it at `/data`, writes a file through the mount, reads it back, and cleans up both the box and the volume in `finally`:
-
-```python
-# cloud_volume.py — create a managed volume, mount it, write and read through it
+```python Python
+# cloud_volume.py — create a named volume, mount it, write and read through it
 # Run: python cloud_volume.py
 import asyncio
 import os
@@ -68,16 +50,16 @@ async def main() -> None:
     volume = None
     box = None
     try:
-        # rt.volumes is a property, and create() takes no arguments.
-        # The id you mount by comes back on the returned VolumeInfo.
-        volume = await rt.volumes.create()
-        print(f"Created volume {volume.id} at {volume.created_at}")
+        # rt.volumes is a property. create() takes an optional name that you can
+        # mount by later, instead of carrying the id around.
+        volume = await rt.volumes.create(f"demo-{int(time.time())}")
+        print(f"Created volume {volume.name} (id {volume.id})")
 
         box = await rt.create(
             BoxOptions(
                 image=IMAGE,
-                # (managed volume id, mount path inside the box)
-                volumes=[(volume.id, "/data")],
+                # (managed volume name or id, mount path inside the box)
+                volumes=[(volume.name, "/data")],
             ),
             name=f"volume-demo-{int(time.time())}",
         )
@@ -102,8 +84,8 @@ async def main() -> None:
         print(f"Exit code: {read_result.exit_code}")
         print(content)
     except Exception as exc:
-        # Auth failures, creation failures, and backends without named volume
-        # support all surface here.
+        # Auth failures, creation failures, and local runtimes without a volume
+        # backend all surface here.
         print(f"volume run failed: {exc!r}")
     finally:
         # Teardown in finally, so a failure above cannot leave a box billing.
@@ -117,7 +99,176 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
-To work with a volume you already have instead of a fresh one, pass its id straight to `BoxOptions(volumes=...)`, or call `await rt.volumes.get("<YOUR_VOLUME_ID>")` first to confirm it exists.
+```typescript Node.js
+// cloudVolume.ts — create a named volume, mount it, write and read through it
+// Run: node cloudVolume.ts
+import { ApiKeyCredential, BoxliteRestOptions, JsBoxlite } from "@boxlite-ai/boxlite";
+
+const IMAGE = "ghcr.io/boxlite-ai/boxlite-agent-base:v0.1.0";
+
+const apiKey = process.env.BOXLITE_API_KEY;
+if (!apiKey) {
+  throw new Error("Set BOXLITE_API_KEY to your blk_live_... key before running this.");
+}
+
+async function main(): Promise<void> {
+  const rt = JsBoxlite.rest(
+    new BoxliteRestOptions({
+      url: process.env.BOXLITE_REST_URL ?? "https://app.boxlite.ai/api",
+      credential: new ApiKeyCredential(apiKey),
+    }),
+  );
+
+  const stamp = Math.floor(Date.now() / 1000);
+  let volume = null;
+  let box = null;
+  try {
+    // rt.volumes is a property. create() takes an optional name you can mount by.
+    volume = await rt.volumes.create(`demo-${stamp}`);
+    console.log(`Created volume ${volume.name} (id ${volume.id})`);
+
+    box = await rt.create(
+      {
+        image: IMAGE,
+        // [managed volume name or id, mount path inside the box]
+        volumes: [[volume.name, "/data"]],
+      },
+      `volume-demo-${stamp}`,
+    );
+    await box.start();
+
+    // Write through the mount, not to the box's own disk.
+    const write = await (await box.exec("sh", ["-c", "echo 'subtitle model v3' > /data/notes.txt"])).wait();
+    if (write.exitCode !== 0) {
+      console.error(`write failed with exit code ${write.exitCode}`);
+      return;
+    }
+
+    const read = await box.exec("cat", ["/data/notes.txt"]);
+    const stdout = await read.stdout();
+    let content = "";
+    while (true) {
+      const line = await stdout.next();
+      if (line === null) break;
+      content += line;
+    }
+    const result = await read.wait();
+
+    console.log(`Exit code: ${result.exitCode}`);
+    console.log(content);
+  } catch (err) {
+    // Auth failures, creation failures, and local runtimes without a volume
+    // backend all surface here.
+    console.error(`volume run failed: ${err instanceof Error ? err.message : err}`);
+  } finally {
+    // Teardown in finally, so a failure above cannot leave a box billing.
+    if (box !== null) await rt.remove(box.id, true);
+    if (volume !== null) await rt.volumes.remove(volume.id);
+    rt.close();
+  }
+}
+
+main();
+```
+
+```bash REST
+# Requires BOXLITE_API_KEY. Create a key in the console: /cloud/api-keys
+BOXLITE_REST_URL="${BOXLITE_REST_URL:-https://app.boxlite.ai/api}"
+IMAGE="ghcr.io/boxlite-ai/boxlite-agent-base:v0.1.0"
+NAME="demo-$(date +%s)"
+
+# 1. Create a named volume. An empty body creates an unnamed one, whose name
+#    the server sets to the id.
+VOLUME=$(curl -fsS -X POST "${BOXLITE_REST_URL}/v1/volumes" \
+  -H "Authorization: Bearer ${BOXLITE_API_KEY}" \
+  -H 'Content-Type: application/json' \
+  -d "{\"name\":\"${NAME}\"}")
+echo "${VOLUME}" | jq '{id, name, state}'
+
+# 2. Mount it by name. The wire field is managed_volume — it takes a name or an id.
+curl -fsS -X POST "${BOXLITE_REST_URL}/v1/boxes" \
+  -H "Authorization: Bearer ${BOXLITE_API_KEY}" \
+  -H 'Content-Type: application/json' \
+  -d "{\"image\":\"${IMAGE}\",\"volumes\":[{\"managed_volume\":\"${NAME}\",\"guest_path\":\"/data\"}]}" \
+  | jq '{id, name}'
+
+# 3. Clean up when you are done.
+curl -fsS -X DELETE "${BOXLITE_REST_URL}/v1/volumes/$(echo "${VOLUME}" | jq -r .id)" \
+  -H "Authorization: Bearer ${BOXLITE_API_KEY}"
+```
+
+</CodeGroup>
+
+Two things in that script are worth pausing on, and the rest of this page builds on them: the volume carries a **name you chose**, and the box mounts it by that name.
+
+## When you need a volume
+
+- **An agent whose state must outlive its box.** A box on Cloud can stop when it goes idle and be deleted after stopping. Anything the agent wrote to the box's own disk goes away with it; anything it wrote through a volume mount is still there for the next box.
+- **A large dataset or model you do not want to re-download.** Fetch it once into a volume, then mount that volume into every box that needs it instead of paying the download on each box.
+- **Handing results from one box to the next.** One box produces artifacts under the mount path, a later box mounts the same volume and picks them up.
+- **A fleet that addresses storage by name.** Workers mount `("training-data", "/data")` without any of them having to look up an id first.
+
+## Name a volume and mount it by that name
+
+A volume has both a server-assigned `id` and a `name`, and **either one mounts it**. When you create a volume without a name, the server uses the id as the name.
+
+Choosing your own name is what lets a worker mount the volume it wants without knowing the id. The two halves can live in different processes that never exchange an id:
+
+<CodeGroup>
+
+```python Python
+# In the process that provisions storage:
+volume = await rt.volumes.create("training-data")
+
+# In a worker that only knows the name:
+box = await rt.create(BoxOptions(image=IMAGE, volumes=[("training-data", "/data")]))
+```
+
+```typescript Node.js
+// In the process that provisions storage:
+const volume = await rt.volumes.create("training-data");
+
+// In a worker that only knows the name:
+const box = await rt.create({ image: IMAGE, volumes: [["training-data", "/data"]] });
+```
+
+```bash REST
+# The wire field is managed_volume, and it accepts a name or an id.
+curl -fsS -X POST "${BOXLITE_REST_URL}/v1/boxes" \
+  -H "Authorization: Bearer ${BOXLITE_API_KEY}" \
+  -H 'Content-Type: application/json' \
+  -d '{"image":"'"${IMAGE}"'","volumes":[{"managed_volume":"training-data","guest_path":"/data"}]}'
+```
+
+</CodeGroup>
+
+Names are unique within your organization, so a name is a stable address across processes and across time. An id is stable too, but you have to carry it somewhere.
+
+## Parameters and returns
+
+The runtime you build with `Boxlite.rest(...)` carries a volumes API. `volumes` is a **property**, so write `rt.volumes` — no parentheses — and await the four methods hanging off it.
+
+| Call | Parameters | Returns |
+|---|---|---|
+| `rt.volumes` | Not awaited — a property on the runtime | The volumes handle the four methods below live on |
+| `rt.volumes.create(name=None)` | `name`: `str`, optional. Mountable in place of the id; the server names the volume after its id when omitted | `VolumeInfo` for the new volume |
+| `rt.volumes.list()` | None | `list[VolumeInfo]` |
+| `rt.volumes.get(id)` | `id`: `str`, required | `VolumeInfo`. Raises when no volume has that id |
+| `rt.volumes.remove(id, force=False)` | `id`: `str`, required. `force`: `bool`, optional, default `False` | `None` |
+
+In Node the same four methods are `create(name?)`, `list()`, `get(id)`, and `remove(id, force?)`.
+
+`VolumeInfo` fields are read-only:
+
+| Field | Python | Node | Description |
+|---|---|---|---|
+| id | `id` | `id` | Server-assigned. Mounts the volume, and addresses `get()` and `remove()` |
+| name | `name` | `name` | Yours if you passed one to `create()`, otherwise the id. Also mounts the volume |
+| created at | `created_at` | `createdAt` | RFC 3339 string |
+| size | `size_bytes` | `sizeBytes` | **Always empty on Cloud** — the service does not report volume size on either the list or the single-volume response. See [Volume operations](/cloud/volume-operations#what-the-sdk-does-not-tell-you) |
+
+
+To work with a volume you already have, pass its name or id straight to the box's `volumes` field, or call `get()` first to confirm it exists.
 
 ## Create a volume in the console
 
@@ -127,44 +278,34 @@ The console is the other way to create a volume, and the one to use when you wan
 2. Fill in **Name** — the only field. Pick something you will recognize later, such as `subtitle-models`.
 3. Create it, then give it a few seconds to become ready before you mount it.
 
-The volume now exists independently of any box. You can mount it into a box, destroy that box, and mount it into a different one later. `rt.volumes.list()` and the **Volumes** page report the same set of volumes.
-
-### Names live in the console, ids come from the SDK
-
-The **New Volume** dialog takes a **Name**. `create()` accepts no arguments, and the `id` on the returned `VolumeInfo` is assigned by the server. So a volume you create from code carries no name you chose, and the id is the handle for everything that follows — mounting, `get()`, and `remove()`.
-
-Create in the console when a human will need to recognize the volume in a list. Create from code when your program keeps the id.
-
-## Manage volumes over REST
-
-Reach for REST when you are working outside the Python SDK. Volumes live under the `/v1/volumes` route, authenticated with `Authorization: Bearer <YOUR_API_KEY>` like every other route. Create a key on the **API Keys** page first — see [API keys](/cloud/api-keys).
-
-```bash
-# Requires BOXLITE_API_KEY. Create a key in the console: /cloud/api-keys
-BOXLITE_REST_URL="${BOXLITE_REST_URL:-https://app.boxlite.ai/api}"
-
-curl -fsS "${BOXLITE_REST_URL}/v1/volumes" \
-  -H "Authorization: Bearer ${BOXLITE_API_KEY}" \
-  | jq .
-```
-
-Deletion is `DELETE /v1/volumes/{volume_id}`, which returns `204`. Read [Deletion is asynchronous](#deletion-is-asynchronous) before you build on top of it.
-
-<Note>
-Over REST, the operations documented here are listing and deletion. To create a volume, call `await rt.volumes.create()` or use the console.
-</Note>
+The volume now exists independently of any box. You can mount it into a box, destroy that box, and mount it into a different one later. `rt.volumes.list()` and the **Volumes** page report the same set of volumes, and a name set in either place mounts the same way.
 
 ## Mount a volume into a box
 
-Mounting is configured at creation time through the `volumes` field on `BoxOptions`. Each element is a `(volume, mount_path)` tuple. **The first element is the managed volume's id — the value `create()` returned, or the id the console shows — not a path on your machine.** That is the mental switch to make coming from open source.
+Mounting is configured at creation time through the `volumes` field on the box options. Each element is a `(volume, mount_path)` pair.
 
-Two more shapes are specific to Cloud, both visible in the example above: `Boxlite.rest(...)` needs no `path_prefix`, and you reclaim the box with `await rt.remove(box.id, force=True)`. For the full `BoxOptions` parameter table and `exec` semantics, see the [Python SDK reference](/reference/python). For the host-directory mount forms and read-only mounts, see [Volumes and mounts](/manage-sandbox/volumes).
+**The first element is a managed volume's name or id — not a path on your machine.** That is the mental switch to make coming from open source.
+
+The mount path has to be an absolute path that is not the root and not a system directory. The service rejects the box otherwise:
+
+| Mount path | Result |
+|---|---|
+| `/data`, `/mnt/models`, `/srv/cache` | Accepted |
+| `data` or any relative path | Rejected — must be absolute |
+| `/` or `//` | Rejected — cannot mount to the root directory |
+| `/data/../etc` | Rejected — cannot contain relative path components |
+| `/data//cache` | Rejected — cannot contain consecutive slashes |
+| `/proc` `/sys` `/dev` `/boot` `/etc` `/bin` `/sbin` `/lib` `/lib64`, or anything under them | Rejected — cannot mount to a system directory |
+
+For the full box options table and `exec` semantics, see the [Python SDK reference](/reference/python) or the [Node.js SDK reference](/reference/nodejs). For host-directory mount forms, see [Volumes and mounts](/manage-sandbox/volumes).
 
 ## Data outlives the box
 
-The property that makes a volume worth using: write through the mount in one box, destroy that box, mount the same volume in a different box, and the data reads back. This is verified behaviour on Cloud — the volume is backed by managed storage, not by the box.
+The property that makes a volume worth using: write through the mount in one box, destroy that box, mount the same volume in a different box, and the data reads back. The volume is backed by managed storage, not by the box.
 
-```python
+<CodeGroup>
+
+```python Python
 import asyncio
 import os
 import time
@@ -176,14 +317,15 @@ from boxlite import (
     BoxOptions,
 )
 
-VOLUME_ID = os.environ.get("BOXLITE_VOLUME_ID", "<YOUR_VOLUME_ID>")
+# A name is easier to carry between processes than an id.
+VOLUME = os.environ.get("BOXLITE_VOLUME", "<YOUR_VOLUME_NAME>")
 IMAGE = "ghcr.io/boxlite-ai/boxlite-agent-base:v0.1.0"
 
 
 async def run_in_fresh_box(rt, name, script):
     """Create a box with the volume mounted, run one shell script, then remove the box."""
     box = await rt.create(
-        BoxOptions(image=IMAGE, volumes=[(VOLUME_ID, "/data")]),
+        BoxOptions(image=IMAGE, volumes=[(VOLUME, "/data")]),
         name=name,
     )
     try:
@@ -232,99 +374,154 @@ async def main():
 asyncio.run(main())
 ```
 
+```typescript Node.js
+import { ApiKeyCredential, BoxliteRestOptions, JsBoxlite } from "@boxlite-ai/boxlite";
+
+// A name is easier to carry between processes than an id.
+const VOLUME = process.env.BOXLITE_VOLUME ?? "<YOUR_VOLUME_NAME>";
+const IMAGE = "ghcr.io/boxlite-ai/boxlite-agent-base:v0.1.0";
+
+// Create a box with the volume mounted, run one shell script, then remove the box.
+async function runInFreshBox(rt, name: string, script: string): Promise<[number, string]> {
+  const box = await rt.create({ image: IMAGE, volumes: [[VOLUME, "/data"]] }, name);
+  try {
+    await box.start();
+    const execution = await box.exec("sh", ["-c", script]);
+    const stdout = await execution.stdout();
+    let output = "";
+    while (true) {
+      const line = await stdout.next();
+      if (line === null) break;
+      output += line;
+    }
+    const result = await execution.wait();
+    return [result.exitCode, output];
+  } finally {
+    // The box is gone after this line; the volume is not.
+    await rt.remove(box.id, true);
+  }
+}
+
+async function main(): Promise<void> {
+  const rt = JsBoxlite.rest(
+    new BoxliteRestOptions({
+      url: process.env.BOXLITE_REST_URL ?? "https://app.boxlite.ai/api",
+      credential: new ApiKeyCredential(process.env.BOXLITE_API_KEY!),
+    }),
+  );
+  const stamp = Math.floor(Date.now() / 1000);
+
+  try {
+    // Box A writes, then is destroyed.
+    const [writeCode] = await runInFreshBox(
+      rt,
+      `volume-writer-${stamp}`,
+      "echo 'produced by box A' > /data/handoff.txt",
+    );
+    if (writeCode !== 0) {
+      console.error(`box A write failed with exit code ${writeCode}`);
+      return;
+    }
+
+    // Box B is a different box on the same volume.
+    const [readCode, output] = await runInFreshBox(rt, `volume-reader-${stamp}`, "cat /data/handoff.txt");
+    console.log(`box B exit code: ${readCode}`);
+    console.log(`box B read back: ${output}`);
+  } catch (err) {
+    console.error(`handoff failed: ${err instanceof Error ? err.message : err}`);
+  } finally {
+    rt.close();
+  }
+}
+
+main();
+```
+
+```bash REST
+# Two boxes, one volume: the first writes, the second reads after the first is gone.
+BOXLITE_REST_URL="${BOXLITE_REST_URL:-https://app.boxlite.ai/api}"
+VOLUME="${BOXLITE_VOLUME:-<YOUR_VOLUME_NAME>}"
+IMAGE="ghcr.io/boxlite-ai/boxlite-agent-base:v0.1.0"
+AUTH=(-H "Authorization: Bearer ${BOXLITE_API_KEY}" -H 'Content-Type: application/json')
+
+make_box() {
+  curl -fsS -X POST "${BOXLITE_REST_URL}/v1/boxes" "${AUTH[@]}" \
+    -d "{\"image\":\"${IMAGE}\",\"volumes\":[{\"managed_volume\":\"${VOLUME}\",\"guest_path\":\"/data\"}]}" \
+    | jq -r .id
+}
+
+# Box A writes, then is destroyed.
+A=$(make_box)
+curl -fsS -X POST "${BOXLITE_REST_URL}/v1/boxes/${A}/exec" "${AUTH[@]}" \
+  -d '{"command":"sh","args":["-c","echo '"'"'produced by box A'"'"' > /data/handoff.txt"]}' > /dev/null
+curl -fsS -X DELETE "${BOXLITE_REST_URL}/v1/boxes/${A}?force=true" "${AUTH[@]}"
+
+# Box B is a different box on the same volume.
+B=$(make_box)
+curl -fsS -X POST "${BOXLITE_REST_URL}/v1/boxes/${B}/exec" "${AUTH[@]}" \
+  -d '{"command":"cat","args":["/data/handoff.txt"]}'
+curl -fsS -X DELETE "${BOXLITE_REST_URL}/v1/boxes/${B}?force=true" "${AUTH[@]}"
+```
+
+</CodeGroup>
+
 Only what you write **under the mount path** survives. A file written to the box's own filesystem outside `/data` goes away with the box.
+
+## Read-only mounts
+
+Read-only managed volumes are not supported. The SDK refuses the mount before the request leaves your process, rather than mounting it writable and letting you believe it is protected:
+
+```text
+read-only managed volumes are not supported yet; mount "training-data" read-write
+```
+
+Mount read-write and enforce read-only behaviour in your own code, or use a separate volume for data no box should modify.
 
 ## What is different from open source
 
 <Warning>
-**Host bind mounts are ignored over REST.** In open source, `volumes=[("/home/you/data", "/data")]` mounts a directory from your machine. On Cloud, a host path in that first position is silently ignored — the box starts, the mount does not happen, and nothing you write is persisted. There is no error to catch. If you are porting code, replace every host path with a managed volume identifier.
+**Host bind mounts are rejected over REST.** In open source, `volumes=[("/home/you/data", "/data")]` mounts a directory from your machine. On Cloud that first element must be a managed volume's name or id. The SDK refuses the box **before any network request goes out**:
+
+```text
+host bind mounts are only supported by the local runtime; mount a managed volume by id or name instead
+```
+
+So the mistake surfaces immediately, rather than as a box that starts with an empty mount. If you are porting code, replace every host path with a managed volume reference.
 </Warning>
 
 | | Open source | Cloud |
 |---|---|---|
-| What you mount | A directory on the host machine | A managed volume, identified by its id |
+| What you mount | A directory on the host machine | A managed volume, by name or id |
 | Where the data lives | Your filesystem | Managed storage in the BoxLite resource pool |
-| Creating storage | Make a directory | `await rt.volumes.create()`, or the console's **New Volume** dialog |
-| Host bind mounts | Supported | Ignored |
+| Creating storage | Make a directory | `create(name)`, or the console's **New Volume** dialog |
+| Host bind mounts | Supported | Rejected |
+| Read-only mounts | Supported | Not supported |
 
-For the host-directory mount options, read-only mounts, and `copy_in` / `copy_out`, see [Volumes and mounts](/manage-sandbox/volumes). For the complete side-by-side, see [Cloud vs open source](/cloud/vs-opensource).
-
-## Deletion is asynchronous
-
-`await rt.volumes.remove(volume_id)` returns `None`, and `DELETE /v1/volumes/{volume_id}` returns `204`. Either way that is an acknowledgement, not a completed deletion. Immediately afterwards:
-
-- A REST read of that volume returns `200` with a `state` of `pending_delete` — **not** a `404`.
-- A listing can still include the volume for a short window.
-- Reclamation finishes on the platform's own cycle.
-
-So do not write code that waits for a `404`. Poll the listing with a bounded timeout and treat a volume that has left the listing as done:
-
-```python
-# cloud_volume_delete.py — remove a volume, then wait for it to leave the listing
-# Run: python cloud_volume_delete.py
-import asyncio
-import os
-
-from boxlite import ApiKeyCredential, Boxlite, BoxliteRestOptions
-
-VOLUME_ID = os.environ.get("BOXLITE_VOLUME_ID", "<YOUR_VOLUME_ID>")
-
-api_key = os.environ.get("BOXLITE_API_KEY")
-if not api_key:
-    raise SystemExit("Set BOXLITE_API_KEY to your blk_live_... key before running this.")
-
-
-async def main() -> None:
-    rt = Boxlite.rest(
-        BoxliteRestOptions(
-            url=os.environ.get("BOXLITE_REST_URL", "https://app.boxlite.ai/api"),
-            credential=ApiKeyCredential(api_key),
-        )
-    )
-
-    # This script creates no box and no volume, so removal is the only teardown
-    # it performs — and removal is what it is here to demonstrate.
-    try:
-        await rt.volumes.remove(VOLUME_ID)
-        print(f"Deletion accepted for {VOLUME_ID}")
-
-        # Bounded poll: up to 60s for the volume to leave the listing.
-        for _ in range(12):
-            volumes = await rt.volumes.list()
-            if all(volume.id != VOLUME_ID for volume in volumes):
-                print("volume reclaimed")
-                return
-            await asyncio.sleep(5)
-
-        print("volume still listed after 60s — reclamation runs on the platform's cycle")
-    except Exception as exc:
-        print(f"volume deletion failed: {exc!r}")
-
-
-if __name__ == "__main__":
-    asyncio.run(main())
-```
-
-Deleting a volume that a running box still has mounted does not corrupt that box. The box stays usable.
+For host-directory mount options, read-only mounts, and `copy_in` / `copy_out`, see [Volumes and mounts](/manage-sandbox/volumes). For the complete side-by-side, see [Cloud vs open source](/cloud/vs-opensource).
 
 ## Troubleshooting
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| The mount point is empty and nothing is persisted, with no error | A host path was passed as the first tuple element. Host bind mounts are ignored over REST | Pass the managed volume id: `volumes=[("<YOUR_VOLUME_ID>", "/data")]` |
-| `volumes tuples must be (host, guest[, read_only])` | A `volumes` entry is a tuple of the wrong length | Give each mount exactly the volume id and the mount path: `volumes=[(volume.id, "/data")]` |
-| `volumes entries must be tuple or dict` | A `volumes` entry is neither — most often a bare id string | Wrap each mount in a tuple: `volumes=[(volume.id, "/data")]`, not `volumes=[volume.id]` |
-| `rt.volumes(...)` fails when you call it | `volumes` is a property on the runtime, not a method | Drop the parentheses after `volumes`: `await rt.volumes.create()` |
-| A BoxLite error from `create()`, `list()`, `get()`, or `remove()` | The backend behind that runtime does not support named volumes | Catch the error where you call it. These four methods require a backend with named volume support |
-| `get()` raises for an id you expect to exist | No volume has that id — a typo, or it was already removed | Call `await rt.volumes.list()` and read the id off the `VolumeInfo` you want |
-| A volume you just created does not work | A new volume takes a few seconds to become ready | Wait until the volume is listed, then create the box that mounts it |
-| A volume you deleted is still returned | Deletion is asynchronous — a REST read returns `state` `pending_delete` and the listing can lag | Poll the listing with a bounded timeout instead of waiting for a `404` |
-| Files are gone after the box is removed | The data was written outside the mount path, so it lived on the box's own disk | Write under the mount path, for example `/data/results.json`, and read it back from a box that mounts the same volume |
+| The box is refused with a host-path error | A path from your machine was passed as the first element. Cloud takes a managed volume reference there | Pass the volume's name or id: `volumes=[("training-data", "/data")]` |
+| `read-only managed volumes are not supported yet` | A mount asked for read-only, which Cloud does not support | Mount read-write; the SDK refuses rather than silently mounting writable |
+| `volumes tuples must be (host, guest[, read_only])` | A `volumes` entry is a tuple of the wrong length | Give each mount exactly the volume reference and the mount path |
+| `volumes entries must be tuple or dict` | A `volumes` entry is neither — most often a bare string | Wrap each mount in a tuple: `volumes=[(volume.name, "/data")]`, not `volumes=[volume.name]` |
+| `rt.volumes(...)` fails when you call it | `volumes` is a property on the runtime, not a method | Drop the parentheses: `await rt.volumes.create()` |
+| A BoxLite error from `create()`, `list()`, `get()`, or `remove()` | The runtime has no volume backend — a local runtime cannot resolve a managed volume reference | Build the runtime with `Boxlite.rest(...)` against Cloud |
+| `Invalid mount path ... (cannot mount to system directory)` | The mount path is `/proc`, `/etc`, `/bin`, or another system directory | Mount somewhere like `/data` or `/mnt/models` |
+| `Invalid mount path ... (must be absolute)` | The mount path is relative | Start the path with `/` |
+| `get()` raises for an id you expect to exist | `get()` takes the id, not the name — or the volume was already removed | Call `list()` and read the `id` off the `VolumeInfo` you want |
+| Files are gone after the box is removed | The data was written outside the mount path, so it lived on the box's own disk | Write under the mount path, for example `/data/results.json` |
+| A volume is not ready, is stuck, or will not go away after deletion | Volume state and deletion are covered on their own page | See [Volume operations](/cloud/volume-operations) |
 | `401` on `/v1/volumes` | Missing, malformed, or expired API key | Send `Authorization: Bearer <YOUR_API_KEY>` with a key from the console — see [API keys](/cloud/api-keys) |
 
 ## Next steps
 
 <CardGroup cols={2}>
+  <Card title="Volume operations" icon="gauge" href="/cloud/volume-operations">
+    Reading volume state over REST, and deleting a volume when reclamation is asynchronous.
+  </Card>
   <Card title="Boxes on Cloud" icon="box" href="/cloud/boxes">
     Images, sizes, and the console lifecycle switches that make a volume necessary.
   </Card>

@@ -1,0 +1,188 @@
+---
+title: "Operating volumes on BoxLite Cloud"
+sidebarTitle: "Volume operations"
+description: "Read the volume state the SDK does not expose, and delete a volume knowing that reclamation is asynchronous."
+---
+
+Once a volume is carrying data, two questions come up that creating and mounting never raise: **what state is this volume actually in**, and **what happens when I delete it**. Both answers live over REST rather than in the SDK.
+
+If you are still setting a volume up, start with [Volumes](/cloud/volumes) instead.
+
+## Prerequisites
+
+- An API key from the console, exported as `BOXLITE_API_KEY`. See [API keys](/cloud/api-keys).
+- The REST URL exported as `BOXLITE_REST_URL`, and a volume you already created. See [Volumes](/cloud/volumes).
+
+## What the SDK does not tell you
+
+Two pieces of volume state reach the REST API but stop at the SDK. Read them over REST when you need them.
+
+| What you want | SDK | REST |
+|---|---|---|
+| Whether a volume is ready, creating, or being deleted | Not exposed on `VolumeInfo` | `state` on `GET /v1/volumes` and `GET /v1/volumes/{id}` |
+| Why a volume failed | Not exposed on `VolumeInfo` | `error_reason` on `GET /v1/volumes/{id}` |
+| Volume size | `size_bytes` / `sizeBytes` is **always empty** | Not reported either — the service does not return a size field |
+
+`state` is one of `creating`, `ready`, `pending_create`, `pending_delete`, `deleting`, `deleted`, or `error`.
+
+```bash
+# Read the state the SDK does not surface.
+curl -fsS "${BOXLITE_REST_URL}/v1/volumes/${VOLUME_ID}" \
+  -H "Authorization: Bearer ${BOXLITE_API_KEY}" \
+  | jq '{id, name, state, error_reason}'
+```
+
+Creating a volume over REST already waits for it to become ready before returning, so a volume you just created from the SDK or from `POST /v1/volumes` is mountable. Poll `state` when you are adopting a volume you did not just create, or when you are diagnosing one that is not behaving.
+## Deletion is asynchronous
+
+Removing a volume returns an acknowledgement, not a completed deletion — `remove()` returns nothing and `DELETE /v1/volumes/{volume_id}` returns `204`. Immediately afterwards:
+
+- A REST read of that volume returns `200` with a `state` of `pending_delete` — **not** a `404`.
+- A listing can still include the volume for a short window.
+- Reclamation finishes on the platform's own cycle.
+
+So do not write code that waits for a `404`. Poll with a bounded timeout, and treat a volume that has left the listing as done:
+
+<CodeGroup>
+
+```python Python
+# cloud_volume_delete.py — remove a volume, then wait for it to leave the listing
+# Run: python cloud_volume_delete.py
+import asyncio
+import os
+
+from boxlite import ApiKeyCredential, Boxlite, BoxliteRestOptions
+
+VOLUME_ID = os.environ.get("BOXLITE_VOLUME_ID", "<YOUR_VOLUME_ID>")
+
+api_key = os.environ.get("BOXLITE_API_KEY")
+if not api_key:
+    raise SystemExit("Set BOXLITE_API_KEY to your blk_live_... key before running this.")
+
+
+async def main() -> None:
+    rt = Boxlite.rest(
+        BoxliteRestOptions(
+            url=os.environ.get("BOXLITE_REST_URL", "https://app.boxlite.ai/api"),
+            credential=ApiKeyCredential(api_key),
+        )
+    )
+
+    # This script creates no box and no volume, so removal is the only teardown
+    # it performs — and removal is what it is here to demonstrate.
+    try:
+        # remove() addresses the volume by id, not by name.
+        await rt.volumes.remove(VOLUME_ID)
+        print(f"Deletion accepted for {VOLUME_ID}")
+
+        # Bounded poll: up to 60s for the volume to leave the listing.
+        for _ in range(12):
+            volumes = await rt.volumes.list()
+            if all(volume.id != VOLUME_ID for volume in volumes):
+                print("volume reclaimed")
+                return
+            await asyncio.sleep(5)
+
+        print("volume still listed after 60s — reclamation runs on the platform's cycle")
+    except Exception as exc:
+        print(f"volume deletion failed: {exc!r}")
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+```typescript Node.js
+// cloudVolumeDelete.ts — remove a volume, then wait for it to leave the listing
+// Run: node cloudVolumeDelete.ts
+import { ApiKeyCredential, BoxliteRestOptions, JsBoxlite } from "@boxlite-ai/boxlite";
+
+const VOLUME_ID = process.env.BOXLITE_VOLUME_ID ?? "<YOUR_VOLUME_ID>";
+
+const apiKey = process.env.BOXLITE_API_KEY;
+if (!apiKey) {
+  throw new Error("Set BOXLITE_API_KEY to your blk_live_... key before running this.");
+}
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function main(): Promise<void> {
+  const rt = JsBoxlite.rest(
+    new BoxliteRestOptions({
+      url: process.env.BOXLITE_REST_URL ?? "https://app.boxlite.ai/api",
+      credential: new ApiKeyCredential(apiKey),
+    }),
+  );
+
+  try {
+    // remove() addresses the volume by id, not by name.
+    await rt.volumes.remove(VOLUME_ID);
+    console.log(`Deletion accepted for ${VOLUME_ID}`);
+
+    // Bounded poll: up to 60s for the volume to leave the listing.
+    for (let attempt = 0; attempt < 12; attempt++) {
+      const volumes = await rt.volumes.list();
+      if (volumes.every((volume) => volume.id !== VOLUME_ID)) {
+        console.log("volume reclaimed");
+        return;
+      }
+      await sleep(5000);
+    }
+
+    console.log("volume still listed after 60s — reclamation runs on the platform's cycle");
+  } catch (err) {
+    console.error(`volume deletion failed: ${err instanceof Error ? err.message : err}`);
+  } finally {
+    rt.close();
+  }
+}
+
+main();
+```
+
+```bash REST
+# Remove a volume, then watch its state until it leaves the listing.
+BOXLITE_REST_URL="${BOXLITE_REST_URL:-https://app.boxlite.ai/api}"
+VOLUME_ID="${BOXLITE_VOLUME_ID:-<YOUR_VOLUME_ID>}"
+
+curl -fsS -X DELETE "${BOXLITE_REST_URL}/v1/volumes/${VOLUME_ID}" \
+  -H "Authorization: Bearer ${BOXLITE_API_KEY}"
+echo "Deletion accepted for ${VOLUME_ID}"
+
+# Over REST you can watch the state directly, which the SDK does not expose.
+for _ in $(seq 12); do
+  STATE=$(curl -fsS "${BOXLITE_REST_URL}/v1/volumes/${VOLUME_ID}" \
+    -H "Authorization: Bearer ${BOXLITE_API_KEY}" | jq -r .state 2>/dev/null)
+  if [ -z "${STATE}" ] || [ "${STATE}" = "deleted" ]; then
+    echo "volume reclaimed"
+    exit 0
+  fi
+  echo "state: ${STATE}"
+  sleep 5
+done
+echo "volume still present after 60s — reclamation runs on the platform's cycle"
+```
+
+</CodeGroup>
+
+Deleting a volume that a running box still has mounted does not corrupt that box. The box stays usable.
+## Troubleshooting
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| You cannot tell whether a volume is ready | `state` is not on `VolumeInfo` | Read `state` over REST — see [What the SDK does not tell you](#what-the-sdk-does-not-tell-you) |
+| `size_bytes` is always empty | The service does not report volume size on any response | Measure usage from inside a box, for example `du -sh /data` |
+| A volume you deleted is still returned | Deletion is asynchronous — a REST read returns `state` `pending_delete` and the listing can lag | Poll with a bounded timeout instead of waiting for a `404` |
+| A volume sits in `error` | The backend could not provision it | Read `error_reason` on `GET /v1/volumes/{id}`, then remove the volume and create a replacement |
+| `401` on `/v1/volumes` | Missing, malformed, or expired API key | Send `Authorization: Bearer <YOUR_API_KEY>` with a key from the console — see [API keys](/cloud/api-keys) |
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Volumes" icon="database" href="/cloud/volumes">
+    Creating, naming, and mounting a volume, plus what survives the box.
+  </Card>
+  <Card title="Boxes on Cloud" icon="box" href="/cloud/boxes">
+    The lifecycle switches that decide when a box — and its unsaved data — goes away.
+  </Card>
+</CardGroup>

@@ -43,7 +43,7 @@
   "navigation": {
     "tabs": [
       {
-        "tab": "BoxLite Opensource",
+        "tab": "BoxLite Open Source",
         "groups": [
           {
             "group": "Getting started",
@@ -195,7 +195,9 @@
             "group": "Volumes",
             "icon": "database",
             "root": "cloud/volumes",
-            "pages": []
+            "pages": [
+              "cloud/volume-operations"
+            ]
           },
           {
             "group": "Network",

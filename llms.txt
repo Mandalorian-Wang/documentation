@@ -2,7 +2,7 @@
 
 > BoxLite is an embeddable microVM sandbox for AI agents — stateful, sub-second boot, hardware-level isolation, no daemon required.
 
-## BoxLite Opensource
+## BoxLite Open Source
 
 ### Getting started
 - [BoxLite documentation](/index.mdx): Run arbitrary code, commands, browsers, desktops, or entire AI agents inside hardware-isolated microVM sandboxes that start in about a secon…
@@ -101,7 +101,8 @@
 - [Configure a box on BoxLite Cloud](/cloud/boxes.mdx): Pick an image and a size for a Cloud box, and understand the three lifecycle controls the platform applies while it runs.
 
 ### Volumes
-- [Persistent volumes on BoxLite Cloud](/cloud/volumes.mdx): Create a managed volume from the SDK or the console, mount it into a box by id, and keep the data after the box is gone.
+- [Persistent volumes on BoxLite Cloud](/cloud/volumes.mdx): Create a managed volume, give it a name you choose, mount it by name or by id, and keep the data after the box is gone.
+- [Operating volumes on BoxLite Cloud](/cloud/volume-operations.mdx): Read the volume state the SDK does not expose, and delete a volume knowing that reclamation is asynchronous.
 
 ### Network
 - [Reach a service running inside a box](/cloud/network.mdx): Open a tunnel to a port inside a Cloud box to reach an HTTP server, a WebSocket endpoint, or any TCP service — and understand the box's outb…
