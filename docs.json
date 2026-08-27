@@ -189,14 +189,22 @@
             "group": "Boxes",
             "icon": "cube",
             "root": "cloud/boxes",
-            "pages": []
+            "pages": [
+              "cloud/box-images",
+              "cloud/box-sizes",
+              "cloud/box-lifecycle",
+              "cloud/box-from-code"
+            ]
           },
           {
             "group": "Volumes",
             "icon": "database",
             "root": "cloud/volumes",
             "pages": [
-              "cloud/volume-operations"
+              "cloud/mount-a-volume",
+              "cloud/volume-operations",
+              "cloud/data-across-boxes",
+              "cloud/volume-reference"
             ]
           },
           {
@@ -204,14 +212,23 @@
             "icon": "globe",
             "root": "cloud/network",
             "pages": [
+              "cloud/tunnels",
+              "cloud/serve-http",
+              "cloud/port-forwarding",
+              "cloud/raw-streams",
               "cloud/network-policy"
             ]
           },
           {
-            "group": "Billing",
+            "group": "Pricing",
             "icon": "credit-card",
-            "root": "cloud/billing",
-            "pages": []
+            "root": "cloud/pricing",
+            "pages": [
+              "cloud/box-costs",
+              "cloud/cost-controls",
+              "cloud/plans",
+              "cloud/billing"
+            ]
           }
         ]
       },

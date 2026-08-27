@@ -1,0 +1,85 @@
+---
+title: "Choose an image for a Cloud box"
+sidebarTitle: "Images"
+description: "The three images the console offers, what an image reference looks like from code, and which one to start from."
+---
+
+A box starts from an image. Pick the one that already has your runtime rather than installing it on every start.
+
+## Prerequisites
+
+- An API key from the console, exported as `BOXLITE_API_KEY`. See [API keys](/cloud/api-keys).
+- `pip install boxlite`, and the REST URL exported as `BOXLITE_REST_URL`. See [Quickstart](/cloud/quickstart).
+
+## Choose an image
+
+The **New Box** dialog offers three images:
+
+| Console option | Use it for |
+|---|---|
+| **Base** | A general-purpose Linux box you install into yourself |
+| **Python** | Python workloads without a build step |
+| **Node.js** | Node workloads without a build step |
+
+From code you pass an image reference instead. The official SDK examples use `ghcr.io/boxlite-ai/boxlite-agent-base:v0.1.0`, and that is the image to start from when you have no reason to pick another:
+
+```python
+import asyncio
+import os
+import time
+
+from boxlite import ApiKeyCredential, Boxlite, BoxliteRestOptions, BoxOptions
+
+async def main() -> None:
+    box_id = None
+    rt = None
+    try:
+        # export BOXLITE_API_KEY=<YOUR_API_KEY> before running
+        rt = Boxlite.rest(BoxliteRestOptions(
+            url=os.environ.get("BOXLITE_REST_URL", "https://app.boxlite.ai/api"),
+            credential=ApiKeyCredential(os.environ["BOXLITE_API_KEY"]),
+        ))
+
+        box = await rt.create(
+            BoxOptions(image="ghcr.io/boxlite-ai/boxlite-agent-base:v0.1.0"),
+            name=f"image-check-{int(time.time())}",
+        )
+        box_id = box.id
+        await box.start()
+
+        execution = await box.exec("cat", args=["/etc/os-release"])
+        output = ""
+        async for line in execution.stdout():
+            output += line
+        result = await execution.wait()
+
+        print(f"exit code: {result.exit_code}")
+        print(output)
+    except Exception as exc:
+        print(f"box failed: {type(exc).__name__}: {exc}")
+    finally:
+        if rt is not None and box_id:
+            try:
+                await rt.remove(box_id, force=True)
+            except Exception as exc:
+                print(f"remove failed: {exc}")
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+An API key carries the `Boxes` permission, and the console describes what that includes:
+
+> Boxes API access — This key can create and manage Boxes. Shared Linux base images are available automatically.
+
+So you do not stage or pull a base image before your first `create`. Image operations such as pulling are not supported over the REST runtime — see [Cloud versus open source](/cloud/vs-opensource).
+
+
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Boxes" icon="arrow-left" href="/cloud/boxes">
+    Everything else about configuring a box on Cloud.
+  </Card>
+</CardGroup>

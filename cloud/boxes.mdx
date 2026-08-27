@@ -1,298 +1,41 @@
 ---
-title: "Configure a box on BoxLite Cloud"
+title: "Boxes"
 sidebarTitle: "Boxes"
-description: "Pick an image and a size for a Cloud box, and understand the three lifecycle controls the platform applies while it runs."
+description: "A box on BoxLite Cloud is a microVM you address by name or id from anywhere your API key reaches — choose its image and size, and know when the platform stops it."
 ---
 
 A box on BoxLite Cloud is a microVM you address by name or id from anywhere your API key reaches. You choose its image and its size when you create it, and the platform decides when it stops and whether it wakes again.
 
-## Prerequisites
+<Warning>
+**A Cloud box stops itself after 15 idle minutes by default**, and work running *inside* the box does not count as activity. A long unattended job can be stopped mid-run. See [Lifecycle](/cloud/box-lifecycle#stop-when-idle) before you start one.
+</Warning>
 
-- An API key from the console, exported as `BOXLITE_API_KEY`. See [API keys](/cloud/api-keys).
-- `pip install boxlite`, and the REST URL exported as `BOXLITE_REST_URL`. See [Quickstart](/cloud/quickstart).
+## In this section
 
-Every example below reads both values from the environment, so nothing in your code hard-codes a credential.
+<CardGroup cols={2}>
+  <Card title="Images" icon="layer-group" href="/cloud/box-images">
+    The three images the console offers, and what an image reference looks like from code.
+  </Card>
+  <Card title="Sizes" icon="ruler" href="/cloud/box-sizes">
+    The preset sizes, the per-box ceilings for your organization, and the SDK sizing fields.
+  </Card>
+  <Card title="Lifecycle" icon="clock-rotate-left" href="/cloud/box-lifecycle">
+    Stop when idle, wake on access, delete after stopping. **The settings most likely to surprise you.**
+  </Card>
+  <Card title="From code" icon="code" href="/cloud/box-from-code">
+    The full create-start-use-remove cycle, reusing a box by name, and environment variables.
+  </Card>
+</CardGroup>
 
-## Choose an image
+## Which page do I want?
 
-The **New Box** dialog offers three images:
-
-| Console option | Use it for |
+| You are asking | Page |
 |---|---|
-| **Base** | A general-purpose Linux box you install into yourself |
-| **Python** | Python workloads without a build step |
-| **Node.js** | Node workloads without a build step |
-
-From code you pass an image reference instead. The official SDK examples use `ghcr.io/boxlite-ai/boxlite-agent-base:v0.1.0`, and that is the image to start from when you have no reason to pick another:
-
-```python
-import asyncio
-import os
-import time
-
-from boxlite import ApiKeyCredential, Boxlite, BoxliteRestOptions, BoxOptions
-
-async def main() -> None:
-    box_id = None
-    rt = None
-    try:
-        # export BOXLITE_API_KEY=<YOUR_API_KEY> before running
-        rt = Boxlite.rest(BoxliteRestOptions(
-            url=os.environ.get("BOXLITE_REST_URL", "https://app.boxlite.ai/api"),
-            credential=ApiKeyCredential(os.environ["BOXLITE_API_KEY"]),
-        ))
-
-        box = await rt.create(
-            BoxOptions(image="ghcr.io/boxlite-ai/boxlite-agent-base:v0.1.0"),
-            name=f"image-check-{int(time.time())}",
-        )
-        box_id = box.id
-        await box.start()
-
-        execution = await box.exec("cat", args=["/etc/os-release"])
-        output = ""
-        async for line in execution.stdout():
-            output += line
-        result = await execution.wait()
-
-        print(f"exit code: {result.exit_code}")
-        print(output)
-    except Exception as exc:
-        print(f"box failed: {type(exc).__name__}: {exc}")
-    finally:
-        if rt is not None and box_id:
-            try:
-                await rt.remove(box_id, force=True)
-            except Exception as exc:
-                print(f"remove failed: {exc}")
-
-if __name__ == "__main__":
-    asyncio.run(main())
-```
-
-An API key carries the `Boxes` permission, and the console describes what that includes:
-
-> Boxes API access — This key can create and manage Boxes. Shared Linux base images are available automatically.
-
-So you do not stage or pull a base image before your first `create`. Image operations such as pulling are not supported over the REST runtime — see [Cloud versus open source](/cloud/vs-opensource).
-
-## Choose a size
-
-The console offers three presets and a custom option:
-
-| Size | vCPU | Memory | Disk |
-|---|---|---|---|
-| **Small** | 1 | 1 GiB | 10 GiB |
-| **Medium** | 2 | 4 GiB | 20 GiB |
-| **Large** | 4 | 8 GiB | 50 GiB |
-| **Custom** | Your value | Your value, in GiB | Your value, in GiB |
-
-Pick **Small** for shell work and short scripts, **Medium** for test suites and dependency installs, **Large** for builds and anything that keeps several processes hot.
-
-### Per-organization ceilings
-
-**Custom** is bounded. Your organization has one ceiling per box:
-
-| Resource | Ceiling per box |
-|---|---|
-| Compute | 4 vCPU |
-| Memory | 32 GiB |
-| Storage | 120 GiB |
-
-The console shows these under **Box limits** on the Billing page, with the reason:
-
-> Limits mitigate misuse and keep box and compute capacity fairly available across all users.
-
-Read your current ceilings in [Plans, wallet, and usage](/cloud/billing). Split a workload that wants more than one box can hold across several boxes rather than trying to raise a single box past the ceiling.
-
-### The SDK's sizing fields
-
-`BoxOptions` accepts `cpus`, `memory_mib`, and `disk_size_gb`. Their types, units, and general behaviour live in [Compute resources](/manage-sandbox/compute-resources) — the console sizes above are the verified way to size a Cloud box, so set the size in the console when you want a specific shape.
-
-The disk field is named `disk_size_gb`. `disk_gib` is a common guess and fails at construction with a no-such-field error.
-
-## Lifecycle on Cloud
-
-Three controls in the **New Box** dialog govern how long your box lives. They behave differently from a box you run yourself, and the first one can end a job you thought was safe.
-
-| Control | Choices | Default |
-|---|---|---|
-| **Stop when idle** | `Never`, `5 min`, `15 min`, `30 min`, `1 hour`, `4 hours`, or a custom value | `15 min` |
-| **Wake on access** | A switch | On |
-| **Delete after stopping** | A delay, or `Never` to keep the box | `Never` |
-
-Set them in the console when you create a box there, or from code with three `BoxOptions` fields:
-
-| Field | Type | Meaning |
-|---|---|---|
-| `auto_stop` | `int` (seconds) | Idle time before the box is stopped. `0` disables it |
-| `auto_delete` | `int` (seconds) | Time spent stopped before the box is deleted. `0` disables it |
-| `auto_resume` | `bool` | Whether an incoming operation resumes the box after an auto-stop |
-
-Two rules to know before you set them:
-
-- **`auto_delete` must be greater than `auto_stop`** when both are non-zero. Otherwise creation fails with `auto_delete must be greater than auto_stop`, because a box that deletes itself before it stops has no reachable state.
-- **The code defaults are not the console defaults.** Leave these fields unset and a box created over REST gets `auto_stop=0` and `auto_delete=0` — no auto-stop and no auto-delete at all — with `auto_resume` defaulting to `true`. The console's `15 min` idle default applies to boxes you create in the console. So a box created from code keeps running until you stop it, and paying for it is your responsibility.
-
-The console's `15 min` corresponds to `auto_stop=900`.
-
-The field names matter: `idle_timeout`, `stop_when_idle`, `wake_on_access`, `delete_after_stopping`, and `auto_pause` are not fields of `BoxOptions` and each fails construction with a no-such-field error.
-
-### Stop when idle
-
-Idleness is measured at the boundary of the box, not inside it. The console is explicit:
-
-> Idle means no SDK, terminal or preview traffic. Work running inside the box does not count — a long job can be stopped mid-run.
-
-That is the single most important sentence on this page. A 40-minute build that you kick off and then stop talking to looks idle from the outside, and the platform stops it at 15 minutes with the build half-finished.
-
-Two ways to keep a long job alive:
-
-- **Keep touching the box from your client.** Poll the job while it runs — read its progress file or check its process — so real SDK traffic keeps arriving.
-- **Raise the idle timeout, or disable it.** In the console, pick a longer value or `Never`; from code, pass a larger `auto_stop` or `auto_stop=0`. Disabling it is the right choice for a box whose whole purpose is unattended work — and the one that makes you responsible for tearing it down.
-
-```python
-import asyncio
-
-async def run_long_job(box) -> int:
-    """Start a long job, then poll it so the box keeps seeing SDK traffic."""
-    starter = await box.exec("sh", args=["-c", "nohup ./build.sh > /tmp/build.log 2>&1 & echo started"])
-    await starter.wait()
-
-    while True:
-        # each exec is SDK traffic, so the box does not look idle
-        probe = await box.exec("sh", args=["-c", "pgrep -f build.sh > /dev/null && echo running || echo done"])
-        state = ""
-        async for line in probe.stdout():
-            state += line
-        await probe.wait()
-
-        if "done" in state:
-            break
-        await asyncio.sleep(60)
-
-    tail = await box.exec("tail", args=["-n", "20", "/tmp/build.log"])
-    async for line in tail.stdout():
-        print(line, end="")
-    result = await tail.wait()
-    return result.exit_code
-```
-
-<Note>
-Pass this helper a box you already created and started, using the pattern in [Create, reuse, and remove a box from code](#create-reuse-and-remove-a-box-from-code). Choose a poll interval comfortably shorter than the box's idle timeout.
-</Note>
-
-### Wake on access
-
-Resume is on by default — the console switch starts on, and `auto_resume` defaults to `true` over the API. With it enabled, a stopped box comes back on its own when you reach for it:
-
-> SDK exec, file operations and terminal attach wake a stopped box. Preview URL traffic keeps a running box alive but cannot wake a stopped one.
-
-This is what makes a named Cloud box feel durable: your script calls `exec` after a weekend, the box restarts with its disk intact, and your code carries on. Enable it for any box you intend to reuse. Leave it off when a stop should be final until you intervene.
-
-### Delete after stopping
-
-**Delete after stopping** defaults to `Never`, so a stopped box keeps its disk and stays addressable by name. Set a delay when you want the platform to reclaim throwaway boxes for you instead of remembering to call `remove` yourself.
-
-## Create, reuse, and remove a box from code
-
-Name your box. The name is how a second process — a worker, a retry, tomorrow's cron job — finds the same box instead of building a new one.
-
-`name` is a parameter of `rt.create(...)`, not a field of `BoxOptions`. Passing `name=` inside `BoxOptions` fails at construction.
-
-```python
-import asyncio
-import os
-
-from boxlite import ApiKeyCredential, Boxlite, BoxliteRestOptions, BoxOptions
-
-BOX_NAME = "nightly-report-runner"
-
-async def main() -> None:
-    box_id = None
-    rt = None
-    try:
-        # export BOXLITE_API_KEY=<YOUR_API_KEY> before running
-        rt = Boxlite.rest(BoxliteRestOptions(
-            url=os.environ.get("BOXLITE_REST_URL", "https://app.boxlite.ai/api"),
-            credential=ApiKeyCredential(os.environ["BOXLITE_API_KEY"]),
-        ))
-
-        box = await rt.create(
-            BoxOptions(image="ghcr.io/boxlite-ai/boxlite-agent-base:v0.1.0"),
-            name=BOX_NAME,
-        )
-        box_id = box.id
-        await box.start()
-
-        # REST boxes take command arguments as a list
-        execution = await box.exec("sh", args=["-c", "echo report ready"])
-        output = ""
-        async for line in execution.stdout():
-            output += line
-        result = await execution.wait()
-        print(f"exit code: {result.exit_code}")
-        print(output)
-
-        # any process holding your API key can pick the same box up by name
-        again = await rt.get(BOX_NAME)
-        if again is None:
-            raise RuntimeError(f"box {BOX_NAME} not found")
-        print(f"reused box: {again.id}")
-    except Exception as exc:
-        print(f"cloud box failed: {type(exc).__name__}: {exc}")
-    finally:
-        # remove is called on the runtime, so this script can be run again with the same name
-        if rt is not None and box_id:
-            try:
-                await rt.remove(box_id, force=True)
-            except Exception as exc:
-                print(f"remove failed: {exc}")
-
-if __name__ == "__main__":
-    asyncio.run(main())
-```
-
-Three shapes to keep in mind on Cloud:
-
-- `Boxlite.rest(...)` is constructed synchronously; `create`, `start`, `exec`, and `remove` are all awaited.
-- `box.exec("echo", args=["hi"])` takes its arguments as a list.
-- Teardown is `await rt.remove(box.id, force=True)` on the runtime.
-
-`rt.get_or_create(...)` creates a box or reuses an existing one with the same name in a single call. For the state model behind create, start, stop, and remove — and for the signatures of the runtime methods — see [Lifecycle](/manage-sandbox/lifecycle).
-
-## Manage a box from the console
-
-The **Boxes** list is the management surface for a box, so you do not need your own tooling to see what you are running. Each row shows the box name, its id, and its status, and carries two actions:
-
-| Action | What it does |
-|---|---|
-| **Stop** | Stops a running box, keeping its disk |
-| **More** → **Delete** | Removes the box, after a confirmation that warns the action cannot be undone |
-
-BoxLite generates a name for a box you create in the console — a two-word pair such as `golden-lynx` — and a short mixed-case id such as `9z8vat0excp9`. When you create a box from code you pass your own name, which is what makes a box findable later.
-
-Use the list to catch boxes a crashed script left behind. Filter by name, check which are still `RUNNING`, and stop or delete them.
-
-## Environment variables and secrets
-
-`BoxOptions` accepts `env` for plain configuration and `secrets` for values that should not sit in your box's environment or logs. Their shapes differ between Python and Node, and secrets carry extra options such as host scoping, so use the pages that own those tables: [Environment and startup](/manage-sandbox/environment) and [Inject secrets and harden a box](/manage-sandbox/secrets-and-security).
-
-Keep your BoxLite API key out of both. It belongs in the environment of the process that calls `Boxlite.rest(...)`, not inside the box.
-
-## Troubleshooting
-
-| Symptom | Cause | Fix |
-|---|---|---|
-| A long job dies partway through, around the 15-minute mark | **Stop when idle** counts only SDK, terminal, and preview traffic. Work inside the box does not count, so the platform stopped the box mid-run | Poll the box from your client while the job runs, or raise or disable the idle timeout for that box in the console |
-| `exec` against a stopped box fails instead of restarting it | Resume was switched off for that box. It is on by default in both the console and over the API, so this only happens if it was turned off at creation | Recreate the box with **Wake on access** left on, or `auto_resume=True` from code — that is what lets SDK exec, file operations, and terminal attach bring a stopped box back |
-| `BoxOptions(disk_gib=20)` fails with a no-such-field error | The field is `disk_size_gb` | Use `BoxOptions(disk_size_gb=20)`. See [Compute resources](/manage-sandbox/compute-resources) |
-| `BoxOptions(name="my-box")` fails with a no-such-field error | `name` belongs to the create call | Use `await rt.create(BoxOptions(...), name="my-box")` |
-| `BoxOptions(idle_timeout=3600)` or `BoxOptions(auto_pause=True)` fails with a no-such-field error | Those are not the field names | Use `auto_stop`, `auto_delete`, and `auto_resume` — see [Lifecycle on Cloud](#lifecycle-on-cloud) |
-| Creation fails with `auto_delete must be greater than auto_stop` | `auto_delete` is non-zero but not larger than `auto_stop` | Raise `auto_delete` above `auto_stop`, or set `auto_delete=0` to disable deletion |
-| A box created from code never stops on its own | Left unset, `auto_stop` defaults to `0`, which disables auto-stop. The console's `15 min` default does not apply to boxes created over the API | Pass `auto_stop` explicitly, for example `auto_stop=900` for 15 minutes |
-| A box request asks for more CPU, memory, or disk than your organization allows | Ceilings are 4 vCPU compute, 32 GiB memory, and 120 GiB storage per box | Lower the request, or spread the work across several boxes. Check your ceilings in [Plans, wallet, and usage](/cloud/billing) |
-| `box.exec("sh", "-c", "echo hi")` fails on Cloud | REST boxes take arguments as a list | Use `box.exec("sh", args=["-c", "echo hi"])` |
-| `await box.remove()` raises an attribute error | Removal happens on the runtime | Use `await rt.remove(box.id, force=True)` |
-| A box is still billing after your script crashed | The script died before its cleanup ran | Open the **Boxes** list and stop or delete the leftovers, or list them from code with `await rt.list_info()` and remove each with `await rt.remove(box_id, force=True)`. Setting **Delete after stopping** on future boxes lets the platform reclaim them for you |
-| A box you expected to reuse is gone | Its **Delete after stopping** delay elapsed after an idle stop | Create the replacement with **Delete after stopping** set to `Never`, and put anything you must keep on a volume — see [Volumes on Cloud](/cloud/volumes) |
+| Which image should I start from? | [Images](/cloud/box-images) |
+| How much CPU and memory can one box have? | [Sizes](/cloud/box-sizes#per-organization-ceilings) |
+| Why did my box stop on its own? | [Lifecycle](/cloud/box-lifecycle#stop-when-idle) |
+| How do I keep a box alive through a long job? | [Lifecycle](/cloud/box-lifecycle#stop-when-idle) |
+| How do I get a box deleted automatically? | [Lifecycle](/cloud/box-lifecycle#delete-after-stopping) |
+| Show me the whole cycle in one script | [From code](/cloud/box-from-code) |
+| How do I reuse a box I created earlier? | [From code](/cloud/box-from-code) |
+| What does a box cost per hour? | [What a box costs](/cloud/box-costs) |
