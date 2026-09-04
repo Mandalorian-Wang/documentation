@@ -216,7 +216,7 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
-> `Boxlite` is entered with a **synchronous** `with`, and the `Boxlite.default()` factory is synchronous too. Its instance methods (`list_info()` / `create()` / `get()` / `remove()` / `metrics()` / `shutdown()`) are **async — always `await` them**, or you get `RuntimeError: no running event loop`. `box.info()` is the one method whose shape depends on the type: synchronous on the native `Box`, a coroutine on `SimpleBox` and its subclasses.
+> `Boxlite` is entered with a **synchronous** `with`, and the `Boxlite.default()` factory is synchronous too. Its instance methods (`list_info()` / `create()` / `get()` / `remove()` / `metrics()` / `shutdown()`) are **async — always `await` them**, or you get `RuntimeError: no running event loop`. `box.info()` must be awaited too.
 
 ---
 

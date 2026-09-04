@@ -32,8 +32,7 @@ import asyncio
 import boxlite
 from boxlite import BoxOptions, SecurityOptions, SimpleBox
 
-# AdvancedBoxOptions is not exported at the top level; import it from boxlite.boxlite
-from boxlite.boxlite import AdvancedBoxOptions
+from boxlite import AdvancedBoxOptions
 
 async def main() -> None:
     # SimpleBox creates/starts the sandbox only on entering async with, and stops/reclaims it on exit
@@ -92,8 +91,7 @@ of agent scenarios.
 import asyncio
 
 import boxlite
-from boxlite import BoxOptions, SecurityOptions
-from boxlite.boxlite import AdvancedBoxOptions
+from boxlite import AdvancedBoxOptions, BoxOptions, SecurityOptions
 
 async def main() -> None:
     # Boxlite is a synchronous context manager (with), but its data methods (create/remove/...) are async and require await
@@ -377,7 +375,7 @@ if __name__ == "__main__":
 ## Security: strong isolation
 
 Security options are passed **via `advanced`**; there is no top-level
-`security=` keyword. `AdvancedBoxOptions` is not exported at the top level and
+`security=` keyword and
 must be imported from `boxlite.boxlite`.
 
 ```python
@@ -385,8 +383,7 @@ must be imported from `boxlite.boxlite`.
 import asyncio
 
 import boxlite
-from boxlite import BoxOptions, SecurityOptions
-from boxlite.boxlite import AdvancedBoxOptions  # only in the native module
+from boxlite import AdvancedBoxOptions, BoxOptions, SecurityOptions
 
 async def main() -> None:
     try:
@@ -550,7 +547,7 @@ async def main() -> None:
 
             # List remaining sandboxes with list_info() (not list()); it is async and requires await
             for info in await runtime.list_info():
-                # box.info() is synchronous; but runtime.list_info() is async
+                # both box.info() and runtime.list_info() must be awaited
                 # BoxInfo.state is a BoxStateInfo; the status string is in .state.status
                 print(info.id, info.state.status)
     except RuntimeError as exc:
@@ -561,8 +558,8 @@ if __name__ == "__main__":
 ```
 
 > List with `runtime.list_info()` (not `list()`); it is an **async method
-> (requires `await`)**. Note the distinction: `box.info()` is synchronous on
-> the native `Box` and a coroutine on the wrapper types, whereas `runtime.list_info()` /
+> (requires `await`)**. `box.info()` must be awaited too, as must
+> `runtime.list_info()` /
 > `runtime.metrics()` / `runtime.remove()` / `runtime.create()` /
 > `runtime.shutdown()` are all **async (require `await`)**. `BoxInfo.state` is a
 > `BoxStateInfo`, and the sandbox status string is in `info.state.status`.
@@ -623,7 +620,7 @@ read-only volumes for shared datasets; and inline base64 only for tiny payloads.
 | `exec` returned a non-zero exit and raised nothing | By design | Check `result.exit_code` after every `exec` — see [Error handling](/guides/error-handling#troubleshooting) |
 | `RuntimeError` while pulling an image | Network instability, wrong reference, or missing registry auth | Retry with backoff; verify the image reference and any registry credentials |
 | A process survives `await execution.wait()` after a timeout | The timeout signalled the process but a child kept running | Prefer `SimpleBox.exec(timeout=...)`, which reaps the process tree |
-| `RuntimeError: no running event loop` on a runtime call | `Boxlite` is entered with a synchronous `with`, but its methods are async | `await` every runtime method. `box.info()` is synchronous only on the native `Box` |
+| `RuntimeError: no running event loop` on a runtime call | `Boxlite` is entered with a synchronous `with`, but its methods are async | `await` every runtime method, and `box.info()` as well |
 | The box fails to start at all | No hardware virtualization available | See [Installation](/getting-started/installation#platform-and-virtualization-requirements-common-to-all-sdks) |
 
 ### Passing a string for a volume -> `TypeError: 'str' object cannot be cast as 'bool'`
@@ -637,18 +634,6 @@ BoxOptions(image="python:slim", volumes=[("/host", "/mnt", "ro")])
 The third element is the `bool read_only`: use `True` for read-only, `False` or
 omit it (2-tuple) for read-write. The CLI's `:ro`/`:rw` belongs to the CLI layer
 syntax and is unrelated to the SDK API.
-
-### `AttributeError: module 'boxlite' has no attribute 'AdvancedBoxOptions'`
-
-`AdvancedBoxOptions` lives in the `boxlite.boxlite` submodule, not the top level — import it from there:
-
-```python
-from boxlite.boxlite import AdvancedBoxOptions  # correct
-```
-
-And security options are passed via `advanced`; there is no top-level
-`security=`:
-`BoxOptions(advanced=AdvancedBoxOptions(security=SecurityOptions.maximum()))`.
 
 ## See Also
 

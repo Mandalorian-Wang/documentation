@@ -189,7 +189,7 @@ By contrast, a **missing command** or an **image pull failure** raises a **stand
 
 ### Mistakenly `await`ing `box.info()`
 
-`info()` touches no VM, but its shape depends on the type. On `SimpleBox` and its subclasses it is a coroutine: `info = await box.info()`. On the native `Box` it is synchronous, and awaiting it raises `TypeError: object BoxInfo can't be used in 'await' expression`. Read state via `info.state.status`.
+`info()` touches no VM but must still be awaited: `info = await box.info()`. That holds for every box type. Read state via `info.state.status`.
 
 ### Passing a list to `SimpleBox.exec(env=...)`
 

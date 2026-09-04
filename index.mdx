@@ -89,5 +89,5 @@ One row per section. The sidebar lists every page; this table is for deciding *w
 ## Key mental model (three sentences)
 
 - **The `Boxlite` runtime**: a synchronous context manager that creates / queries / reuses / reclaims a set of boxes (`get` / `get_or_create` / `list_info` / `remove(id_or_name, force=False)` / `metrics` / `shutdown` / `close`).
-- **A Box**: each sandbox is an async context manager (`SimpleBox` / `CodeBox` / `BrowserBox` / `ComputerBox` / `InteractiveBox` / `SkillBox`), and `box.info()` is a synchronous call.
+- **A Box**: each sandbox is an async context manager (`SimpleBox` / `CodeBox` / `BrowserBox` / `ComputerBox` / `InteractiveBox` / `SkillBox`), and every method must be awaited, `box.info()` included.
 - **Isolation**: microVM-level isolation is on by default; to tighten it further use `BoxOptions(advanced=AdvancedBoxOptions(security=SecurityOptions.maximum()))`, and to inject credentials use `BoxOptions(secrets=[Secret(...)])`.

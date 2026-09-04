@@ -197,9 +197,9 @@ Two per-language notes on the snippets above:
 |---|---|---|
 | Python `Boxlite` | **sync** `with` | Factory and methods are called directly; **do not await** |
 | Python `Box` / `SimpleBox` / `CodeBox` / other wrapper boxes | **async** `async with` | `await box.exec(...)` |
-| Python `Box.info()` / `SimpleBox.info()` | sync | **do not await** |
+| Python `Box.info()` / `SimpleBox.info()` | **async** | `info = await box.info()` — neither returns `BoxInfo` directly |
 | Node `JsBoxlite` | plain object | Methods return Promises; `close()` is sync |
-| Node `SimpleBox` | `await using` (`Symbol.asyncDispose`) | `info()` is sync; `getInfo()` is async |
+| Node `SimpleBox` | `await using` (`Symbol.asyncDispose`) | `info()` and `getInfo()` both return a `Promise`; `info()` rejects before creation while `getInfo()` creates first |
 | Rust `BoxliteRuntime` construction | sync `fn` | `create` / `exec` / `start` are the async parts |
 | Go `*Runtime` / `*Box` | no context manager | `defer rt.Close()` **and** `defer box.Close()`; every I/O method takes a `ctx` as its first argument |
 
@@ -247,22 +247,6 @@ import { SimpleBox, JsBoxlite } from "@boxlite-ai/boxlite";
 A volume's third element is the boolean `read_only`; the strings `"ro"`/`"rw"` are CLI-only and raise `TypeError` here. See [Volumes](/manage-sandbox/volumes#troubleshooting).
 
 > Note: the `ro` / `rw` strings are only for the CLI's `-v host:box:ro` syntax, which belongs to the CLI parsing layer and differs from the SDK's bool. Do not confuse the two.
-
-### `AttributeError: module 'boxlite' has no attribute 'AdvancedBoxOptions'`
-
-`AdvancedBoxOptions` lives in the `boxlite.boxlite` submodule, not the top level — see [Inject secrets and harden a box](/manage-sandbox/secrets-and-security#troubleshooting).
-
-```python
-from boxlite import BoxOptions, SecurityOptions
-from boxlite.boxlite import AdvancedBoxOptions  # only available under the native module
-
-opts = BoxOptions(
-    image="alpine:latest",
-    advanced=AdvancedBoxOptions(security=SecurityOptions.maximum()),
-)
-```
-
-> The presets are `SecurityOptions.development() / standard() / maximum()`; there is **no** `.minimum()`.
 
 ### `exec` reports a failed command but does not raise
 

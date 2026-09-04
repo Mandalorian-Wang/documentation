@@ -40,7 +40,7 @@ Two transitions are worth committing to memory:
 - **Creation is lazy.** Constructing a box returns a handle; the microVM comes up on first use. A box that never runs costs nothing but a database row.
 - **Stop is not remove.** `stop()` frees the VM but keeps the disk, so restarting reuses everything the box had installed. That is what makes a box a reusable workspace rather than a one-shot container.
 
-Read the current state through `info()`, which touches no VM. **Whether to await it depends on the type**: on the `Box` returned by `runtime.create()` it is synchronous, while on `SimpleBox` and its subclasses it is a coroutine. Field names are exact and easy to get wrong: see [`BoxInfo` / `BoxStateInfo`](#boxinfo-boxstateinfo-state-access).
+Read the current state with `info = await box.info()`. **It must be awaited on every type** — the native `Box` returns an awaitable Future and `SimpleBox` returns a coroutine; neither yields `BoxInfo` directly. Field names are exact and easy to get wrong: see [`BoxInfo` / `BoxStateInfo`](#boxinfo-boxstateinfo-state-access).
 
 ## The main command
 
@@ -161,8 +161,8 @@ async def main():
             result = await execution.wait()
             print(f"  exit_code = {result.exit_code}")  # a non-zero exit code does not raise; check it yourself
 
-            # 3. state query: info() is synchronous; do not await
-            info = box.info()
+            # 3. state query: info() must be awaited
+            info = await box.info()
             print(f"  state = {info.state.status}, running = {info.state.running}")
 
             # 4. stop (shut down the VM, preserve rootfs)
@@ -237,7 +237,7 @@ main();
 
 </CodeGroup>
 
-> Key point: `Boxlite` is a **synchronous** context manager (`with`), whereas a `Box`'s methods (`exec`/`stop`/`metrics`) are **async** (require `await`). `box.info()` is synchronous and must not be awaited.
+> Key point: `Boxlite` is a **synchronous** context manager (`with`), whereas a `Box`'s methods (`exec`/`stop`/`metrics`) are **async** (require `await`). `box.info()` must be awaited as well.
 
 Verified: real run prints `created: <box-id>`, `hello from box`, `exitCode = 0`, `state = running`, `stopped`, `removed`.
 
@@ -720,23 +720,23 @@ Verified: real run prints `running boxes before shutdown: 3`, `shutdown complete
 | `shutdown(timeout=None)` | — | Shut down all Boxes (seconds; `None`=10s, `-1`=indefinite) |
 | `close()` | — | Close the runtime handle (synchronous) |
 
-### `Box` methods (async, require `await`, except `info()`)
+### `Box` methods (async, all require `await`)
 
 | Method | Returns | Description |
 |---|---|---|
 | `start()` | — | Bring up the VM, idempotent |
 | `stop()` | — | Shut down the VM, preserve the rootfs (unless `auto_remove=True`) |
 | `exec(command, args=None, ...)` | `Execution` | Run a command; triggers a restart on a stopped Box |
-| `info()` | `BoxInfo` | **Synchronous**, do not `await`; does not trigger the VM |
+| `info()` | `BoxInfo` | **Await it**; does not trigger the VM |
 | `metrics()` | `BoxMetrics` | Per-Box metrics |
 | `id` / `name` | str | Properties |
 
 ### `BoxInfo` / `BoxStateInfo` (state access)
 
-`box.info()` returns a `BoxInfo`; its `state` field is a `BoxStateInfo`, and the state string is at `state.status`:
+`await box.info()` returns a `BoxInfo`; its `state` field is a `BoxStateInfo`, and the state string is at `state.status`:
 
 ```python
-info = box.info()           # synchronous
+info = await box.info()     # awaited on every box type
 print(info.state.status)    # state string
 print(info.state.running)   # bool
 print(info.id, info.image, info.cpus, info.memory_mib)
@@ -755,16 +755,13 @@ print(info.id, info.image, info.cpus, info.memory_mib)
 
 ### `info()` returns a coroutine, or refuses to be awaited
 
-`info()` differs between the two layers, and each one fails differently when you guess wrong.
+`info()` never returns `BoxInfo` directly — it must be awaited on every type. The native `Box` hands back an awaitable Future and `SimpleBox` a coroutine, so forgetting `await` fails slightly differently but always fails.
 
 ```python
-# Box, from runtime.create() — synchronous
-info = box.info()
-# await box.info()  ->  TypeError: object BoxInfo can't be used in 'await' expression
+info = await box.info()           # every box type
 
-# SimpleBox and its subclasses — a coroutine, so it must be awaited
-info = await box.info()
-# box.info().state  ->  AttributeError: 'coroutine' object has no attribute 'state'
+# box.info().state on the native Box  ->  AttributeError: '_asyncio.Future' object has no attribute 'state'
+# box.info().state on a SimpleBox     ->  AttributeError: 'coroutine' object has no attribute 'state'
 
 print(info.state.status)          # not info.status, and not info.state.state
 ```

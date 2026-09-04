@@ -3,7 +3,7 @@ title: "Manage sandboxes"
 description: "A Box is a disposable microVM that boots in about a second. The Boxlite runtime creates, lists, and removes boxes; a Box handle only executes inside its own."
 ---
 
-> Context manager versus method semantics: `Boxlite` uses a **synchronous** `with` to enter and exit (`__enter__`/`__exit__` are synchronous), but its **business methods** (`create` / `get_or_create` / `list_info` / `remove` / `shutdown`, etc.) are all `async` and **must be awaited**. A `Box` uses `async with` to enter and exit, and its methods are likewise `async`. `info()` is the one method whose shape depends on the type: synchronous on the native `Box`, a coroutine on `SimpleBox` and its subclasses.
+> Context manager versus method semantics: `Boxlite` uses a **synchronous** `with` to enter and exit (`__enter__`/`__exit__` are synchronous), but its **business methods** (`create` / `get_or_create` / `list_info` / `remove` / `shutdown`, etc.) are all `async` and **must be awaited**. A `Box` uses `async with` to enter and exit, and its methods are likewise `async`, `info()` included.
 
 ---
 
@@ -30,9 +30,9 @@ BoxLite separates "the runtime that manages a group of Boxes" from "operating on
 | Object                                | Role                                       | Context manager               | Methods need `await`?                                                                                                                                                |
 | ------------------------------------- | ------------------------------------------ | ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `Boxlite` (runtime)                   | Create / list / remove / aggregate metrics | **Synchronous** `with`        | Business methods are `async`, **must be awaited** (`create` / `get_or_create` / `list_info` / `get` / `get_info` / `remove` / `shutdown` / `metrics` / `import_box`) |
-| `Box` / `SimpleBox` / `CodeBox`, etc. | Operate a single Box (exec, copy, stop)    | **Asynchronous** `async with` | Yes, `await` — including `info()` on the wrapper types                                                                                                                            |
+| `Box` / `SimpleBox` / `CodeBox`, etc. | Operate a single Box (exec, copy, stop)    | **Asynchronous** `async with` | Yes, `await` — `info()` included                                                                                                                            |
 
-Key point: **the runtime enters with a synchronous `with`, but its methods must be awaited; a Box enters with `async with`, and its methods must also be awaited.** The single exception is `info()` on the native `Box`, which is synchronous — see [Reading state](/manage-sandbox/lifecycle#the-states).
+Key point: **the runtime enters with a synchronous `with`, but its methods must be awaited; a Box enters with `async with`, and its methods must also be awaited — `info()` included.**
 
 > In general, prefer the wrapper layer (`SimpleBox` / `CodeBox`, etc.). On `async with` entry they **lazily create** and automatically start the Box, and on exit they clean up according to `auto_remove`, so you never have to manage the runtime handle by hand. Operate the `Boxlite` runtime directly only when you need to manage several Boxes at once.
 
@@ -74,7 +74,7 @@ async def main():
         async with SimpleBox(image="alpine:latest") as box:
             print("box id:", box.id)
 
-            # on SimpleBox, info() is a coroutine; the native Box returns BoxInfo directly
+            # info() must be awaited on every box type
             info = await box.info()
             print("state:", info.state.status)  # BoxStateInfo.status is a string
 
@@ -154,7 +154,7 @@ main();
 
 </CodeGroup>
 
-> Node differences: the package is `@boxlite-ai/boxlite`; the runtime class is `JsBoxlite` (there is no bare `Boxlite`); listing uses `listInfo()`; removal uses `runtime.remove(idOrName, force?)`; `SimpleBox` uses `await using` for automatic cleanup; `info()` is synchronous while `getInfo()` is asynchronous.
+> Node differences: the package is `@boxlite-ai/boxlite`; the runtime class is `JsBoxlite` (there is no bare `Boxlite`); listing uses `listInfo()`; removal uses `runtime.remove(idOrName, force?)`; `SimpleBox` uses `await using` for automatic cleanup; `info()` and `getInfo()` both return a `Promise`.
 
 ---
 ## Where to go next

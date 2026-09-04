@@ -143,14 +143,14 @@ BoxLite's isolation uses **defense in depth**: beyond the hardware virtualizatio
 | Linux | namespaces (mount/PID/network) · chroot/pivot_root · seccomp BPF syscall filtering · privilege drop to an unprivileged user · cgroups v2 resource limits |
 | macOS | sandbox-exec (Seatbelt) kernel-level sandbox · rlimits resource constraints |
 
-**Most users do not need to configure security options**: the defaults favor compatibility. When you need stronger isolation, security options are passed through `advanced` (there is **no** top-level `security=` keyword). `AdvancedBoxOptions` is exported only under the `boxlite.boxlite` submodule:
+**Most users do not need to configure security options**: the defaults favor compatibility. When you need stronger isolation, security options are passed through `advanced` (there is **no** top-level `security=` keyword):
 
 ```python
 # pip install boxlite
 import asyncio
 
 from boxlite import SimpleBox, BoxOptions, SecurityOptions, BoxliteError
-from boxlite.boxlite import AdvancedBoxOptions  # only under boxlite.boxlite; not exported at the top level
+from boxlite import AdvancedBoxOptions
 
 async def main() -> None:
     # Security options must be passed via advanced=AdvancedBoxOptions(security=...).
@@ -203,7 +203,7 @@ flowchart TB
 | Box wrapper class | `SimpleBox`, etc. (**async** `async with`) | `SimpleBox`, etc. (`await using`) |
 | List Boxes | `runtime.list_info()` (not `list()`) | `runtime.listInfo()` |
 | Remove a Box | `runtime.remove(id, force=False)` (on the runtime, not `box.remove()`) | `runtime.remove(id, force?)` |
-| Read Box state | `(await box.info()).state.status` on `SimpleBox`; `box.info()` is synchronous only on the native `Box`. Outer `state`, inner field `status` | `(await box.info()).state.status` — Node returns a `Promise` on every type |
+| Read Box state | `(await box.info()).state.status` — awaited on every type. Outer `state`, inner field `status` | `(await box.info()).state.status` — Node returns a `Promise` on every type |
 
 Detailed APIs for each high-level Box are on the corresponding feature pages; the full methods of the runtime and the low-level `Box` are on the SDK reference pages.
 
@@ -230,7 +230,7 @@ This is a conceptual page and takes no parameters. Below is a summary of the met
 |---|---|---|
 | `start()` / `stop()` | async | Start (idempotent) / stop the microVM |
 | `exec(...)` | async | Execute a command; a non-zero exit **does not raise** |
-| `info()` | **sync on native `Box`**, coroutine on `SimpleBox` | Return `BoxInfo` |
+| `info()` | **await on every type** | Returns `BoxInfo` |
 | `metrics()` | async | Return `BoxMetrics` (see the field table below) |
 
 > Wrappers such as `SimpleBox` are not subclasses of the low-level `Box` — each one **holds** a `Box` internally. That is why some low-level methods (`metrics()`, for example) are not available on a wrapper directly.
@@ -296,18 +296,12 @@ A volume's third element is the boolean `read_only`; the strings `"ro"`/`"rw"` a
 
 > Note: only the **CLI**'s `-v host:box:ro` uses the `ro`/`rw` strings; the SDK API uses a bool. Do not confuse the two.
 
-### `AdvancedBoxOptions` import raises `ImportError`
-
-`AdvancedBoxOptions` lives in the `boxlite.boxlite` submodule, not the top level. See [Inject secrets and harden a box](/manage-sandbox/secrets-and-security#troubleshooting).
-
-Likewise, security options are passed via `BoxOptions(advanced=AdvancedBoxOptions(security=SecurityOptions.maximum()))`; the top-level `BoxOptions` has **no** `security=` keyword.
-
 ### Reading Box state raises `AttributeError: 'BoxInfo' object has no attribute 'status'`
 
 State has two levels: `BoxInfo.state` is a `BoxStateInfo`, and you then take its `.status` (a string):
 
 ```python
-info = box.info()                 # native Box: synchronous. On SimpleBox: await box.info()
+info = await box.info()           # awaited on every type
 print(info.state.status)          # correct: outer state, inner status
 # Wrong: info.status              -> AttributeError
 ```

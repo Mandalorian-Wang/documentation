@@ -277,7 +277,16 @@ Fix: keep the main command long-running (sleep, or a service), or treat the box 
 
 ### `working_dir` pointing to a nonexistent directory makes `exec` raise RuntimeError
 
-`working_dir` (or `exec(cwd=...)`) must be a **directory that already exists in the image**. When it points to a nonexistent directory (e.g. setting `working_dir="/work"` on `alpine`), the `box` still creates successfully, but the first `exec` raises:
+`working_dir` (or `exec(cwd=...)`) must be a **directory that already exists in the image**, and the two fail at different moments.
+
+With `working_dir="/work"` on `alpine`, the constructor returns fine but **entering `async with` raises** — there is never a box to exec on:
+
+```text
+RuntimeError: internal error: Container init failed: Failed to create container: ...
+error in executing process : failed to unix syscall
+```
+
+With `exec(cwd="/work")` the box starts normally and only that call fails, leaving the box usable:
 
 ```text
 RuntimeError: internal error: spawn_failed: ... error in executing process : failed to unix syscall

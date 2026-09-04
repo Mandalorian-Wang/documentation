@@ -188,7 +188,7 @@ main();
 | `image` | `string` | Image reference |
 | `cpus` / `memoryMib` | `number` | Resource configuration |
 
-> The correct path to the state string is `box.info().state.status` (the outer field is `state`, the inner field is `status`). `info()` is synchronous; **do not `await`** it. The async version is `getInfo()`.
+> The correct path to the state string is `(await box.info()).state.status` (the outer field is `state`, the inner field is `status`). `info()` returns a `Promise` and **must be awaited**; it rejects if the box has not been created yet, whereas `getInfo()` creates it first.
 
 ## Troubleshooting
 

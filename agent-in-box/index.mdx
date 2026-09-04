@@ -69,7 +69,7 @@ async def main():
         # Image defaults to boxlite-skillbox; no need to pass image
         # auto_remove defaults to True: exiting async with cleans up the entire VM
         async with SkillBox() as skill_box:
-            # id is a property; info() is a coroutine on SimpleBox and its subclasses
+            # id is a property; info() must be awaited
             print("Box ID:", skill_box.id)
 
             # The first call() triggers lazy installation (Claude CLI / bash / git / python)
@@ -260,7 +260,7 @@ This is a navigation page; it lists only the **core entry points and return valu
 | `call` | `call(prompt)` | `str` | Multi-turn conversation; returns Claude's final reply |
 | `install_skill` | `install_skill(skill_id)` | `bool` | Install a skill manually at runtime; returns whether it succeeded |
 | `wait_until_ready` | `wait_until_ready(timeout=60)` | — | Wait until the Box is ready |
-| `info` | `info()` | `BoxInfo` | **Coroutine on `SkillBox`** (a `SimpleBox` subclass) — `await box.info()`. Synchronous only on the native `Box` |
+| `info` | `await info()` | `BoxInfo` | Must be awaited, like every other box type |
 
 ### Self-Built Box Running Claude (Low-Level Entry Points)
 
@@ -275,7 +275,7 @@ This is a navigation page; it lists only the **core entry points and return valu
 
 | Access path | Type | Description |
 |---|---|---|
-| `box.info()` | `BoxInfo` | Get info synchronously |
+| `await box.info()` | `BoxInfo` | Get info; must be awaited |
 | `box.info().state` | `BoxStateInfo` | State object (note it is `state`; the outer field is not `status`) |
 | `box.info().state.status` | `str` | State string (the inner field name is `status`) |
 
@@ -297,9 +297,9 @@ Or pass it in code: `SkillBox(oauth_token="<YOUR_OAUTH_TOKEN>")`.
 
 The `SkillBox` image **defaults** to `ghcr.io/boxlite-ai/boxlite-skillbox:0.1.0`. You **can** override it at construction with `image=` (Node has an `image` option too), but the lazy-install logic on the first `call()` always uses the Ubuntu/apt-get flow and installs Claude into `/config/.local/bin` (the home directory of webtop's `abc` user). Switching to a non-matching image such as `node:20-alpine` causes installation to fail. If you need a fully custom image to run Claude, use `SimpleBox(image=...)` / the low-level `Box` instead and `exec` the CLI installation yourself (see the "Build your own Box" example above).
 
-### Mistakenly awaiting `box.info()` as if it were async
+### `box.info()` used without `await`
 
-`info()` touches no VM. On `SkillBox` and every other `SimpleBox` subclass it is a coroutine, so write `info = await box.info()`; calling it without `await` yields `AttributeError: 'coroutine' object has no attribute 'state'`. Only the native `Box` is synchronous. Access state through `info.state.status`.
+`info()` touches no VM but must still be awaited: `info = await box.info()`. Calling it without `await` yields `AttributeError: 'coroutine' object has no attribute 'state'`. Access state through `info.state.status`.
 
 ### Passing the native `Box.exec` `env` as a dict
 

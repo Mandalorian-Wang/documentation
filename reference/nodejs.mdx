@@ -156,7 +156,7 @@ import { DEFAULT_CPUS, DEFAULT_MEMORY_MIB } from "@boxlite-ai/boxlite";
 | `stop` | `() => Promise<void>` | async | Stop |
 | `getId` | `() => Promise<string>` | async | Get the ID asynchronously |
 | `getInfo` | `() => Promise<JsBoxInfo>` | async | Get info asynchronously |
-| `info` | `() => JsBoxInfo` | **sync** | Get info (throws if called before creation) |
+| `info` | `() => Promise<JsBoxInfo>` | async | Get info. Rejects with `Box not yet created. Call exec() first.` if the box does not exist yet |
 | `id` / `name` / `created` | getter | **sync** | Accessing before creation throws |
 | `[Symbol.asyncDispose]` | `() => Promise<void>` | async | Supports `await using` |
 
@@ -400,8 +400,8 @@ main();
 
 | Method | Signature | Notes |
 |---|---|---|
-| `info` | `() => JsBoxInfo` | sync |
-| `exec` | `(cmd, args?, env?, tty?) => Promise<JsExecution>` | Execute a command |
+| `info` | `() => Promise<JsBoxInfo>` | async |
+| `exec` | `(command, args?, env?, tty?, user?, timeoutSecs?, workingDir?) => Promise<JsExecution>` | Execute a command |
 | `stop` | `() => Promise<void>` | Stop the box |
 | `metrics` | `() => Promise<JsBoxMetrics>` | Resource metrics |
 

@@ -322,7 +322,7 @@ the **runtime's** responsibility.
   the async API.
 - `SimpleBox` / `CodeBox` and the other boxes are **async** `async with`, and
   their methods require `await` --- including `info()`, which is a coroutine on
-  these types and synchronous only on the native `Box`.
+  every type — there is no synchronous form.
 - Using `async with` on `Boxlite`, or a plain `with` on `SimpleBox`, raises a
   context-manager protocol error.
 

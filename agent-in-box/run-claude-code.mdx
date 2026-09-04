@@ -128,7 +128,7 @@ Source: `sdks/python/boxlite/skillbox.py`. The Node equivalents are listed below
 | `call` | `await box.call(prompt: str)` | `str` | Send one message; returns Claude's final answer text. Multiple calls on the same box form a multi-turn conversation |
 | `install_skill` | `await box.install_skill(skill_id: str)` | `bool` | Install a skill (`owner/repo`) at runtime; returns `True` on success |
 | `wait_until_ready` | `await box.wait_until_ready(timeout: int = 60)` | `None` | Wait for the noVNC desktop to be ready (call before using computer-use tools); raises `TimeoutError` on timeout |
-| `info` | `await box.info()` | `BoxInfo` | **Coroutine** on `SkillBox`. `info.name` / `info.memory_mib` / `info.image` / `info.state.status` |
+| `info` | `await box.info()` | `BoxInfo` | Must be awaited. `info.name` / `info.memory_mib` / `info.image` / `info.state.status` |
 | Properties | `box.id` / `box.gui_http_port` / `box.gui_https_port` | — | Box ID and host-side noVNC ports |
 
 > `SkillBox` inherits from `SimpleBox`, so it also has the common methods `exec(...)`, `copy_in/copy_out(...)`, `start/stop()`, and others.
