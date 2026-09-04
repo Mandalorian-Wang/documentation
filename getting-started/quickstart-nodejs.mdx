@@ -203,6 +203,28 @@ import { SimpleBox } from "boxlite"; // does not exist
 import { SimpleBox } from "@boxlite-ai/boxlite";
 ```
 
+### `Cannot find native binding` on Apple Silicon
+
+The wrapper package and its platform-specific native packages are versioned independently, and `@boxlite-ai/boxlite-darwin-arm64` is published up to **0.9.7** while the wrapper is at **0.10.0**. Installing the wrapper at latest on an arm64 Mac therefore leaves it with no binding to load:
+
+```text
+Error: Cannot find native binding. npm has a bug related to optional dependencies ...
+Cannot find module '@boxlite-ai/boxlite-darwin-arm64'
+```
+
+The install itself reports success — the failure only appears on first import. Pin both to a version that has a matching binding:
+
+```bash
+npm install @boxlite-ai/boxlite@0.9.7
+```
+
+Check what is available for your platform before choosing a version:
+
+```bash
+npm view @boxlite-ai/boxlite version
+npm view @boxlite-ai/boxlite-darwin-arm64 version
+```
+
 ### `Cannot use import statement outside a module` / `require is not defined`
 
 The SDK is published as ESM only. Add `"type": "module"` to `package.json`, or rename the file to `.mjs`, and use `import` rather than `require`.

@@ -225,7 +225,7 @@ cargo add futures
 error: `await` is only allowed inside `async` functions
 ```
 
-`BoxliteRuntime::default_runtime()` / `with_defaults()` / `new()`, and `litebox.id()` / `litebox.info()`, are **synchronous**; do not `.await` them. Only `create` / `start` / `exec` / `wait` / `stop` / `metrics` are async.
+`BoxliteRuntime::default_runtime()` / `with_defaults()` / `new()` and `litebox.id()` are **synchronous**; do not `.await` them. Everything else is async, including `info()` — `create` / `start` / `exec` / `wait` / `stop` / `metrics` / `info`.
 
 ### Startup failure: no hardware virtualization (environment constraint)
 
