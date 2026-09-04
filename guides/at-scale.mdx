@@ -561,8 +561,8 @@ if __name__ == "__main__":
 ```
 
 > List with `runtime.list_info()` (not `list()`); it is an **async method
-> (requires `await`)**. Note the distinction: `box.info()` is a **synchronous**
-> getter (do not `await` it), whereas `runtime.list_info()` /
+> (requires `await`)**. Note the distinction: `box.info()` is synchronous on
+> the native `Box` and a coroutine on the wrapper types, whereas `runtime.list_info()` /
 > `runtime.metrics()` / `runtime.remove()` / `runtime.create()` /
 > `runtime.shutdown()` are all **async (require `await`)**. `BoxInfo.state` is a
 > `BoxStateInfo`, and the sandbox status string is in `info.state.status`.
@@ -623,7 +623,7 @@ read-only volumes for shared datasets; and inline base64 only for tiny payloads.
 | `exec` returned a non-zero exit and raised nothing | By design | Check `result.exit_code` after every `exec` — see [Error handling](/guides/error-handling#troubleshooting) |
 | `RuntimeError` while pulling an image | Network instability, wrong reference, or missing registry auth | Retry with backoff; verify the image reference and any registry credentials |
 | A process survives `await execution.wait()` after a timeout | The timeout signalled the process but a child kept running | Prefer `SimpleBox.exec(timeout=...)`, which reaps the process tree |
-| `RuntimeError: no running event loop` on a runtime call | `Boxlite` is entered with a synchronous `with`, but its methods are async | `await` every runtime method; only `box.info()` is synchronous |
+| `RuntimeError: no running event loop` on a runtime call | `Boxlite` is entered with a synchronous `with`, but its methods are async | `await` every runtime method. `box.info()` is synchronous only on the native `Box` |
 | The box fails to start at all | No hardware virtualization available | See [Installation](/getting-started/installation#platform-and-virtualization-requirements-common-to-all-sdks) |
 
 ### Passing a string for a volume -> `TypeError: 'str' object cannot be cast as 'bool'`

@@ -211,8 +211,8 @@ async function main(): Promise<void> {
     const result = await execution.wait();
     console.log(`  exitCode = ${result.exitCode}`); // a non-zero exit code does not throw; check it yourself
 
-    // 3. state query: info() is synchronous; do not await
-    const info = box.info();
+    // 3. state query — in Node, info() returns a Promise
+    const info = await box.info();
     console.log(`  state = ${info.state.status}`);
 
     // 4. stop (shut down the VM, preserve rootfs)
@@ -861,7 +861,8 @@ async def main():
         async with SimpleBox(image="alpine:latest", auto_remove=True) as box:
             result = await box.exec("echo", "hello")  # ExecResult
             print(result.stdout, "exit:", result.exit_code)
-            print("state:", box.info().state.status)   # info() is synchronous
+            info = await box.info()                    # SimpleBox: info() is a coroutine
+            print("state:", info.state.status)
     except RuntimeError as exc:
         print(f"run failed (check virtualization): {exc}")
 

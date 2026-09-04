@@ -340,7 +340,7 @@ Methods:
 | `copy_in` | `(host_path, container_dest, *, overwrite=True, follow_symlinks=False, include_parent=True)` | — | async |
 | `copy_out` | `(container_src, host_dest, *, ...)` | — | async |
 | `stop` / `shutdown` | `()` | `None` | async (`shutdown` is an alias for `stop`) |
-| `info` | `() -> BoxInfo` | `BoxInfo` | **synchronous** |
+| `info` | `() -> BoxInfo` | `BoxInfo` | **coroutine — `await box.info()`** (unlike the native `Box`, where it is synchronous) |
 
 Properties: `id` (accessing before start raises `RuntimeError`), `created` (whether newly created; `None` before start).
 
@@ -475,10 +475,10 @@ The dataclass returned by `SimpleBox.exec` / `CodeBox.exec`:
 
 ### `BoxInfo` / `BoxStateInfo` (state access)
 
-`box.info()` is a **synchronous** call returning `BoxInfo`. State lives in a two-level structure:
+`info()` returns `BoxInfo`. **It is synchronous only on the native `Box`** from `runtime.create()`; on `SimpleBox` and its subclasses it is a coroutine and must be awaited. State lives in a two-level structure:
 
 ```python
-info = box.info()           # synchronous; do not await
+info = box.info()           # native Box; on SimpleBox: info = await box.info()
 print(info.state.status)    # correct path: BoxInfo.state -> BoxStateInfo.status (str)
 print(info.state.running)   # bool
 print(info.id, info.image, info.cpus, info.memory_mib)
@@ -665,7 +665,7 @@ The old field names are deprecated. Use `BoxMetrics.memory_bytes`, `BoxMetrics.c
 
 ### `box.info()` raises a coroutine error / `await` fails
 
-`info()` is a **synchronous** method; do not `await` it. Access state via `box.info().state.status` (not `.status`, not `.state.state`).
+`info()` is synchronous on the native `Box` and a coroutine on `SimpleBox` and its subclasses. Access state via `info.state.status` (not `.status`, not `.state.state`).
 
 ### `RuntimeError` on box start (environment constraint)
 

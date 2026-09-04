@@ -219,7 +219,7 @@ Removing a sandbox must be called on the **runtime**: `await runtime.remove(box.
 
 ### `await box.info()` errors / coroutine was never awaited
 
-`box.info()` is a **synchronous** method; call `box.info()` directly and do not `await` it. It returns a `BoxInfo`, and the state is at `box.info().state` (a `BoxStateInfo`, whose field is named `.status`).
+`info()` is synchronous on the native `Box`; on `SimpleBox` and its subclasses it is a coroutine, so write `info = await box.info()`. Either way it returns a `BoxInfo` whose state is at `info.state` (a `BoxStateInfo`, whose field is named `.status`).
 
 ### `box.snapshot.create("v1")` reports a missing keyword argument
 

@@ -69,7 +69,7 @@ async def main():
         # Image defaults to boxlite-skillbox; no need to pass image
         # auto_remove defaults to True: exiting async with cleans up the entire VM
         async with SkillBox() as skill_box:
-            # id is a property and info() is a synchronous method; do not await either
+            # id is a property; info() is a coroutine on SimpleBox and its subclasses
             print("Box ID:", skill_box.id)
 
             # The first call() triggers lazy installation (Claude CLI / bash / git / python)
@@ -260,7 +260,7 @@ This is a navigation page; it lists only the **core entry points and return valu
 | `call` | `call(prompt)` | `str` | Multi-turn conversation; returns Claude's final reply |
 | `install_skill` | `install_skill(skill_id)` | `bool` | Install a skill manually at runtime; returns whether it succeeded |
 | `wait_until_ready` | `wait_until_ready(timeout=60)` | — | Wait until the Box is ready |
-| `info` | `info()` | `BoxInfo` | **Synchronous**; do not await |
+| `info` | `info()` | `BoxInfo` | **Coroutine on `SkillBox`** (a `SimpleBox` subclass) — `await box.info()`. Synchronous only on the native `Box` |
 
 ### Self-Built Box Running Claude (Low-Level Entry Points)
 
@@ -299,7 +299,7 @@ The `SkillBox` image **defaults** to `ghcr.io/boxlite-ai/boxlite-skillbox:0.1.0`
 
 ### Mistakenly awaiting `box.info()` as if it were async
 
-`info()` is a **synchronous** method (it does not touch the VM). Writing `await box.info()` raises an error (such as `TypeError: object BoxInfo can't be used in 'await' expression`). Call `box.info()` directly; access state through `box.info().state.status`.
+`info()` touches no VM. On `SkillBox` and every other `SimpleBox` subclass it is a coroutine, so write `info = await box.info()`; calling it without `await` yields `AttributeError: 'coroutine' object has no attribute 'state'`. Only the native `Box` is synchronous. Access state through `info.state.status`.
 
 ### Passing the native `Box.exec` `env` as a dict
 

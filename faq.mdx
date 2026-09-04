@@ -282,7 +282,7 @@ asyncio.run(main())
 
 ### How do I read a box's state and metrics?
 
-`box.info()` is **synchronous** (do not `await` it). State lives in `info().state.status`. Metric field names are `memory_bytes` and `cpu_percent` (not `memory_usage_bytes` / `cpu_time_ms`).
+`info()` is synchronous only on the native `Box`; on `SimpleBox` and its subclasses it is a coroutine, so use `info = await box.info()`. State lives in `info().state.status`. Metric field names are `memory_bytes` and `cpu_percent` (not `memory_usage_bytes` / `cpu_time_ms`).
 
 > Note: `metrics()` lives on the **native** `Box` (the object returned by `runtime.create(opts)`),
 > not on the `SimpleBox`/`CodeBox` wrappers — `SimpleBox` exposes `info()` but **not** `metrics()`
@@ -465,7 +465,7 @@ These names changed (or never existed). Use the real ones:
 
 ### `await box.info()` raises / behaves oddly
 
-`info()` is synchronous. Do not `await` it. Same for the Node `info()` getter (use the async `getInfo()` if you want a Promise).
+`info()` is synchronous only on Python's native `Box`. On `SimpleBox` and its subclasses it is a coroutine. In Node it returns a `Promise` on every type — `info()` rejects if the box has not been created, while `getInfo()` creates it first.
 
 ### A failing command did not raise an exception
 

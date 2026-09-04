@@ -44,8 +44,8 @@ async def main() -> None:
     #    image pull -> rootfs preparation -> Box (microVM) startup -> guest ready
     try:
         async with SimpleBox(image="alpine:latest") as box:
-            # 2) box.info() is a synchronous method (do not await). state is a BoxStateInfo; the field is named status.
-            info = box.info()
+            # 2) on SimpleBox, info() is a coroutine. state is a BoxStateInfo; the field is named status.
+            info = await box.info()
             print(f"box id={box.id}  state={info.state.status}")
 
             # 3) exec sends the command to the guest agent over gRPC, carried on a host<->guest virtual socket,
@@ -203,7 +203,7 @@ flowchart TB
 | Box wrapper class | `SimpleBox`, etc. (**async** `async with`) | `SimpleBox`, etc. (`await using`) |
 | List Boxes | `runtime.list_info()` (not `list()`) | `runtime.listInfo()` |
 | Remove a Box | `runtime.remove(id, force=False)` (on the runtime, not `box.remove()`) | `runtime.remove(id, force?)` |
-| Read Box state | `box.info().state.status` (`info()` is synchronous; outer `state`, inner field `status`) | `box.info().state.status` (`info()` is synchronous) |
+| Read Box state | `(await box.info()).state.status` on `SimpleBox`; `box.info()` is synchronous only on the native `Box`. Outer `state`, inner field `status` | `(await box.info()).state.status` — Node returns a `Promise` on every type |
 
 Detailed APIs for each high-level Box are on the corresponding feature pages; the full methods of the runtime and the low-level `Box` are on the SDK reference pages.
 
@@ -230,7 +230,7 @@ This is a conceptual page and takes no parameters. Below is a summary of the met
 |---|---|---|
 | `start()` / `stop()` | async | Start (idempotent) / stop the microVM |
 | `exec(...)` | async | Execute a command; a non-zero exit **does not raise** |
-| `info()` | **sync** | Return `BoxInfo`, **do not await** |
+| `info()` | **sync on native `Box`**, coroutine on `SimpleBox` | Return `BoxInfo` |
 | `metrics()` | async | Return `BoxMetrics` (see the field table below) |
 
 > Wrappers such as `SimpleBox` are not subclasses of the low-level `Box` — each one **holds** a `Box` internally. That is why some low-level methods (`metrics()`, for example) are not available on a wrapper directly.
@@ -307,7 +307,7 @@ Likewise, security options are passed via `BoxOptions(advanced=AdvancedBoxOption
 State has two levels: `BoxInfo.state` is a `BoxStateInfo`, and you then take its `.status` (a string):
 
 ```python
-info = box.info()                 # info() is a synchronous method; do not await
+info = box.info()                 # native Box: synchronous. On SimpleBox: await box.info()
 print(info.state.status)          # correct: outer state, inner status
 # Wrong: info.status              -> AttributeError
 ```

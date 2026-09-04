@@ -122,8 +122,8 @@ async function main() {
     );
     console.log("cwd:", r2.stdout.trim());
 
-    // 3) box metadata (info() is a synchronous method; do not await)
-    const info = box.info();
+    // 3) box metadata — in Node, info() returns a Promise
+    const info = await box.info();
     console.log("id:", box.id, "state:", info.state.status);
   } catch (err) {
     console.error("Execution error:", err);
