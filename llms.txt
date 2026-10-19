@@ -95,10 +95,16 @@
 
 ### Boxes
 - [Boxes](/cloud/boxes.md): A box on BoxLite Cloud is a microVM you address by name or id from anywhere your API key reaches — choose its image and size, and know when…
-- [Choose an image for a Cloud box](/cloud/box-images.md): The three images the console offers, what an image reference looks like from code, and which one to start from.
 - [Choose a size for a Cloud box](/cloud/box-sizes.md): The three preset sizes, the per-organization ceilings that bound any single box, and the SDK fields that set them.
 - [Box lifecycle on Cloud](/cloud/box-lifecycle.md): The three controls that decide when a Cloud box stops, whether it wakes again, and when it is deleted — and the idle rule that can end a job…
 - [Create, reuse, and remove a box from code](/cloud/box-from-code.md): The full create-start-use-remove cycle over REST, reusing a box by name, managing one from the console, and passing environment variables.
+
+### Images
+- [Images](/cloud/images.md): The images BoxLite maintains for you, and how to start a box from one of your own instead.
+- [Use your own image](/cloud/use-your-image.md): Start a Cloud box from any image on a public registry, and see what your catalog recorded about it.
+- [Pin a build, and roll it back](/cloud/image-aliases.md): Give the build you tested a name production can boot, move that name on release, and move it back when a release goes wrong.
+- [Use a private image](/cloud/private-images.md): Register one registry login so BoxLite can pull your private images, and know which images that login covers.
+- [What the catalog records](/cloud/image-catalog.md): Every image your boxes have booted is recorded once, outlives the box, and counts against a limit — here is how to see it and clear it.
 
 ### Volumes
 - [Volumes](/cloud/volumes.md): Storage that outlives the box that wrote it — create a managed volume, mount it by a name you choose, and keep the data after the box is gon…
