@@ -186,10 +186,20 @@
             "icon": "cube",
             "root": "cloud/boxes",
             "pages": [
-              "cloud/box-images",
               "cloud/box-sizes",
               "cloud/box-lifecycle",
               "cloud/box-from-code"
+            ]
+          },
+          {
+            "group": "Images",
+            "icon": "layer-group",
+            "root": "cloud/images",
+            "pages": [
+              "cloud/use-your-image",
+              "cloud/image-aliases",
+              "cloud/private-images",
+              "cloud/image-catalog"
             ]
           },
           {
@@ -448,6 +458,10 @@
     {
       "source": "/getting-started/quickstart-c",
       "destination": "/getting-started/quickstart"
+    },
+    {
+      "source": "/cloud/box-images",
+      "destination": "/cloud/images"
     }
   ]
 }
