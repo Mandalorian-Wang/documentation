@@ -21,6 +21,76 @@ The routes on this page live under `/api/box/...` — the **platform API**, whic
 
 A box is private or public, and any single port on it can be shared through a preview URL. Those are two independent decisions: the flag governs the box, the URL governs one port.
 
+### A new box is private
+
+Inbound access is **disabled unless you ask for it**. Create a box without saying
+anything about inbound and nothing outside it can reach its services — which is the
+posture you want for almost every box, and the reason you rarely need the public flag
+at all.
+
+Ask for the other posture at creation time with `inbound`:
+
+<CodeGroup>
+```python Python
+from boxlite import BoxOptions, InboundNetworkSpec, NetworkSpec
+
+opts = BoxOptions(
+    image="python",
+    network=NetworkSpec(inbound=InboundNetworkSpec(mode="enabled")),
+)
+```
+
+```bash CLI
+boxlite create --image python --inbound enabled
+```
+</CodeGroup>
+
+`mode` takes `"enabled"` or `"disabled"`, and `"disabled"` is what you get by omission.
+Writing it out explicitly sends the same request as leaving it off — it documents the
+intent for the next reader, nothing more.
+
+<Warning>
+**This default changed in 0.10.5, and the old spelling for "public" no longer means
+that.** `NetworkSpec` used to take a flat `mode` and `allow_net`; those now configure
+**outbound only**. Code that said:
+
+```python
+network=NetworkSpec(mode="enabled")       # outbound — never makes the box public
+```
+
+produced a public box before 0.10.5 and produces a **private** one now, so a tunnel
+against it fails:
+
+```
+Box ${boxId} is not public; set public: true before opening a tunnel
+```
+
+Add the inbound half:
+
+```python
+from boxlite import InboundNetworkSpec, NetworkSpec, OutboundNetworkSpec
+
+network=NetworkSpec(
+    inbound=InboundNetworkSpec(mode="enabled"),
+    outbound=OutboundNetworkSpec(mode="enabled"),
+)
+```
+</Warning>
+
+`InboundNetworkSpec` carries an `allow_net` field for symmetry with the outbound side,
+but no layer enforces an inbound allowlist, so a non-empty value is refused before the
+request leaves your process:
+
+```
+InvalidArgumentError: invalid argument: inbound.allow_net is not supported yet; remove it (inbound access is controlled by mode only)
+```
+
+Inbound is governed by `mode` alone. To let one audience in rather than everyone, keep
+the box private and share a [signed URL](#share-a-port-temporarily-with-a-signed-url).
+
+You are not locked in: the public flag below flips an existing box either way, without
+recreating it or losing its filesystem.
+
 ### A preview URL and an SDK tunnel are different tools
 
 A preview URL is an HTTPS address for one port on one box, served by BoxLite's preview proxy. Anything that speaks HTTPS can fetch it — a browser, `curl`, a webhook sender, a reviewer on their phone — and none of them needs the BoxLite SDK.
@@ -88,6 +158,13 @@ A `200` returns:
 | `token` | string | The access token for that URL |
 
 The port is part of the URL, so **a preview URL addresses one port, not the whole box.** A box running an app on `8080` and a metrics endpoint on `9090` has two preview URLs, and you fetch each one separately. Change the port your service listens on and the old URL no longer describes it.
+
+Asking for the URL is also what authorizes the port. The proxy checks, on every
+request, that the port you are addressing has a live declaration for that box, and
+refuses the request when it does not — so **requesting a URL for `3000` does not open
+`8080`**, and a URL you assemble by hand for a port you never asked about will not
+serve, however well-formed it looks. Call the endpoint once per port you intend to
+expose.
 
 #### Present the token when the box is private
 
@@ -257,10 +334,13 @@ One more thing to know about a box you did not configure yourself. A box created
 | A signed URL that worked a minute ago now fails | Its lifetime elapsed — the default is 60 seconds when you omit `expiresInSeconds` — or the token was revoked through the expire route | Request a new signed URL, passing an `expiresInSeconds` that matches how long a person actually needs |
 | A signed URL fails immediately after you issue it | The token was already revoked, or the URL was truncated in transit through a chat client or ticket field | Issue a fresh signed URL and paste the whole `url` value, including its token |
 | The preview URL loads but nothing answers, or the connection is refused | The service inside the box is bound to `127.0.0.1`, so traffic arriving on the box's network interface cannot reach it | Bind `0.0.0.0` — `python3 -m http.server 8080 --bind 0.0.0.0`, Flask `app.run(host="0.0.0.0")`, uvicorn `--host 0.0.0.0`. Background: [Network](/cloud/network) |
-| A preview URL that worked stops responding after a quiet period | The box was stopped for being idle. Preview traffic keeps a running box alive, and does not wake a stopped one | Start the box again, then re-check the URL. Raise or disable the idle timeout for a box that must stay reachable — see [Stop when idle](/cloud/box-lifecycle#stop-when-idle) |
+| The first request after a quiet period is slow, or answers `503` with a `Retry-After` header | The box had stopped for being idle. A preview request wakes it and retries for up to 10 seconds; past that you get a `503` telling you when to come back, rather than a failure | Honour `Retry-After` and retry. Raise or disable the idle timeout for a box that must answer immediately — see [Stop when idle](/cloud/box-lifecycle#stop-when-idle) |
+| A `502` for a few seconds right after a box wakes | The box is up but the service inside it has not started listening yet, so there is nothing to hand the connection to | Retry. Start your service as part of the box's startup rather than on first use, so waking the box is enough to serve |
 | The preview URL answers for one port and 404s for another | A preview URL addresses a single port. The second port needs its own | Fetch `GET /api/box/{boxIdOrName}/ports/{port}/preview-url` again with the other port number |
 | An outbound request in the box connects to `0.0.0.0` and fails there | The host is not on the box's `allow_net` list, and a blocked host is sinkholed rather than refused | Add the host to `allow_net` when the box legitimately needs it. Verify by reading the resolved address, not the exit code — see [Network access](/manage-sandbox/network-access) |
 | `nslookup` of a blocked host exits `0`, so a script treats it as reachable | The lookup succeeded; it just answered `0.0.0.0` | Test the resolved address in your script, for example by checking whether the output contains `0.0.0.0` |
+| Opening a tunnel fails with `Box ${boxId} is not public; set public: true before opening a tunnel`, on code that used to work | Inbound has defaulted to `disabled` since 0.10.5, and the flat `NetworkSpec(mode=...)` configures outbound only | Create the box with `inbound=InboundNetworkSpec(mode="enabled")`, or flip the existing box with the public flag — see [A new box is private](#a-new-box-is-private) |
+| `InvalidArgumentError: ... inbound.allow_net is not supported yet` | An inbound allowlist was passed. Inbound is governed by `mode` alone | Drop `allow_net` from the `InboundNetworkSpec`. To admit one audience rather than everyone, keep the box private and issue a signed URL |
 | The public flag call returns forbidden | The key's holder lacks write access to boxes in your organization | Use a credential with write access to boxes, or ask whoever administers the organization to make the change |
 | A box resolves fewer hosts than you expect, and you passed no `network` field | The box inherited your organization's default for limited outbound egress | Pass an explicit `NetworkSpec` with the hosts the box needs, so the box's egress is stated in your code rather than inherited |
 
