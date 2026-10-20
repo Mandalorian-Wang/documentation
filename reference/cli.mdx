@@ -335,7 +335,16 @@ Copy files/directories between host and sandbox (`src/cli/src/commands/cp.rs`). 
 | `<DST>` | — | Destination path (a host path or `BOX:PATH`) |
 | `--follow-symlinks` | `false` | Copy the target a symlink points to |
 | `--no-overwrite` | `false` | Do not overwrite existing files |
-| `--include-parent` | `true` | When copying from the sandbox, include the parent directory (docker cp semantics) |
+
+A directory copies under its own name. End the source with `/.` to copy its contents instead,
+as `docker cp` does:
+
+```bash
+boxlite cp ./dist/. mybox:/srv/www    # the contents of ./dist
+boxlite cp ./dist   mybox:/srv/www    # /srv/www/dist
+```
+
+`--include-parent` was removed in 0.10.6.
 
 ```bash
 # host -> sandbox
@@ -564,7 +573,6 @@ boxlite run --rm -v /cache:ro alpine:latest sh                 # anonymous read-
 | `list` / `images` / `stats` | `table` | list.rs:20, etc. |
 | `info` | `yaml` | info.rs:28 |
 | `inspect` | `json` | inspect.rs:22 |
-| `cp --include-parent` | `true` | cp.rs:18 |
 
 ---
 

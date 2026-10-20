@@ -224,9 +224,25 @@ asyncio.run(main())
 | `container_dest` / `host_dest` | `str` | Yes | — | Destination path |
 | `overwrite` | `bool` | No | `True` | Replace an existing destination |
 | `follow_symlinks` | `bool` | No | `False` | Copy link targets instead of the links themselves |
-| `include_parent` | `bool` | No | `True` | When copying a directory, keep its own name at the destination |
 
 Both methods are `async` and return `None`; failures raise.
+
+### Copying a directory, or its contents
+
+A directory copies **under its own name** by default: `copy_in("./dist", "/srv/www")` leaves
+you with `/srv/www/dist`.
+
+To copy what is *inside* it instead, end the source with `/.` — the same spelling `docker cp`
+uses:
+
+```python
+await box.copy_in("./dist/.", "/srv/www")   # the files land directly in /srv/www
+```
+
+<Note>
+`include_parent` was removed in 0.10.6. `SRC/.` is now the only way to ask for a directory's
+contents. Code still passing `include_parent` raises `TypeError`.
+</Note>
 
 
 ## Troubleshooting
