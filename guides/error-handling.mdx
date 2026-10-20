@@ -250,20 +250,37 @@ returns `ExecResult(exit_code != 0)`.
 `raise ExecError(...)` yourself on failure, or use the `run_checked` wrapper
 above.
 
-### A missing command (spawn failure) raises in both SDKs
+### A missing command raises — and which error you get depends on *which* command
 
-**Python**: calling `box.exec(...)` for a nonexistent command **raises
-`RuntimeError`**, with a message like
-`internal error: spawn_failed: internal error: build failed: ... executable '<cmd>' not found in $PATH`.
-It does not return an `ExecResult` and is not a `BoxliteError` ---
-`isinstance(err, BoxliteError)` is `False`. So catch it with
-`except RuntimeError`.
-**Node**: `SimpleBox.exec` throws a **bare `Error`** on spawn failure, with a
-message containing `spawn_failed`, and `err instanceof BoxliteError === false`.
-**Fix**: on Python, catch spawn failures with `except RuntimeError` (placed after
-`except BoxliteError`); on Node, catch the non-`BoxliteError` bare `Error` in the
-`else` branch. Do not assume a missing command returns an `ExecResult` or is a
-`BoxliteError`.
+Two different commands can be missing, and they fail differently. Neither returns an
+`ExecResult`, so never read `exit_code` to detect them.
+
+| What is missing | When it fails | Python | Message |
+|---|---|---|---|
+| The **main command** — your `entrypoint` / `cmd` | `start()`, before the box is usable | `InvalidArgumentError` | `invalid argument: executable 'httpd' not found in $PATH` |
+| A command you passed to **`exec`** | The `exec` call | `InternalError` | `internal error: spawn_failed: internal error: build failed: ... executable 'httpd' not found in $PATH` |
+
+The main command's clean, single-sentence error arrived in 0.10.6; before that it was
+three stacked `internal error:` prefixes carrying the container id and bundle path.
+
+<Warning>
+**Both are `BoxliteError`s.** Every native error inherits
+`BoxliteError` and `RuntimeError`:
+
+```
+InternalError -> _NativeError -> BoxliteError -> RuntimeError -> Exception
+```
+
+So `except BoxliteError` catches a spawn failure, and any `except RuntimeError`
+placed after it is dead code that never runs. Order your handlers by specificity —
+`except InvalidArgumentError` before `except BoxliteError` — rather than expecting
+spawn failures to escape the `BoxliteError` branch.
+</Warning>
+
+**Node** is the exception to that rule: `SimpleBox.exec` throws a **bare `Error`** on
+spawn failure — `err instanceof BoxliteError === false`, `err.code === "GenericFailure"`
+— with the same `spawn_failed` message. Catch it in the `else` branch after your
+`BoxliteError` check.
 
 ### `from boxlite import TimeoutError` collides with Python's built-in `TimeoutError`
 
