@@ -17,3 +17,5 @@ jobs:
         run: python3 scripts/lint-docs.py .
       - name: llms.txt matches docs.json and page frontmatter
         run: python3 scripts/gen-llms-txt.py --check
+      - name: Nav targets, MDX hazards, table defaults
+        run: python3 scripts/check-structure.py .
