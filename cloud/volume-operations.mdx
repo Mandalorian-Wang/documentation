@@ -4,22 +4,39 @@ sidebarTitle: "Volume CRUD"
 description: "The four operations the volume API exposes, one script that runs all of them, and the two behaviors that catch people out: deletion is asynchronous, and size is never reported."
 ---
 
-The volume API has exactly four operations. This page runs all four end to end, then covers the two behaviors that surprise people.
+There are four things you can do to a volume, and this page does all of them end to
+end — then covers the two behaviors that surprise people.
 
-## The four operations
+## What you can do to a volume
 
-| Operation | SDK call | REST |
-|---|---|---|
-| **Create** | `rt.volumes.create(name)` — `name` optional | `POST /v1/volumes` |
-| **List** | `rt.volumes.list()` | `GET /v1/volumes` |
-| **Inspect** | `rt.volumes.get(id)` | `GET /v1/volumes/{id}` |
-| **Delete** | `rt.volumes.remove(id, force)` | `DELETE /v1/volumes/{id}` |
+| What you want | CLI | SDK | REST |
+|---|---|---|---|
+| **Make one** | `boxlite volume create --name <NAME>` | `rt.volumes.create(name)` — `name` optional | `POST /v1/volumes` |
+| **See what you own** | `boxlite volume ls` | `rt.volumes.list()` | `GET /v1/volumes` |
+| **Look one up** | `boxlite volume get <ID>` | `rt.volumes.get(id)` | `GET /v1/volumes/{id}` |
+| **Throw one away** | `boxlite volume rm <ID>` | `rt.volumes.remove(id, force)` | `DELETE /v1/volumes/{id}` |
+
+All four are also in the console, under **Volumes** — that is the one to reach for when
+you want to see what you own rather than script against it.
 
 <Note>
 **There is no update operation.** A volume's name is fixed at creation, and there is no rename, resize, or patch call in the SDK or on the REST API. To change a name, create a new volume and copy the data through a box that mounts both.
 </Note>
 
-Every operation except create addresses the volume **by id**, not by name. Name is for mounting — see [Reference](/cloud/volume-reference#name-a-volume-and-mount-it-by-that-name).
+Every operation except create addresses the volume **by id**, not by name. Name is for
+mounting — see [Reference](/cloud/volume-reference#name-a-volume-and-mount-it-by-that-name).
+
+The quickest way through all four, if you are at a terminal rather than writing code:
+
+```bash
+boxlite volume create --name subtitle-models   # prints the id
+boxlite volume ls
+boxlite volume get <VOLUME_ID> --format json
+boxlite volume rm <VOLUME_ID>
+```
+
+`boxlite volume` talks to a REST server, so run `boxlite auth login` first. Full flag
+tables are on the [CLI reference](/reference/cli#boxlite-volume).
 
 ## Prerequisites
 
@@ -27,7 +44,7 @@ Every operation except create addresses the volume **by id**, not by name. Name 
 - `pip install boxlite` for Python or `npm install @boxlite-ai/boxlite` for Node, and the REST URL exported as `BOXLITE_REST_URL`. See [Quickstart](/cloud/quickstart).
 - A REST runtime. Managed volumes need one — a local runtime has no volume backend.
 
-## All four in one script
+## Do all four in one script
 
 This creates a volume, finds it in the listing, reads it back by id, then deletes it and waits for reclamation.
 
@@ -209,9 +226,10 @@ So never write code that waits for a `404`. Poll with a bounded timeout and trea
 
 Deleting a volume that a running box still has mounted does not corrupt that box. The box stays usable.
 
-## State the SDK does not expose
+## Find out why a volume is not ready
 
-Two fields reach the REST API but stop at the SDK. Read them over REST when you need them.
+Two fields reach the REST API but stop at the SDK, and they are the two you want when a
+volume is not behaving. Read them over REST.
 
 | What you want | SDK | REST |
 |---|---|---|
