@@ -19,6 +19,9 @@ Behind that single call: the SDK asks the Cloud API to prepare the tunnel (`POST
 
 Two consequences shape every use of a tunnel.
 
+- **The box must have inbound enabled.** A tunnel against a private box is refused,
+  and inbound has defaulted to `disabled` since 0.10.5 — see
+  [Network policy](/cloud/network-policy#a-new-box-is-private).
 - **Your service must bind `0.0.0.0`.** The tunnel terminates on the box's network interface, so a server bound to `127.0.0.1` inside the box is unreachable — the same reason port forwarding needs `0.0.0.0` on a box you run yourself, explained in [Network access](/manage-sandbox/network-access).
 - **A prepared tunnel carries exactly one connection.** See [A tunnel is one-shot](#a-tunnel-is-one-shot).
 
@@ -120,6 +123,7 @@ Three properties of this path to design around.
 | `uri()` returns `None` | The box came from a local runtime, not from `Boxlite.rest(...)`. A local tunnel has no published address | Construct the runtime with `Boxlite.rest(BoxliteRestOptions(url=..., credential=...))` as in [Quickstart](/cloud/quickstart). The endpoint shape is the tell: a local runtime's endpoint is an integer file descriptor, a Cloud runtime's is a URL |
 | A BoxLite error carrying `tunnel connection has already been consumed` | `connect()` or `forward()` already spent that `BoxTunnel` | Call `await box.network.tunnel(port)` again for every connection. Never reuse or cache a tunnel object |
 | `RuntimeError: Box not started. Use 'async with SimpleBox(...) as box:' or call 'await box.start()' first.` | The tunnel was requested before the box was running | `await box.start()` first, then request the tunnel |
+| `InvalidStateError: invalid state: Box <ID> is not public; set public: true before opening a tunnel` | The box has inbound disabled, which is the default since 0.10.5 | Create it with `inbound=InboundNetworkSpec(mode="enabled")` (CLI: `--inbound enabled`), or flip an existing box from the console — see [Network policy](/cloud/network-policy#a-new-box-is-private) |
 | `ValueError: tunnel port must be non-zero` | `0` was passed as the guest port | Pass the port your service actually listens on inside the box |
 | `ValueError: tunnel listener host must be a numeric IP` | `forward()` got a hostname such as `localhost` | Use `SocketAddress.tcp(host="127.0.0.1", port=0)` |
 | `ValueError: tunnel Unix socket path must be absolute` | A relative path was passed to `SocketAddress.unix(...)` | Pass an absolute path, for example `/tmp/boxlite-forward.sock` |

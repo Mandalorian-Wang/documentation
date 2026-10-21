@@ -11,6 +11,9 @@ A tunnel moves bytes and interprets nothing along the way. When your service spe
 - An API key from the console, exported as `BOXLITE_API_KEY`. See [API keys](/cloud/api-keys).
 - `pip install boxlite`, and the REST URL exported as `BOXLITE_REST_URL`. See [Quickstart](/cloud/quickstart).
 - A box you can start, and a service inside it that listens on a TCP port.
+- **The box must be created with inbound enabled.** A tunnel against a private
+  box is refused, and inbound has defaulted to `disabled` since 0.10.5 — see
+  [Network policy](/cloud/network-policy#a-new-box-is-private).
 
 Every example reads both values from the environment, so nothing hard-codes a credential.
 
@@ -24,7 +27,14 @@ import os
 import shlex
 import time
 
-from boxlite import ApiKeyCredential, Boxlite, BoxliteRestOptions, BoxOptions
+from boxlite import (
+    ApiKeyCredential,
+    Boxlite,
+    BoxliteRestOptions,
+    BoxOptions,
+    InboundNetworkSpec,
+    NetworkSpec,
+)
 
 GUEST_PORT = 18090
 IMAGE = "ghcr.io/boxlite-ai/boxlite-agent-base:v0.1.0"
@@ -56,7 +66,12 @@ async def main() -> None:
     connection = None
     try:
         box = await rt.create(
-            BoxOptions(image=IMAGE),
+            BoxOptions(
+                image=IMAGE,
+                # Required for a tunnel: inbound is disabled by default,
+                # and a tunnel against a private box is refused.
+                network=NetworkSpec(inbound=InboundNetworkSpec(mode="enabled")),
+            ),
             name=f"tunnel-bytes-{int(time.time())}",
         )
         box_id = box.id
