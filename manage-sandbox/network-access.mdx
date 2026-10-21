@@ -139,24 +139,58 @@ Underlying `PortSpec` fields (source: `sdks/python/src/options.rs`):
 
 > Node: `ports` is `Array<{ hostPort?: number; guestPort: number; protocol?: string }>` (camelCase).
 
-### Egress allowlist `network` (`NetworkSpec`)
+### Network policy `network` (`NetworkSpec`)
 
-Python constructor: `NetworkSpec(mode, allow_net=[])`
+`NetworkSpec` has two independent halves. **Outbound** is what the box may reach on the
+way out; **inbound** is whether anything outside may reach the services it exposes.
+
+Python constructor: `NetworkSpec(outbound=None, inbound=None)`
+
+| Parameter | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `outbound` | `OutboundNetworkSpec` | Optional | `None` — full egress | What the box may reach |
+| `inbound` | `InboundNetworkSpec` | Optional | `None` — resolved as `disabled`, i.e. private | Whether anything outside may reach the box |
+
+`OutboundNetworkSpec(mode, allow_net=[])`:
 
 | Parameter | Type | Required | Default | Description |
 |---|---|---|---|---|
 | `mode` | `str` | Required | — | `"enabled"` (networking on) / `"disabled"` (no network interface at all) |
 | `allow_net` | `list[str]` | Optional | `[]` | Egress allowlist hosts; an empty list means no restriction (full internet). When non-empty, only these hosts resolve to real IPs and all others are sinkholed to `0.0.0.0`. Supports exact matches and `*.example.com` wildcards |
 
-Three typical combinations:
+`InboundNetworkSpec(mode, allow_net=[])`:
+
+| Parameter | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `mode` | `str` | Required | — | `"enabled"` (services the box exposes are publicly reachable) / `"disabled"` (private) |
+| `allow_net` | `list[str]` | Optional | `[]` | **Must stay empty.** It exists for shape symmetry with the outbound side; no layer enforces an inbound allowlist, and a non-empty value raises `InvalidArgumentError` before the request is sent |
+
+Typical combinations:
 
 | Configuration | Effect |
 |---|---|
-| `NetworkSpec(mode="enabled", allow_net=[])` (or omitting `network`, the default) | Full egress |
-| `NetworkSpec(mode="enabled", allow_net=["example.com"])` | Only the listed hosts are allowed; all others are sinkholed to `0.0.0.0` |
-| `NetworkSpec(mode="disabled")` | The sandbox has no network interface; DNS and outbound connections all fail, while local commands and file operations work normally |
+| Omitting `network` entirely (the default) | Full egress, and private — nothing outside can reach the box |
+| `NetworkSpec(outbound=OutboundNetworkSpec(mode="enabled", allow_net=["example.com"]))` | Only the listed hosts are reachable; all others are sinkholed to `0.0.0.0` |
+| `NetworkSpec(outbound=OutboundNetworkSpec(mode="disabled"))` | The sandbox has no network interface; DNS and outbound connections all fail, while local commands and file operations work normally |
+| `NetworkSpec(inbound=InboundNetworkSpec(mode="enabled"))` | The box's services are publicly reachable. On Cloud this is the public flag — see [Network policy](/cloud/network-policy#a-new-box-is-private) |
 
-> Node: `network` is the object `{ mode: "enabled" | "disabled", allowNet?: string[] }` (camelCase `allowNet`).
+<Warning>
+**The flat `mode` and `allow_net` keywords configure outbound only.** They are a
+deprecated compatibility shim kept so older code keeps working:
+`NetworkSpec(mode="enabled")` has never been a way to make a box reachable from
+outside, and since 0.10.5 inbound defaults to `disabled`, so code relying on the older
+implicit default now gets a private box. Use the nested form.
+
+Mixing the two shapes is refused outright, in the constructor:
+
+```
+ValueError: NetworkSpec cannot mix outbound with legacy mode/allow_net
+```
+</Warning>
+
+> Node: there are no `NetworkSpec` classes — pass a plain object, with camelCase
+> `allowNet`: `{ outbound: { mode: "enabled", allowNet: ["example.com"] }, inbound: { mode: "disabled" } }`.
+> Its deprecated flat `mode` / `allowNet` behave as above.
 
 ### Return value (for verification)
 
