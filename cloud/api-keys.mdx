@@ -8,16 +8,25 @@ Every call to BoxLite Cloud carries one credential: an API key you create in the
 
 ## What a key grants
 
-A key gives its holder access to the Boxes API, which the console states as: *this key can create and manage Boxes. Shared Linux base images are available automatically.* That means the holder can create, start, inspect, and remove boxes on your account, and pull the shared Linux base images without any extra image setup.
-
-Treat a key as a fleet-level credential, not a read-only token. Anyone who has it can spend your account's capacity.
+A key is a **fleet-level credential, not a read-only token**. Its holder can create,
+start, inspect, and remove boxes on your account, manage your image catalog, and spend
+your account's capacity. There is no narrower key to issue instead — the create dialog
+offers no permission choice.
 
 | Property | Value |
 |---|---|
 | Format | `blk_live_...` |
 | Transport | `Authorization: Bearer <YOUR_API_KEY>` |
-| Permissions | `Boxes` |
+| Permissions | `Full` on keys issued today. Older keys may show `Boxes`, which cannot reach the image endpoints — those answer `403` |
 | Expiry | Set when you create the key; the default is `No expiration` |
+
+<Note>
+The create dialog describes the key as *"Boxes API access — this key can create and
+manage Boxes. Shared Linux base images are available automatically."* Read that as a
+floor, not a ceiling: the key the dialog issues lands in the list with **`Full`** in its
+**PERMISSIONS** column. Check that column rather than the dialog when you need to know
+what a key can reach.
+</Note>
 
 ## Create a key in the console
 
@@ -36,7 +45,7 @@ The list view gives you one row per key with these columns:
 |---|---|
 | **NAME** | The name you chose. |
 | **KEY** | The masked key, enough to match a key against a value you hold. |
-| **PERMISSIONS** | The API surface the key can reach — `Boxes`. |
+| **PERMISSIONS** | The API surface the key can reach. `Full` reaches everything, including images; `Boxes` cannot reach the image endpoints. This is the authoritative value — the create dialog does not show it. |
 | **CREATED** | When the key was issued. |
 | **LAST USED** | The signal to check before you delete a key: a key with no recent use is safe to remove. |
 | **EXPIRES** | The expiration date, or nothing when the key does not expire. |
