@@ -11,10 +11,29 @@ A box running a web app, a dev server, or an API is only useful once something o
 - An API key from the console, exported as `BOXLITE_API_KEY`. See [API keys](/cloud/api-keys).
 - `pip install boxlite`, and the REST URL exported as `BOXLITE_REST_URL`. See [Quickstart](/cloud/quickstart).
 - A box you can start, and a service inside it that listens on a TCP port.
+- **The box must be created with inbound enabled.** A tunnel against a private
+  box is refused, and inbound has defaulted to `disabled` since 0.10.5 — see
+  [Network policy](/cloud/network-policy#a-new-box-is-private).
 
 Every example reads both values from the environment, so nothing hard-codes a credential.
 
-This script creates a box, starts an HTTP server inside it, prints the tunnel's public URL, makes a request over the tunnel, and removes the box in `finally`.
+## Get the URL
+
+<Tabs>
+<Tab title="CLI">
+If a box is already running your service, one command prints its URL:
+
+```bash
+boxlite network tunnel mybox 18080
+# https://18080-d-6574546e6e4b787a4c596d52.proxy.boxlite.ai
+```
+</Tab>
+<Tab title="SDK">
+Ask the box for a tunnel to the port, then read `uri()`. The script below does the
+whole thing: create a box, start a server inside it, print the URL, make a request
+over the tunnel, and remove the box in `finally`.
+</Tab>
+</Tabs>
 
 ```python
 # cloud_tunnel_http.py — serve HTTP from a Cloud box and reach it through a tunnel
@@ -23,7 +42,14 @@ import asyncio
 import os
 import time
 
-from boxlite import ApiKeyCredential, Boxlite, BoxliteRestOptions, BoxOptions
+from boxlite import (
+    ApiKeyCredential,
+    Boxlite,
+    BoxliteRestOptions,
+    BoxOptions,
+    InboundNetworkSpec,
+    NetworkSpec,
+)
 
 GUEST_PORT = 18080
 IMAGE = "ghcr.io/boxlite-ai/boxlite-agent-base:v0.1.0"
@@ -61,7 +87,12 @@ async def main() -> None:
     box_id = None
     try:
         box = await rt.create(
-            BoxOptions(image=IMAGE),
+            BoxOptions(
+                image=IMAGE,
+                # Required for a tunnel: inbound is disabled by default,
+                # and a tunnel against a private box is refused.
+                network=NetworkSpec(inbound=InboundNetworkSpec(mode="enabled")),
+            ),
             name=f"tunnel-http-{int(time.time())}",
         )
         box_id = box.id
@@ -123,9 +154,22 @@ tunnel URL: https://...
 HTTP/1.0 200 OK
 ```
 
-`uri()` returns the public URL of a tunnel served remotely, which is what a Cloud tunnel is. On a local runtime the same call returns `None`, because a local tunnel is already a live connection with no address to publish. Reading `uri()` leaves the tunnel usable — only `connect()` and `forward()` spend it.
+## Read the URL without spending the tunnel
 
-The snippet starts the server with `python3`. If the server log says `python3: not found`, install an interpreter into the box first, or start a service the image already ships.
+`uri()` returns the public URL of a tunnel served remotely, which is what a Cloud tunnel
+is. On a local runtime the same call returns `None`, because a local tunnel is already a
+live connection with no address to publish.
+
+**Reading `uri()` leaves the tunnel usable** — only `connect()` and `forward()` spend it.
+Build a fresh tunnel for each of those.
+
+## Troubleshooting
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `InvalidStateError: ... Box <ID> is not public; set public: true before opening a tunnel` | The box was created without inbound. It has defaulted to `disabled` since 0.10.5 | Create it with `inbound=InboundNetworkSpec(mode="enabled")`, as the script above does |
+| The server log says `python3: not found` | The image ships no interpreter | Install one into the box first, or start a service the image already has |
+| The URL resolves but nothing answers | The server bound `127.0.0.1` | Bind `0.0.0.0` — a tunnel arrives on the guest's network interface, not its loopback |
 
 ## Next steps
 
