@@ -234,12 +234,12 @@ BoxOptions(
 `NetworkSpec`:
 
 ```python
-from boxlite import NetworkSpec
+from boxlite import NetworkSpec, OutboundNetworkSpec
 
 # Enable networking, allowing only the specified hosts
-network = NetworkSpec(mode="enabled", allow_net=["api.openai.com"])
+network = NetworkSpec(outbound=OutboundNetworkSpec(mode="enabled", allow_net=["api.openai.com"]))
 # Fully disable networking (removes the guest network interface)
-network_off = NetworkSpec(mode="disabled")
+network_off = NetworkSpec(outbound=OutboundNetworkSpec(mode="disabled"))
 ```
 
 ### Volumes

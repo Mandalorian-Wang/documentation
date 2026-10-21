@@ -47,13 +47,13 @@ The network is controlled by `NetworkSpec`. `mode` takes two values, `"enabled"`
 import boxlite
 
 # 1) Default: mode="enabled", allow_net=[] —— allow all outbound
-net_full = boxlite.NetworkSpec(mode="enabled")
+net_full = boxlite.NetworkSpec(outbound=boxlite.OutboundNetworkSpec(mode="enabled"))
 
 # 2) Allowlist: only listed domains are allowed; other DNS is sinkholed to 0.0.0.0
-net_allow = boxlite.NetworkSpec(mode="enabled", allow_net=["example.com", "pypi.org"])
+net_allow = boxlite.NetworkSpec(outbound=boxlite.OutboundNetworkSpec(mode="enabled", allow_net=["example.com", "pypi.org"]))
 
 # 3) Fully offline: no network interface inside the box
-net_off = boxlite.NetworkSpec(mode="disabled")
+net_off = boxlite.NetworkSpec(outbound=boxlite.OutboundNetworkSpec(mode="disabled"))
 ```
 
 **Port forwarding** uses the `ports` parameter (host -> guest); the simplest form is a `(host_port, guest_port)` tuple:
@@ -89,7 +89,7 @@ if __name__ == "__main__":
 | Symptom / error | Cause | Resolution |
 |---|---|---|
 | Connecting to the forwarded port from the host times out / fails | The service inside the guest bound `127.0.0.1` | The service must bind `0.0.0.0`. The network stack forwards host traffic to the guest NIC `192.168.127.2`, not the guest loopback. |
-| A non-allowlisted domain resolves to `0.0.0.0` | This is expected behavior: `allow_net` sinkholes non-allowlisted domains to `0.0.0.0` | To allow everything, use `NetworkSpec(mode="enabled")` (without `allow_net`). |
+| A non-allowlisted domain resolves to `0.0.0.0` | This is expected behavior: `allow_net` sinkholes non-allowlisted domains to `0.0.0.0` | To allow everything, use `NetworkSpec(outbound=OutboundNetworkSpec(mode="enabled"))` (without `allow_net`). |
 | In `disabled` mode, `nslookup`/networking all fail | There is no network interface inside the box | Use `mode="enabled"` when you need networking; use `disabled` for pure-compute tasks. |
 | `RuntimeError` (during image pull) | Network hiccup / wrong image name / unreachable registry | Catch with `try/except RuntimeError` and retry; confirm the image reference is correct and outbound is reachable. A failed pull raises a standard `RuntimeError`, not `BoxliteError`. |
 | The box fails to start but the host process survives | No hardware virtualization (Linux missing KVM / WSL2 KVM not enabled) | On Linux confirm `/dev/kvm` exists and the user is in the `kvm` group; macOS (Apple Silicon) uses Hypervisor.framework, no KVM required. |

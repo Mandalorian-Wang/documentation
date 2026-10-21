@@ -194,7 +194,7 @@ The microVM boundary is always on. Two further knobs narrow what the code inside
 
 ```python
 import asyncio
-from boxlite import SimpleBox, SecurityOptions, NetworkSpec
+from boxlite import NetworkSpec, OutboundNetworkSpec, SecurityOptions, SimpleBox
 from boxlite import AdvancedBoxOptions
 
 async def main():
@@ -204,7 +204,7 @@ async def main():
             # Tightest OS-level sandbox: jailer + seccomp + rlimits
             advanced=AdvancedBoxOptions(security=SecurityOptions.maximum()),
             # Only these hosts resolve; everything else is DNS-sinkholed
-            network=NetworkSpec(mode="enabled", allow_net=["pypi.org", "files.pythonhosted.org"]),
+            network=NetworkSpec(outbound=OutboundNetworkSpec(mode="enabled", allow_net=["pypi.org", "files.pythonhosted.org"])),
         ) as box:
             result = await box.exec("python", "-c", "print('hello from a locked-down box')")
             print(result.stdout, result.exit_code)
@@ -217,8 +217,8 @@ asyncio.run(main())
 | Goal | Pass this | Notes |
 |---|---|---|
 | Tightest OS-level sandbox | `advanced=AdvancedBoxOptions(security=SecurityOptions.maximum())` | Presets are `development()` / `standard()` / `maximum()`. There is no `minimum()` |
-| No network at all | `network=NetworkSpec(mode="disabled")` | The box gets no network interface |
-| Allow specific hosts only | `network=NetworkSpec(mode="enabled", allow_net=[...])` | `mode` is required; an empty `allow_net` means allow all |
+| No network at all | `network=NetworkSpec(outbound=OutboundNetworkSpec(mode="disabled"))` | The box gets no network interface |
+| Allow specific hosts only | `network=NetworkSpec(outbound=OutboundNetworkSpec(mode="enabled", allow_net=[...]))` | `mode` is required; an empty `allow_net` means allow all |
 
 > `security=` is not a top-level keyword — passing it directly raises `TypeError: BoxOptions.__new__() got an unexpected keyword argument 'security'`. It must be wrapped in `advanced=AdvancedBoxOptions(security=...)`.
 

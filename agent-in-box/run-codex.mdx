@@ -144,13 +144,13 @@ If you would rather keep Codex's own sandbox on, pass `-s workspace-write` inste
 Piping the key through `codex login --with-api-key` keeps it off the command line, but it still enters the sandbox. To keep the real value on the host, inject it at the proxy: the box sees a placeholder, and BoxLite substitutes the real value on outbound requests to the hosts you allow.
 
 ```python
-from boxlite import SimpleBox, Secret, NetworkSpec
+from boxlite import NetworkSpec, OutboundNetworkSpec, Secret, SimpleBox
 
 box = SimpleBox(
     image="node:20-slim",
     disk_size_gb=8,
     secrets=[Secret(name="openai", value="<YOUR_OPENAI_API_KEY>", hosts=["api.openai.com"])],
-    network=NetworkSpec(mode="enabled", allow_net=["registry.npmjs.org", "api.openai.com"]),
+    network=NetworkSpec(outbound=OutboundNetworkSpec(mode="enabled", allow_net=["registry.npmjs.org", "api.openai.com"])),
 )
 ```
 

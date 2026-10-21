@@ -288,6 +288,7 @@ from boxlite import (
     BoxliteRestOptions,
     BoxOptions,
     NetworkSpec,
+    OutboundNetworkSpec,
 )
 
 IMAGE = "ghcr.io/boxlite-ai/boxlite-agent-base:v0.1.0"
@@ -318,7 +319,7 @@ async def main() -> None:
         box = await rt.create(
             BoxOptions(
                 image=IMAGE,
-                network=NetworkSpec(mode="enabled", allow_net=ALLOWED_HOSTS),
+                network=NetworkSpec(outbound=OutboundNetworkSpec(mode="enabled", allow_net=ALLOWED_HOSTS)),
             ),
             name=f"egress-allowlist-{int(time.time())}",
         )

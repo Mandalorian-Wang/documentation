@@ -414,13 +414,13 @@ Yes, via `NetworkSpec`. The default is "enabled with an empty egress allowlist",
 
 ```python
 # Python — restrict egress to an allowlist
-from boxlite import BoxOptions, NetworkSpec
+from boxlite import BoxOptions, NetworkSpec, OutboundNetworkSpec
 
-# NetworkSpec(mode, allow_net=[]): `mode` is REQUIRED ("enabled" or "disabled").
+# OutboundNetworkSpec(mode, allow_net=[]): `mode` is REQUIRED ("enabled" or "disabled").
 # mode="enabled" with a non-empty allow_net = only those hosts are reachable.
 opts = BoxOptions(
     image="alpine:latest",
-    network=NetworkSpec(mode="enabled", allow_net=["api.github.com"]),
+    network=NetworkSpec(outbound=OutboundNetworkSpec(mode="enabled", allow_net=["api.github.com"])),
 )
 ```
 

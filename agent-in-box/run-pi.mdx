@@ -130,7 +130,7 @@ async def run_pi_json(box, prompt: str, model: str, api_key: str) -> str:
 The example above passes the key in as an environment variable, which means it exists inside the sandbox. When that is not acceptable, inject it at the proxy instead: the box sees only a placeholder, and BoxLite substitutes the real value on outbound requests to the hosts you allow.
 
 ```python
-from boxlite import SimpleBox, Secret, NetworkSpec
+from boxlite import NetworkSpec, OutboundNetworkSpec, Secret, SimpleBox
 
 secret = Secret(
     name="provider",
@@ -142,7 +142,7 @@ box = SimpleBox(
     image="node:20-slim",
     disk_size_gb=8,
     secrets=[secret],
-    network=NetworkSpec(mode="enabled", allow_net=["registry.npmjs.org", "api.anthropic.com"]),
+    network=NetworkSpec(outbound=OutboundNetworkSpec(mode="enabled", allow_net=["registry.npmjs.org", "api.anthropic.com"])),
 )
 ```
 

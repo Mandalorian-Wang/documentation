@@ -353,7 +353,7 @@ async function main() {
       { hostPath: "<YOUR_HOST_PATH>", guestPath: "/data", readOnly: true }, // read-only
     ],
     ports: [{ hostPort: 8080, guestPort: 80 }],
-    network: { mode: "enabled", allowNet: ["example.com"] },
+    network: { outbound: { mode: "enabled", allowNet: ["example.com"] } },
     secrets: [
       { name: "API_KEY", value: "<YOUR_API_KEY>", hosts: ["api.example.com"] },
     ],
