@@ -17,6 +17,9 @@ A volume has both a server-assigned `id` and a `name`, and **either one mounts i
 
 Choosing your own name is what lets a worker mount the volume it wants without knowing the id. The two halves can live in different processes that never exchange an id:
 
+The same split works from a terminal — `boxlite volume create --name` on one side,
+`-v <NAME>:<PATH>` on the other. See [`boxlite volume`](/reference/cli#boxlite-volume).
+
 <CodeGroup>
 
 ```python Python

@@ -4,7 +4,40 @@ sidebarTitle: "Mount a volume"
 description: "Create a managed volume, mount it into a box at a path you choose, and write and read through the mount."
 ---
 
-A managed volume is storage the platform keeps for you, independent of any box. This is the shortest complete path: create one, mount it, write through it, read it back.
+A managed volume is storage the platform keeps for you, independent of any box. This is
+the shortest complete path: create one, mount it, write through it, read it back.
+
+## Pick where to do this
+
+Creating a volume takes one step on any of three surfaces. Mounting one always happens
+where the box is created, so that part follows whichever you use to make boxes.
+
+<Tabs>
+<Tab title="Console">
+1. Open **Volumes** and click **New Volume**.
+2. Fill in **Name** — the only field. Pick something you will recognize later, such as
+   `subtitle-models`.
+3. Creation waits until the volume is ready, so you can mount it immediately.
+
+Use the console when you want to **see what you own**. `rt.volumes.list()` and the
+**Volumes** page report the same set, and a name set in either place mounts the same way.
+</Tab>
+<Tab title="CLI">
+```bash
+boxlite volume create --name subtitle-models   # prints the volume id
+boxlite create python --name trainer -v subtitle-models:/data
+boxlite start trainer
+boxlite exec trainer -- sh -c 'echo hi > /data/f.txt && cat /data/f.txt'
+```
+
+`boxlite volume` talks to a REST server, so run `boxlite auth login` first. Flag tables
+are on the [CLI reference](/reference/cli#boxlite-volume).
+</Tab>
+<Tab title="SDK">
+The script below is the whole flow — create, mount, write, read. Use this when the
+volume is part of something your program does rather than something you set up once.
+</Tab>
+</Tabs>
 
 ## Prerequisites
 
@@ -199,16 +232,6 @@ curl -fsS -X DELETE "${BOXLITE_REST_URL}/v1/volumes/$(echo "${VOLUME}" | jq -r .
 </CodeGroup>
 
 Two things in that script are worth pausing on, and the rest of this page builds on them: the volume carries a **name you chose**, and the box mounts it by that name.
-
-## Create a volume in the console
-
-The console is the other way to create a volume, and the one to use when you want to see what you own.
-
-1. Open **Volumes** in the console and click **New Volume**.
-2. Fill in **Name** — the only field. Pick something you will recognize later, such as `subtitle-models`.
-3. Creation waits until the volume is ready, so you can mount it immediately.
-
-The volume now exists independently of any box. You can mount it into a box, destroy that box, and mount it into a different one later. `rt.volumes.list()` and the **Volumes** page report the same set of volumes, and a name set in either place mounts the same way.
 
 
 ## Next steps

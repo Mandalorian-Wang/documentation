@@ -406,6 +406,112 @@ boxlite stats -s mybox
 
 ---
 
+### `boxlite volume`
+
+Manage named volumes on a REST server — storage that outlives the box that wrote it.
+**These commands need a remote server**, so run `boxlite auth login` first (or pass
+`--url` / `BOXLITE_REST_URL`); there is nothing to manage on a purely local runtime.
+
+| Subcommand | Arguments | Description |
+|---|---|---|
+| `create` | — | Create a volume and print its **id** |
+| `ls` (alias `list`) | — | List volumes |
+| `get` (alias `inspect`) | `<ID>` | Show one volume |
+| `rm` (alias `delete`) | `<IDS>...` | Remove one or more volumes by id |
+
+| Flag | Applies to | Default | Description |
+|---|---|---|---|
+| `--name <NAME>` | `create` | server-assigned id | A name you can mount in place of the id. At least two characters of `[a-zA-Z0-9][a-zA-Z0-9_.-]` |
+| `--format <FORMAT>` | `ls`, `get` | `table` | `table`, `json`, or `yaml` |
+| `-q`, `--quiet` | `ls` | `false` | Print ids only |
+| `-f`, `--force` | `rm` | `false` | Ignore volumes that do not exist |
+
+```bash
+# Create one. The command prints the id, not the name.
+boxlite volume create --name subtitle-models
+# a265d8cc-96aa-46b4-b0a0-afa05c7e4d02
+
+boxlite volume ls
+boxlite volume ls -q                       # ids only, for scripting
+boxlite volume get a265d8cc-96aa-46b4-b0a0-afa05c7e4d02 --format json
+```
+
+`get --format json` returns PascalCase keys, and `Size` is `-` because Cloud does not
+report volume size:
+
+```json
+{
+  "Id": "a265d8cc-96aa-46b4-b0a0-afa05c7e4d02",
+  "Name": "subtitle-models",
+  "CreatedAt": "2026-10-21 01:29:09 UTC",
+  "Size": "-"
+}
+```
+
+Mount it into a box by the name you chose, with `-v`:
+
+```bash
+boxlite create python --name trainer -v subtitle-models:/data
+boxlite start trainer
+boxlite exec trainer -- sh -c 'echo hi > /data/f.txt && cat /data/f.txt'
+```
+
+<Note>
+**A volume in use cannot be removed, and the error names the box holding it:**
+
+```
+Error removing volume 'a265d8cc-…': invalid state: Volume cannot be deleted because it is in use by one or more boxes (e.g. trainer)
+Error: Some volumes could not be removed
+```
+
+Remove the box first. And because **deletion is asynchronous**, a volume you just
+removed can still appear in the next `boxlite volume ls` — poll with a bound rather
+than treating one listing as proof. See [Volume operations](/cloud/volume-operations).
+</Note>
+
+---
+
+### `boxlite network`
+
+| Subcommand | Arguments | Description |
+|---|---|---|
+| `tunnel` | `<BOX> <PORT>` | Print a remote URL for a box service, or forward a local listener to it |
+
+| Flag | Default | Description |
+|---|---|---|
+| `--listen <ADDRESS>` | none — print the URL instead | Bind a local TCP `host:port`, or a `unix:/absolute/path` socket, and forward it to the guest port |
+
+Without `--listen`, it prints the public URL and exits:
+
+```bash
+boxlite network tunnel mybox 8080
+# https://8080-d-6574546e6e4b787a4c596d52.proxy.boxlite.ai
+```
+
+With `--listen`, it stays in the foreground and forwards until you stop it:
+
+```bash
+boxlite network tunnel mybox 8080 --listen 127.0.0.1:18080
+# tcp://127.0.0.1:18080
+```
+
+<Warning>
+**The box must have inbound enabled.** A tunnel against a private box fails:
+
+```
+Error: invalid state: Box etTnnKxzLYmR is not public; set public: true before opening a tunnel
+```
+
+Create it with `--inbound enabled`, or flip an existing box from the console — see
+[Network policy](/cloud/network-policy#a-new-box-is-private). Inbound has defaulted to
+`disabled` since 0.10.5, so code that predates it hits this.
+
+The service inside the box must also bind `0.0.0.0`: traffic arrives on the guest's
+network interface, not its loopback.
+</Warning>
+
+---
+
 ### `boxlite serve`
 
 Start the long-running REST API service (a local Axum reference server, `src/cli/src/commands/serve/mod.rs`). Once running, connect with the SDK's REST client or with `--url`.
