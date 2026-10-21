@@ -125,11 +125,126 @@ A handle to a box instance. All methods take `&self`, so it can be shared across
 | `copy_into` | `async fn copy_into(&self, host_src, container_dst, opts: CopyOptions) -> BoxliteResult<()>` | Host -> container |
 | `copy_out` | `async fn copy_out(&self, container_src, host_dst, opts: CopyOptions) -> BoxliteResult<()>` | Container -> host |
 | `snapshots` | `fn snapshots(&self) -> SnapshotHandle` | Get the snapshot handle (synchronous) |
+| `ssh` | `fn ssh(&self) -> SshHandle` | Get the SSH control handle (synchronous). **Local runtime only** — see [SSH control](#ssh-control-local-runtime-only) |
 | `clone_box` | `async fn clone_box(&self, options: CloneOptions, name: Option<String>) -> BoxliteResult<LiteBox>` | Clone into a new box |
 | `clone_boxes` | `async fn clone_boxes(&self, options: CloneOptions, count: usize, names: Vec<String>) -> BoxliteResult<Vec<LiteBox>>` | Clone in bulk (shares the base disk, more space-efficient) |
 | `export` | `async fn export(&self, options: ExportOptions, dest: &Path) -> BoxliteResult<BoxArchive>` | Export to a portable archive |
 
 **Lifecycle**: `create()` -> `Configured` (persisted, no VM); `start()` (or the first `exec()`) -> `Running`; `stop()` -> `Stopped` (can be restarted).
+
+### SSH control (local runtime only)
+
+`box.ssh()` turns on an SSH server **inside** the box, so a person or a tool can reach
+a shell in it with an ordinary `ssh` client instead of going through `exec`. You supply
+the host key and the authorized public keys; the box does not generate or store either
+for you.
+
+<Warning>
+**This is available only on the local runtime.** Over REST — including BoxLite Cloud —
+every method on the handle returns:
+
+```
+Unsupported("SSH control requires the local backend")
+```
+
+It is also absent from the CLI and from the Python and Node SDKs. If you need a shell
+in a Cloud box, use [the interactive PTY](/agent-tools/pseudo-terminal) instead, which
+works on every runtime.
+</Warning>
+
+| Method | Signature | Description |
+|---|---|---|
+| `configure` | `async fn configure(&self, config: SshConfig) -> BoxliteResult<SshStatus>` | Enable the server, or replace its configuration. The only method that may implicitly start a box |
+| `status` | `async fn status(&self) -> BoxliteResult<SshStatus>` | Read the current state. Never starts a VM |
+| `disable` | `async fn disable(&self) -> BoxliteResult<SshStatus>` | Turn the server off. Never starts a VM |
+
+`SshConfig`:
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `listen_address` | `String` | Required | Address inside the box, for example `0.0.0.0:22`. Bind `0.0.0.0`, not loopback, or nothing outside the guest can reach it |
+| `host_private_key` | `String` | Required | The server's host key, in OpenSSH private-key form. **You generate it** — `ssh-keygen -t ed25519 -f hostkey` |
+| `accounts` | `Vec<SshAccount>` | Required | Who may log in. An empty list enables a server nobody can use |
+
+`SshAccount`:
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `login` | `String` | Required | The account inside the box, for example `root` |
+| `authorized_keys` | `Vec<String>` | Required | Public keys allowed to log in as that account, in `authorized_keys` form |
+| `ca` | `Option<SshCaConfig>` | Optional | Accept certificates signed by a CA instead of listing keys. `SshCaConfig { public_key, principal }` |
+
+`SshStatus` is returned by all three methods:
+
+| Field | Type | Description |
+|---|---|---|
+| `enabled` | `bool` | Whether the server is currently on |
+| `generation` | `u64` | Increments on each `configure`. Does **not** reset on `disable`, so it tells you how many times the box has been reconfigured |
+| `listen_address` | `String` | The address in effect, or empty when disabled |
+| `host_public_key` | `String` | The public half of the host key you supplied, or empty when disabled |
+| `host_key_fingerprint` | `String` | `SHA256:...` fingerprint — compare this against what your client reports on first connect |
+
+```rust
+use std::sync::Arc;
+
+use boxlite::{BoxOptions, BoxliteRuntime, RootfsSpec, SshAccount, SshConfig};
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Generate these once, outside your program:
+    //   ssh-keygen -t ed25519 -N "" -f hostkey     # the box's host key
+    //   ssh-keygen -t ed25519 -N "" -f userkey     # the key you log in with
+    let host_private_key = std::fs::read_to_string("hostkey")?;
+    let user_public_key = std::fs::read_to_string("userkey.pub")?;
+
+    let rt = BoxliteRuntime::with_defaults()?;
+    let options = BoxOptions {
+        rootfs: RootfsSpec::Image("python".into()),
+        ..Default::default()
+    };
+    let litebox = rt.create(options, None).await?;
+    litebox.start().await?;
+
+    let status = litebox
+        .ssh()
+        .configure(SshConfig {
+            listen_address: "0.0.0.0:22".to_string(),
+            host_private_key,
+            accounts: vec![SshAccount {
+                login: "root".to_string(),
+                authorized_keys: vec![user_public_key.trim().to_string()],
+                ca: None,
+            }],
+        })
+        .await?;
+
+    println!("enabled={} fingerprint={}", status.enabled, status.host_key_fingerprint);
+
+    litebox.ssh().disable().await?;
+    rt.remove(&litebox.id().to_string(), true).await?;
+    Ok(())
+}
+```
+
+Run against a local box, that prints:
+
+```text
+enabled=true fingerprint=SHA256:fXKTZSUz4kS5s2aFpi85pSQCn5btfWMMENKbj/slUnM
+```
+
+**Reaching the server.** `listen_address` is an address *inside* the box, so publish it
+the way you would any other guest service — a `PortSpec` in `BoxOptions`, or a tunnel.
+Forwarded traffic arrives on the guest's network interface rather than its loopback,
+which is why the address above is `0.0.0.0:22` and not `127.0.0.1:22`.
+
+**Troubleshooting**
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `Unsupported("SSH control requires the local backend")` | The handle came from a box on a REST runtime | SSH control is local-only. Use [the interactive PTY](/agent-tools/pseudo-terminal) on Cloud |
+| `configure` works but no client can connect | Nothing publishes the guest port, or the server is bound to loopback | Bind `0.0.0.0` and add a `PortSpec` or a tunnel for the port — see [Network access](/manage-sandbox/network-access) |
+| `status()` reports `enabled: false` with empty fields on a box you configured earlier | `disable()` was called, or the box was recreated. `generation` surviving at its old value tells the two apart | Call `configure` again |
+| Your client warns about an unknown host key | Expected on first connect — you supplied the host key, so no client has seen it before | Compare the warning against `host_key_fingerprint` from `SshStatus` before accepting |
 
 ### `BoxCommand` (command builder)
 
