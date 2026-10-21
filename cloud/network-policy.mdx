@@ -105,6 +105,24 @@ the box private and share a [signed URL](#share-a-port-temporarily-with-a-signed
 You are not locked in: the public flag below flips an existing box either way, without
 recreating it or losing its filesystem.
 
+### Where to do each of these
+
+Most of this section is shown as HTTP because that is the only surface some of it
+has. Two of the four operations are also in the console, and those are the ones you
+will reach for by hand:
+
+| Operation | Console | SDK / CLI | HTTP |
+|---|---|---|---|
+| Set inbound when you create a box | — | **Yes** — `inbound`, or `--inbound` | Yes |
+| Change inbound on an existing box | **Yes** — the box's **network** panel | No | Yes |
+| Get a preview URL for a port | **Yes** — **get url** on the same panel | No | Yes |
+| Issue an expiring signed URL | No | No | **Only here** |
+| Revoke a signed URL | No | No | **Only here** |
+
+The SDK's network handle exposes `tunnel(port)` and nothing else, and `boxlite
+network` has only `tunnel`, so neither can change inbound or mint a preview URL.
+Reach for HTTP when you are automating; reach for the console when you are not.
+
 ### A preview URL and an SDK tunnel are different tools
 
 A preview URL is an HTTPS address for one port on one box, served by BoxLite's preview proxy. Anything that speaks HTTPS can fetch it — a browser, `curl`, a webhook sender, a reviewer on their phone — and none of them needs the BoxLite SDK.
@@ -115,6 +133,22 @@ Reach for a **preview URL** when something outside your own code has to fetch an
 
 ### Make a box public or private
 
+<Tabs>
+<Tab title="Console">
+Open the box, find the **network** panel, and use the **Inbound access** switch.
+
+The panel states the current posture in the terms that matter:
+
+| It reads | What it means |
+|---|---|
+| `inbound · disabled · your organization` | A preview URL sends an unknown visitor through sign-in, and serves only members of your organization |
+| `inbound · enabled · anyone` | A preview URL serves anyone who holds it, with no sign-in |
+
+Turning it on asks you to confirm — *"Open this box's preview URLs to anyone?"* —
+because that is exactly what it does. **`outbound` on the same panel is read-only:**
+nothing changes a box's egress after it is created.
+</Tab>
+<Tab title="HTTP">
 ```http
 POST /api/box/{boxIdOrName}/public/{isPublic}
 ```
@@ -127,6 +161,8 @@ Both values travel in the path. There is no request body, and a `200` returns th
 | `isPublic` | boolean | Required | `true` opens the box to unauthenticated access, `false` returns it to private |
 
 The call needs write access to boxes in your organization, and it is recorded in your organization's audit trail.
+</Tab>
+</Tabs>
 
 ```bash
 # Make a box public. Read the key from the environment -- never inline it.
@@ -151,6 +187,18 @@ If what you actually want is to let one person see one port for a short while, d
 
 ### Get a preview URL for a port
 
+<Tabs>
+<Tab title="Console">
+On the box's **network** panel, choose **get url** and type the port.
+
+<Note>
+**That button is disabled while inbound is disabled.** The HTTP route is not — it
+returns a URL and a token for a private box too, which is what the token flow below
+is for. If **get url** is greyed out and you expected otherwise, the box is private,
+not broken.
+</Note>
+</Tab>
+<Tab title="HTTP">
 ```http
 GET /api/box/{boxIdOrName}/ports/{port}/preview-url
 ```
@@ -170,6 +218,9 @@ A `200` returns:
 | `boxId` | string | The box the URL points at |
 | `url` | string | The preview address, shaped `https://{port}-{encodedBoxId}.{proxyDomain}` |
 | `token` | string | The access token for that URL |
+
+</Tab>
+</Tabs>
 
 The port is part of the URL, so **a preview URL addresses one port, not the whole box.** A box running an app on `8080` and a metrics endpoint on `9090` has two preview URLs, and you fetch each one separately. Change the port your service listens on and the old URL no longer describes it.
 
@@ -209,6 +260,11 @@ The query-parameter form is what makes a private preview URL openable in a brows
 A request that carries no credential the proxy accepts is redirected to sign in, so a human reaching a private box in a browser can authenticate instead of being refused outright.
 
 ### Share a port temporarily with a signed URL
+
+<Note>
+Signed URLs are **HTTP-only**. There is no console control and no SDK or CLI method
+for issuing or revoking one, so the calls below are the whole of it.
+</Note>
 
 ```http
 GET /api/box/{boxIdOrName}/ports/{port}/signed-preview-url?expiresInSeconds=N
