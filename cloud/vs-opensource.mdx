@@ -14,7 +14,7 @@ This page is the single place where those differences are enumerated. Every othe
 |---|---|---|
 | Where boxes run | Your machine or server, with hardware virtualization (Linux KVM, macOS Hypervisor.framework) | BoxLite's resource pool — no virtualization on your machines |
 | Entry point | `SimpleBox(...)` or `Boxlite.default()` | `Boxlite.rest(BoxliteRestOptions(url, credential))` |
-| Authentication | None locally, or `boxlite serve --api-key` | A `blk_live_...` key created in the console — see [API keys](/cloud/api-keys) |
+| Authentication | None for a loopback-only `boxlite serve`; an `--api-key` is mandatory once it binds a non-loopback address | A `blk_live_...` key created in the console — see [API keys](/cloud/api-keys) |
 | `path_prefix` | The reference server needs `path_prefix="default"` | Not used |
 | `exec` call shape | In-process runtime: varargs, `box.exec("echo", "hi")`. A self-hosted `boxlite serve` uses the keyword-list form, like Cloud | Keyword list: `box.exec("echo", args=["hi"])` |
 | Teardown | `async with` context manager, or `stop()` | `await rt.remove(box.id, force=True)` |

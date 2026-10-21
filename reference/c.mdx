@@ -430,9 +430,8 @@ Return value: the number of dispatched events, or `-1` (error, details written t
 | `boxlite_create_box / _start_box / _stop_box / _get / _remove` | **Async callback** | Require drain |
 | `boxlite_execution_wait / _kill / _signal / _tty_resize` | **Async callback** | Require drain |
 | `boxlite_copy_into / _copy_out` | **Async callback** | Require drain |
-| `boxlite_get_info / _list_info / _box_metrics / _runtime_metrics` | **Async callback** | Results returned via callback |
+| `boxlite_box_info / _get_info / _list_info / _box_metrics / _runtime_metrics` | **Async callback** | Results returned via callback |
 | `boxlite_image_pull / _image_list` | **Async callback** | Require drain (see [Runtime image management](#runtime-image-management)) |
-| `boxlite_box_info` | **Synchronous** | Returns `CBoxInfo*` directly (read from the handle, not through the queue) |
 | `boxlite_runtime_shutdown` | **Async callback** | Require drain |
 | `boxlite_simple_*` | **Synchronous, blocking** | The Simple API manages its own runtime; no drain |
 
@@ -557,7 +556,7 @@ Metrics are returned via callbacks (`CBoxMetricsCb` / `CRuntimeMetricsCb`, signa
 | `CExecutionKillCb` | `void(*)(CBoxliteError*, void*)` | `boxlite_execution_kill` |
 | `CExecutionSignalCb` | `void(*)(CBoxliteError*, void*)` | `boxlite_execution_signal` |
 | `CExecutionResizeCb` | `void(*)(CBoxliteError*, void*)` | `boxlite_execution_tty_resize` |
-| `CBoxInfoCb` / `CBoxInfoListCb` | `void(*)(struct CBoxInfo*/*List*, CBoxliteError*, void*)` | `boxlite_get_info` / `_list_info` |
+| `CBoxInfoCb` / `CBoxInfoListCb` | `void(*)(struct CBoxInfo*/*List*, CBoxliteError*, void*)` | `boxlite_box_info` / `_get_info` / `_list_info` |
 | `CRuntimeShutdownCb` | `void(*)(CBoxliteError*, void*)` | `boxlite_runtime_shutdown` |
 
 > **Pointer lifetime in callbacks**: pointers passed into a callback (`CBoxliteError*`, `CBoxInfo*`, etc.) are valid only while the callback runs; copy anything you want to keep. `CBoxHandle*` (in the create/get callbacks) transfers ownership to you and must later be freed with `boxlite_box_free`.

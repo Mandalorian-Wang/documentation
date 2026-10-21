@@ -191,7 +191,7 @@ if __name__ == "__main__":
 | `clone_box` | `(*, options=None, name=None)` | async, returns a new `Box` |
 | `export` | `(*, options=None, dest)` | async |
 | `attach` | `(execution_id=None)` | async. **With no argument, attaches to the init session** — the `entrypoint + cmd` process — which is the only way to read its exit code. With an `execution_id`, reattaches to that exec session. Not available on `SimpleBox` or the sync API |
-| `info` | `() -> BoxInfo` | **synchronous**, do not await |
+| `info` | `() -> BoxInfo` | async — `await` it |
 | `metrics` | `() -> BoxMetrics` | async |
 
 Properties: `id`, `name`, `snapshot` (`SnapshotHandle`).
@@ -338,10 +338,10 @@ Methods:
 |---|---|---|---|
 | `start` | `()` | `Self` | async, equivalent to entering the CM |
 | `exec` | `(cmd, *args, env=None, user=None, timeout=None, cwd=None)` | `ExecResult` | async. **The timeout parameter is `timeout` (float seconds)**; `env` takes a **dict** |
-| `copy_in` | `(host_path, container_dest, *, overwrite=True, follow_symlinks=False, include_parent=True)` | — | async |
-| `copy_out` | `(container_src, host_dest, *, ...)` | — | async |
+| `copy_in` | `(host_path, container_dest, copy_options=None)` | — | async. `CopyOptions(recursive=True, overwrite=True, follow_symlinks=False)` |
+| `copy_out` | `(container_src, host_dest, copy_options=None)` | — | async. End `container_src` with `/.` for a directory's contents |
 | `stop` / `shutdown` | `()` | `None` | async (`shutdown` is an alias for `stop`) |
-| `info` | `() -> BoxInfo` | `BoxInfo` | **synchronous** |
+| `info` | `() -> BoxInfo` | `BoxInfo` | async — `await` it |
 
 Properties: `id` (accessing before start raises `RuntimeError`), `created` (whether newly created; `None` before start).
 

@@ -335,7 +335,16 @@ Copy files/directories between host and sandbox (`src/cli/src/commands/cp.rs`). 
 | `<DST>` | — | Destination path (a host path or `BOX:PATH`) |
 | `--follow-symlinks` | `false` | Copy the target a symlink points to |
 | `--no-overwrite` | `false` | Do not overwrite existing files |
-| `--include-parent` | `true` | When copying from the sandbox, include the parent directory (docker cp semantics) |
+
+A directory copies under its own name. End the source with `/.` to copy its contents instead,
+as `docker cp` does:
+
+```bash
+boxlite cp ./dist/. mybox:/srv/www    # the contents of ./dist
+boxlite cp ./dist   mybox:/srv/www    # /srv/www/dist
+```
+
+`--include-parent` was removed in 0.10.6.
 
 ```bash
 # host -> sandbox
@@ -403,19 +412,34 @@ Start the long-running REST API service (a local Axum reference server, `src/cli
 
 | Flag | Default | Environment variable | Description |
 |---|---|---|---|
-| `--port <PORT>` | `8100` | — | Listen port (`LOCAL_SERVE_PORT`, defaults.rs:7) |
-| `--host <HOST>` | `0.0.0.0` | — | Bind address (`LOCAL_SERVE_HOST`, defaults.rs:10) |
+| `--port <PORT>` | `8100` | — | Listen port (`LOCAL_SERVE_PORT` in `src/cli/src/defaults.rs`) |
+| `--host <HOST>` | `127.0.0.1` | — | Bind address (`LOCAL_SERVE_HOST` in `src/cli/src/defaults.rs`). A non-loopback address requires `--api-key` |
 | `--api-key <KEY>` | none (permissive) | `BOXLITE_SERVE_API_KEY` | When set, every route except `GET /v1/config` requires `Authorization: Bearer <KEY>`, otherwise 401 |
 
 ```bash
-# Start a local service with zero config (permissive mode, accepts any/no bearer)
+# Local-only service, zero config (permissive mode, accepts any/no bearer)
 boxlite serve
 
-# Specify a port and require an API key
-boxlite serve --port 9000 --api-key "<YOUR_API_KEY>"  # replace with your key
+# Reachable from other machines — the key is mandatory for a non-loopback bind
+boxlite serve --host 0.0.0.0 --port 9000 --api-key "<YOUR_API_KEY>"
 ```
 
 By default the REST API serves at `http://localhost:8100/v1/...`.
+
+<Warning>
+**`--host` changed from `0.0.0.0` to `127.0.0.1` in 0.10.6.** Without a key the server
+grants full box control to every caller that can reach it, so it now refuses to bind
+anywhere but loopback:
+
+```
+Error: refusing to bind `boxlite serve` to non-loopback address 0.0.0.0 without an API key; set --api-key (or BOXLITE_SERVE_API_KEY), or bind to 127.0.0.1
+```
+
+If you upgraded a deployment that other machines connect to, add both flags —
+`--host 0.0.0.0` to restore the old reach, and `--api-key` (or
+`BOXLITE_SERVE_API_KEY`) to satisfy the check. Clients must then send
+`Authorization: Bearer <YOUR_API_KEY>`.
+</Warning>
 
 ---
 
@@ -564,7 +588,6 @@ boxlite run --rm -v /cache:ro alpine:latest sh                 # anonymous read-
 | `list` / `images` / `stats` | `table` | list.rs:20, etc. |
 | `info` | `yaml` | info.rs:28 |
 | `inspect` | `json` | inspect.rs:22 |
-| `cp --include-parent` | `true` | cp.rs:18 |
 
 ---
 

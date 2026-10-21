@@ -116,7 +116,7 @@ A handle to a box instance. All methods take `&self`, so it can be shared across
 |---|---|---|
 | `id` | `fn id(&self) -> &BoxID` | Box ID (synchronous) |
 | `name` | `fn name(&self) -> Option<&str>` | Optional name (synchronous) |
-| `info` | `fn info(&self) -> BoxInfo` | Get info **without triggering VM initialization** (synchronous) |
+| `info` | `async fn info(&self) -> BoxliteResult<BoxInfo>` | Box metadata; `.await` it |
 | `start` | `async fn start(&self) -> BoxliteResult<()>` | Start the VM; idempotent (a no-op when already Running) |
 | `exec` | `async fn exec(&self, command: BoxCommand) -> BoxliteResult<Execution>` | Run a command; implicitly calls `start()` if not started |
 | `attach` | `async fn attach(&self, execution_id: &str) -> BoxliteResult<Execution>` | Reattach to an execution that is still running |
