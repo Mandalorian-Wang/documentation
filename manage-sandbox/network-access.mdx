@@ -52,14 +52,14 @@ if __name__ == "__main__":
 import asyncio
 
 import boxlite
-from boxlite import NetworkSpec, SimpleBox
+from boxlite import NetworkSpec, OutboundNetworkSpec, SimpleBox
 
 async def main() -> None:
     try:
         # only example.com may be resolved/accessed; all other hosts are sinkholed to 0.0.0.0
         async with SimpleBox(
             image="alpine:latest",
-            network=NetworkSpec(mode="enabled", allow_net=["example.com"]),
+            network=NetworkSpec(outbound=OutboundNetworkSpec(mode="enabled", allow_net=["example.com"])),
         ) as box:
             # allowed host -> resolves to a real IP
             allowed = await box.exec("nslookup", "example.com")
@@ -85,13 +85,13 @@ import { SimpleBox } from "@boxlite-ai/boxlite";
 async function main(): Promise<void> {
   try {
     // port forwarding: ports is an array of objects { hostPort, guestPort, protocol? }
-    // egress allowlist: network = { mode: "enabled", allowNet: [...] }
+    // egress allowlist: network = { outbound: { mode: "enabled", allowNet: [...] } }
     const box = new SimpleBox({
       image: "python:alpine",
       name: "net-demo-node",
       reuseExisting: true,
       ports: [{ hostPort: 18790, guestPort: 18790 }],
-      network: { mode: "enabled", allowNet: ["example.com"] },
+      network: { outbound: { mode: "enabled", allowNet: ["example.com"] } },
     });
 
     // likewise must bind to 0.0.0.0

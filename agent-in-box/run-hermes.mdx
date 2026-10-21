@@ -168,13 +168,13 @@ Hermes asks for approval before dangerous commands, which is the right default o
 What that does **not** cover is the network. An agent with unrestricted egress can still send data out. Narrow it when the task is not fully trusted:
 
 ```python
-from boxlite import SimpleBox, Secret, NetworkSpec
+from boxlite import NetworkSpec, OutboundNetworkSpec, Secret, SimpleBox
 
 box = SimpleBox(
     image="docker.io/nousresearch/hermes-agent:latest",
     disk_size_gb=12,
     secrets=[Secret(name="provider", value="<YOUR_API_KEY>", hosts=["<YOUR_HOST>"])],
-    network=NetworkSpec(mode="enabled", allow_net=["<YOUR_HOST>"]),
+    network=NetworkSpec(outbound=OutboundNetworkSpec(mode="enabled", allow_net=["<YOUR_HOST>"])),
 )
 ```
 

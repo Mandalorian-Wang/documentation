@@ -106,13 +106,13 @@ Configuration environment variables: `OPENCODE_CONFIG_CONTENT` (whole config as 
 `OPENCODE_CONFIG_CONTENT` keeps the key out of any file, but it is still an environment variable inside the sandbox. To keep the real value on the host entirely, put a placeholder in the config and let the proxy substitute it on the way out:
 
 ```python
-from boxlite import SimpleBox, Secret, NetworkSpec
+from boxlite import NetworkSpec, OutboundNetworkSpec, Secret, SimpleBox
 
 box = SimpleBox(
     image="node:20-slim",
     disk_size_gb=8,
     secrets=[Secret(name="provider", value="<YOUR_API_KEY>", hosts=["<YOUR_HOST>"])],
-    network=NetworkSpec(mode="enabled", allow_net=["registry.npmjs.org", "<YOUR_HOST>"]),
+    network=NetworkSpec(outbound=OutboundNetworkSpec(mode="enabled", allow_net=["registry.npmjs.org", "<YOUR_HOST>"])),
 )
 ```
 

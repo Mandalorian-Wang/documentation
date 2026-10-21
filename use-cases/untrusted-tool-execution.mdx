@@ -18,7 +18,7 @@ This guide stacks the three controls that close that gap:
 
 | Control | What it stops | How |
 |---|---|---|
-| Network policy | Exfiltration and call-backs | `NetworkSpec(mode="disabled")`, or an egress allowlist |
+| Network policy | Exfiltration and call-backs | `NetworkSpec(outbound=OutboundNetworkSpec(mode="disabled"))`, or an egress allowlist |
 | Privilege drop | Writes and reads outside the work area | `user="1000:1000"` |
 | OS-level sandbox | Syscall and resource abuse around the VM | `SecurityOptions.maximum()` |
 
@@ -54,7 +54,7 @@ The sample goes in explicitly, the verdict comes out explicitly, and there is no
 ```python
 import asyncio
 
-from boxlite import SimpleBox, NetworkSpec, SecurityOptions
+from boxlite import NetworkSpec, OutboundNetworkSpec, SecurityOptions, SimpleBox
 from boxlite import AdvancedBoxOptions
 
 
@@ -63,7 +63,7 @@ async def scan_untrusted(sample_host_path: str) -> dict:
     async with SimpleBox(
         image="alpine:latest",
         # 1) No network at all — exfiltration and call-backs have nowhere to go
-        network=NetworkSpec(mode="disabled"),
+        network=NetworkSpec(outbound=OutboundNetworkSpec(mode="disabled")),
         # 2) Drop privileges: run as a non-root uid:gid
         user="1000:1000",
         # 3) Tightest OS-level sandbox around the VM
@@ -101,7 +101,9 @@ asyncio.run(main())
 When the tool genuinely needs the network — to refresh a rule database, say — swap the total block for a narrow allowlist:
 
 ```python
-network=NetworkSpec(mode="enabled", allow_net=["updates.example.com"])
+from boxlite import NetworkSpec, OutboundNetworkSpec
+
+network=NetworkSpec(outbound=OutboundNetworkSpec(mode="enabled", allow_net=["updates.example.com"]))
 ```
 
 Every other host then resolves to `0.0.0.0`: the lookup succeeds and leads nowhere. Parameter tables are on [Network access](/manage-sandbox/network-access#egress-allowlist-network-networkspec) and [Secrets and hardening](/manage-sandbox/secrets-and-security).

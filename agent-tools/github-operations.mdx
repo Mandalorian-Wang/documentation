@@ -109,7 +109,7 @@ How `Secret` works (note how it differs from "injecting an environment variable"
 
 ```python Python
 import asyncio
-from boxlite import Boxlite, BoxOptions, Secret, NetworkSpec, BoxliteError
+from boxlite import BoxOptions, Boxlite, BoxliteError, NetworkSpec, OutboundNetworkSpec, Secret
 
 # TODO: replace with your real token; prefer reading from an environment variable over hardcoding
 GITHUB_TOKEN = "<YOUR_GITHUB_TOKEN>"  # e.g. os.environ["GITHUB_TOKEN"]
@@ -125,7 +125,7 @@ async def main() -> None:
         # Disable auto-remove so the runtime.remove in finally is the single cleanup point (default auto_remove=True)
         auto_remove=False,
         # Narrow outbound network to GitHub (default NetworkSpec is Enabled with allow_net=[], i.e. allow all)
-        network=NetworkSpec(mode="enabled", allow_net=["github.com", "api.github.com"]),
+        network=NetworkSpec(outbound=OutboundNetworkSpec(mode="enabled", allow_net=["github.com", "api.github.com"])),
         # Inject via Secret: the MITM proxy replaces the placeholder with the real token only when
         # an outbound request matches hosts and the placeholder appears in the header/body.
         secrets=[
@@ -198,7 +198,7 @@ async function main(): Promise<void> {
       // Disable auto-remove so the runtime.remove in finally is the single cleanup point
       autoRemove: false,
       // Narrow outbound network to GitHub (default is enabled with allowNet=[], i.e. allow all)
-      network: { mode: "enabled", allowNet: ["github.com", "api.github.com"] },
+      network: { outbound: { mode: "enabled", allowNet: ["github.com", "api.github.com"] } },
       // Inject via Secret: the MITM proxy replaces the placeholder with the real token only when
       // an outbound request matches hosts and the placeholder appears in the header/body.
       secrets: [{ name: "github_token", value: GITHUB_TOKEN, hosts: ["github.com", "api.github.com"] }],
