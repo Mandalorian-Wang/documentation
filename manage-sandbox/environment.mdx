@@ -102,8 +102,24 @@ main();
 An OCI image has two directives: `ENTRYPOINT` (the executable) and `CMD` (default arguments). The final startup command is the concatenation of the two: `ENTRYPOINT + CMD`.
 
 - Set only `cmd`: replace the default arguments, keep the image's ENTRYPOINT.
-- Set only `entrypoint`: replace the executable.
+- Set only `entrypoint` (non-empty): replace the executable **and discard the image's
+  CMD**, the way `docker run --entrypoint` does. Nothing is inherited.
 - Set both: fully customize the startup behavior.
+- Set `entrypoint=[]`: drop the image's ENTRYPOINT while **keeping** its CMD.
+
+That third rule changed in 0.10.6. A non-empty `entrypoint` used to leave the image's
+CMD appended behind it, so overriding the executable on an image whose CMD was
+`python3` silently produced `<your-entrypoint> python3`. It no longer does. On the
+`python` image, whose ENTRYPOINT is empty and whose CMD is `python3`:
+
+| What you pass | The box's main command |
+|---|---|
+| nothing | `python3` |
+| `entrypoint=["sleep", "3600"]` | `sleep 3600` |
+| `entrypoint=["sleep"], cmd=["3600"]` | `sleep 3600` |
+| `entrypoint=[]` | `python3` |
+
+Existing boxes adopt these rules the next time they start.
 
 Note: some images (such as `python:alpine`) put the default command in CMD rather than ENTRYPOINT. To pass arguments like `-c`, you must explicitly set `entrypoint=["python3"]`, otherwise the arguments have nothing to attach to.
 
